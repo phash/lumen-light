@@ -8,6 +8,7 @@ import Header from "./components/Header";
 import Account from "./pages/Account";
 import Editor from "./pages/Editor";
 import Landing from "./pages/Landing";
+import Library from "./pages/Library";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
 
@@ -27,6 +28,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <Editor />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/library"
+              element={
+                <RequireAuth>
+                  <Library />
                 </RequireAuth>
               }
             />

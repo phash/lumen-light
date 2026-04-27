@@ -4,6 +4,7 @@ import { NavLink } from "react-router-dom";
 const links: ReadonlyArray<{ to: string; label: string }> = [
   { to: "/", label: "Start" },
   { to: "/editor", label: "Editor" },
+  { to: "/library", label: "Bibliothek" },
   { to: "/account", label: "Account" },
 ];
 

@@ -38,7 +38,32 @@ export interface Preset {
   updated_at: string;
 }
 
+export type UploadState = "pending" | "ready" | "failed";
+
+export interface Image {
+  id: string;
+  original_filename: string;
+  content_type: string;
+  size_bytes: number | null;
+  upload_state: UploadState;
+  created_at: string;
+  confirmed_at: string | null;
+}
+
+export interface ImageInit {
+  id: string;
+  upload_url: string;
+  expires_in: number;
+}
+
+export interface ImageUrl {
+  url: string;
+  expires_in: number;
+}
+
 export type GetUserFn = () => OidcUser | null | undefined;
+
+export type ImageStateFilter = "ready" | "pending" | "all";
 
 export interface ApiClient {
   me(): Promise<User>;
@@ -46,6 +71,12 @@ export interface ApiClient {
   createPreset(name: string, adjustments: Adjustments): Promise<Preset>;
   updatePreset(id: string, name: string, adjustments: Adjustments): Promise<Preset>;
   deletePreset(id: string): Promise<void>;
+
+  listImages(state?: ImageStateFilter): Promise<Image[]>;
+  initUpload(filename: string, contentType: string, sizeBytes: number): Promise<ImageInit>;
+  confirmUpload(id: string): Promise<Image>;
+  getImageUrl(id: string): Promise<ImageUrl>;
+  deleteImage(id: string): Promise<void>;
 }
 
 export interface ApiClientOptions {
@@ -97,5 +128,22 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       }),
     deletePreset: (id) =>
       request<void>(`/presets/${id}`, { method: "DELETE" }),
+
+    listImages: (state = "ready") =>
+      request<Image[]>(`/images?state=${state}`),
+    initUpload: (filename, contentType, sizeBytes) =>
+      request<ImageInit>("/images", {
+        method: "POST",
+        body: JSON.stringify({
+          filename,
+          content_type: contentType,
+          size_bytes: sizeBytes,
+        }),
+      }),
+    confirmUpload: (id) =>
+      request<Image>(`/images/${id}/confirm`, { method: "POST" }),
+    getImageUrl: (id) => request<ImageUrl>(`/images/${id}/url`),
+    deleteImage: (id) =>
+      request<void>(`/images/${id}`, { method: "DELETE" }),
   };
 }
