@@ -1,10 +1,14 @@
-"""JWT-Token-Erstellung, -Verifikation und Auth-Dependency."""
-import hashlib
-import secrets
-from datetime import datetime, timedelta, timezone
-from uuid import UUID
+"""JWT-Verifikation gegen den Keycloak-Realm + JIT-User-Provisioning.
 
-import bcrypt
+Lumen-Backend ist ein OIDC Resource Server: Tokens werden ausschliesslich
+von Keycloak ausgestellt, hier nur verifiziert. Siehe ADR-010.
+"""
+from __future__ import annotations
+
+import time
+from typing import Any
+
+import httpx
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
@@ -13,61 +17,142 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import RefreshToken, User
+from app.models import Preset, User
+
+
+# Default-Presets, die bei JIT-Provisioning eines neuen Users angelegt werden.
+# Spec: docs/03-datenmodell.md.
+_DEFAULT_PRESETS: list[dict] = [
+    {
+        "name": "Neutral",
+        "adjustments": {k: 0 for k in (
+            "exposure", "contrast", "highlights", "shadows", "whites",
+            "blacks", "temperature", "tint", "vibrance", "saturation",
+        )},
+    },
+    {
+        "name": "Punchy",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.30, "highlights": 0, "shadows": 0.15,
+            "whites": 0, "blacks": -0.10, "temperature": 0, "tint": 0,
+            "vibrance": 0.40, "saturation": 0,
+        },
+    },
+    {
+        "name": "Soft Mood",
+        "adjustments": {
+            "exposure": 0, "contrast": -0.15, "highlights": -0.30, "shadows": 0.20,
+            "whites": -0.10, "blacks": 0.10, "temperature": 0.05, "tint": 0,
+            "vibrance": -0.10, "saturation": 0,
+        },
+    },
+    {
+        "name": "Schwarzweiss-Vorbereitung",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.20, "highlights": 0, "shadows": 0,
+            "whites": 0, "blacks": 0, "temperature": 0, "tint": 0,
+            "vibrance": 0, "saturation": -1.0,
+        },
+    },
+]
 
 
 bearer_scheme = HTTPBearer(auto_error=False)
 
 
-# ----- Passwort-Hashing -----
+# ----- JWK-Set Cache -----
 
-def hash_password(password: str) -> str:
-    salt = bcrypt.gensalt(rounds=settings.bcrypt_rounds)
-    return bcrypt.hashpw(password.encode(), salt).decode()
+class _JwkCache:
+    """In-memory Cache fuer das JWK-Set des Keycloak-Realms.
+
+    TTL aus settings.jwk_cache_seconds. Bei Cache-Miss oder Expiry wird das
+    Set frisch geholt. Bei kid-Miss (Token verweist auf einen Schluessel,
+    den wir noch nicht kennen) wird einmalig neu geladen — das deckt den
+    Key-Rotation-Fall ab.
+    """
+
+    def __init__(self) -> None:
+        self._keys_by_kid: dict[str, dict[str, Any]] = {}
+        self._fetched_at: float = 0.0
+
+    def _is_expired(self) -> bool:
+        return (time.monotonic() - self._fetched_at) > settings.jwk_cache_seconds
+
+    def _fetch(self) -> None:
+        url = settings.keycloak_issuer.rstrip("/") + "/protocol/openid-connect/certs"
+        with httpx.Client(timeout=5.0) as c:
+            r = c.get(url)
+            r.raise_for_status()
+            data = r.json()
+        self._keys_by_kid = {k["kid"]: k for k in data.get("keys", []) if "kid" in k}
+        self._fetched_at = time.monotonic()
+
+    def get(self, kid: str) -> dict[str, Any]:
+        if self._is_expired() or kid not in self._keys_by_kid:
+            self._fetch()
+        if kid not in self._keys_by_kid:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token-Signatur konnte nicht verifiziert werden (kid unbekannt).",
+            )
+        return self._keys_by_kid[kid]
+
+    def reset(self) -> None:
+        """Fuer Tests: Cache nach Container-Restart invalidieren."""
+        self._keys_by_kid = {}
+        self._fetched_at = 0.0
 
 
-def verify_password(password: str, hashed: str) -> bool:
+_jwk_cache = _JwkCache()
+
+
+def _decode_token(token: str) -> dict[str, Any]:
     try:
-        return bcrypt.checkpw(password.encode(), hashed.encode())
-    except ValueError:
-        return False
-
-
-# ----- Access Token -----
-
-def create_access_token(user_id: UUID) -> tuple[str, int]:
-    expires_in = settings.access_token_expire_minutes * 60
-    expire = datetime.now(timezone.utc) + timedelta(seconds=expires_in)
-    payload = {
-        "sub": str(user_id),
-        "exp": int(expire.timestamp()),
-        "type": "access",
-    }
-    token = jwt.encode(payload, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-    return token, expires_in
-
-
-def decode_token(token: str) -> dict:
-    try:
-        return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
+        header = jwt.get_unverified_header(token)
     except JWTError as exc:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Token ungültig oder abgelaufen.",
-        ) from exc
+        raise HTTPException(status_code=401, detail="Token-Header unlesbar.") from exc
+
+    kid = header.get("kid")
+    if not kid:
+        raise HTTPException(status_code=401, detail="Token ohne kid-Header.")
+
+    key = _jwk_cache.get(kid)
+    try:
+        return jwt.decode(
+            token,
+            key,
+            algorithms=[header.get("alg", "RS256")],
+            audience=settings.keycloak_audience,
+            issuer=settings.keycloak_issuer,
+        )
+    except JWTError as exc:
+        raise HTTPException(status_code=401, detail=f"Token ungueltig: {exc}") from exc
 
 
-# ----- Refresh Token -----
+# ----- JIT-User-Provisioning -----
 
-def hash_refresh_token(token: str) -> str:
-    return hashlib.sha256(token.encode()).hexdigest()
+async def _get_or_create_user(db: AsyncSession, sub: str, email: str) -> User:
+    result = await db.execute(select(User).where(User.keycloak_sub == sub))
+    user = result.scalar_one_or_none()
+    if user is None:
+        user = User(keycloak_sub=sub, email=email)
+        db.add(user)
+        await db.flush()  # User-ID erzeugen, ohne zu committen
+        for p in _DEFAULT_PRESETS:
+            db.add(Preset(user_id=user.id, name=p["name"], adjustments=p["adjustments"]))
+        await db.commit()
+        await db.refresh(user)
+        return user
+
+    # Email-Spiegel aktualisieren, falls in Keycloak geaendert
+    if user.email != email:
+        user.email = email
+        await db.commit()
+        await db.refresh(user)
+    return user
 
 
-def generate_refresh_token() -> str:
-    return secrets.token_urlsafe(48)
-
-
-# ----- Auth-Dependency -----
+# ----- FastAPI-Dependency -----
 
 async def current_user(
     creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
@@ -78,17 +163,13 @@ async def current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentifizierung erforderlich.",
         )
-    payload = decode_token(creds.credentials)
-    if payload.get("type") != "access":
+    payload = _decode_token(creds.credentials)
+
+    sub = payload.get("sub")
+    email = payload.get("email") or payload.get("preferred_username")
+    if not sub or not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Falscher Token-Typ.",
+            detail="Token ohne sub- oder email-Claim.",
         )
-    user_id = payload.get("sub")
-    if not user_id:
-        raise HTTPException(status_code=401, detail="Token ohne Subject.")
-    result = await db.execute(select(User).where(User.id == UUID(user_id)))
-    user = result.scalar_one_or_none()
-    if user is None:
-        raise HTTPException(status_code=401, detail="User existiert nicht mehr.")
-    return user
+    return await _get_or_create_user(db, sub=sub, email=email)

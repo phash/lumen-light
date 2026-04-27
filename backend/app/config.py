@@ -6,12 +6,13 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
     database_url: str = "postgresql+asyncpg://lumen:lumen@localhost:5432/lumen"
-    jwt_secret: str = "dev-secret-bitte-ersetzen"
-    jwt_algorithm: str = "HS256"
-    access_token_expire_minutes: int = 15
-    refresh_token_expire_days: int = 7
+
+    # Keycloak (siehe ADR-010)
+    keycloak_issuer: str = "http://localhost:18080/realms/lumen"
+    keycloak_audience: str = "lumen-api"
+    jwk_cache_seconds: int = 600
+
     cors_origin: str = "http://localhost:5173"
-    bcrypt_rounds: int = 12
 
 
 settings = Settings()

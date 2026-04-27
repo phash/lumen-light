@@ -26,34 +26,11 @@ class Adjustments(BaseModel):
 
 # ----- User -----
 
-class UserCreate(BaseModel):
-    email: EmailStr
-    password: str = Field(min_length=12, max_length=128)
-
-
 class UserOut(BaseModel):
     id: UUID
     email: EmailStr
     created_at: datetime
     model_config = ConfigDict(from_attributes=True)
-
-
-# ----- Auth -----
-
-class LoginRequest(BaseModel):
-    email: EmailStr
-    password: str
-
-
-class TokenPair(BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str = "bearer"
-    expires_in: int
-
-
-class RefreshRequest(BaseModel):
-    refresh_token: str
 
 
 # ----- Preset -----
