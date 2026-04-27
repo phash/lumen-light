@@ -1,0 +1,33 @@
+%% Lumen · light — Systemarchitektur
+%% Anzeige: in jedem Markdown-Renderer mit Mermaid-Support, oder mermaid.live
+
+flowchart TB
+    subgraph Browser["Browser (Client)"]
+        UI["React UI<br/>Slider · Histogramm · Presets"]
+        WGL["WebGL2 Renderer<br/>Shader-Pipeline"]
+        IMG["Image Source<br/>JPEG/PNG · libraw-wasm"]
+        IDB[("IndexedDB<br/>Session-Cache")]
+        UI -->|"Slider-Werte"| WGL
+        IMG -->|"Texture"| WGL
+        WGL -->|"Cache"| IDB
+    end
+
+    subgraph Backend["Backend"]
+        API["FastAPI<br/>Auth · Presets"]
+        DB[("PostgreSQL<br/>users · presets · refresh_tokens")]
+        API <-->|"asyncpg"| DB
+    end
+
+    subgraph Deployment["VPS"]
+        NGX["Nginx<br/>TLS · Static Files · Rate Limiting"]
+        NGX -->|"reverse proxy"| API
+        NGX -->|"static"| Static["Frontend Build<br/>(dist/)"]
+    end
+
+    UI <-.->|"HTTPS · JWT"| NGX
+
+    style Browser fill:#1a1a1a,stroke:#d4a373,color:#e8e2d4
+    style Backend fill:#1a1a1a,stroke:#d4a373,color:#e8e2d4
+    style Deployment fill:#1a1a1a,stroke:#d4a373,color:#e8e2d4
+    style IDB fill:#2a2a2a,stroke:#666,color:#e8e2d4
+    style DB fill:#2a2a2a,stroke:#666,color:#e8e2d4
