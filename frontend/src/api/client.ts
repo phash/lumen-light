@@ -106,8 +106,18 @@ export type GetUserFn = () => OidcUser | null | undefined;
 
 export type ImageStateFilter = "ready" | "pending" | "all";
 
+export interface MeExport {
+  id: string;
+  email: string;
+  created_at: string;
+  presets: Preset[];
+  images: Array<Image & { download_url: string; download_url_expires_in: number }>;
+}
+
 export interface ApiClient {
   me(): Promise<User>;
+  deleteMe(): Promise<void>;
+  exportMe(): Promise<MeExport>;
   listPresets(): Promise<Preset[]>;
   createPreset(payload: PresetWritePayload): Promise<Preset>;
   updatePreset(id: string, payload: PresetWritePayload): Promise<Preset>;
@@ -156,6 +166,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
 
   return {
     me: () => request<User>("/auth/me"),
+    deleteMe: () => request<void>("/auth/me", { method: "DELETE" }),
+    exportMe: () => request<MeExport>("/auth/me/export"),
     listPresets: () => request<Preset[]>("/presets"),
     createPreset: (payload) =>
       request<Preset>("/presets", {

@@ -11,6 +11,8 @@ interface FakeApi extends ApiClient {
 function makeFakeApi(): FakeApi {
   return {
     me: vi.fn(),
+    deleteMe: vi.fn(),
+    exportMe: vi.fn(),
     listPresets: vi.fn(),
     createPreset: vi.fn(),
     updatePreset: vi.fn(),

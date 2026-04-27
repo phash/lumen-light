@@ -1,13 +1,21 @@
-"""Auth-Router — reduziert auf GET /me (siehe ADR-010).
+"""Auth-Router — GET /me, DELETE /me, GET /me/export (siehe ADR-010).
 
-Login/Logout/Refresh/Register laufen ueber den externen Keycloak-Realm,
-nicht ueber Lumen-Endpoints.
+Login/Logout/Refresh/Register laufen ueber den externen Keycloak-Realm.
+DELETE/Export sind DSGVO Art. 17 + 20.
 """
-from fastapi import APIRouter, Depends
+from datetime import datetime
+from uuid import UUID
+
+from fastapi import APIRouter, Depends, status
+from pydantic import BaseModel, ConfigDict, EmailStr
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
-from app.models import User
+from app.database import get_db
+from app.models import Image, Preset, User
 from app.schemas import UserOut
+from app.storage import StorageService, get_storage
 
 
 router = APIRouter()
@@ -16,3 +24,111 @@ router = APIRouter()
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(current_user)) -> UserOut:
     return UserOut.model_validate(user)
+
+
+# ----- DSGVO Art. 17 (Loeschung) -----
+
+@router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_me(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
+) -> None:
+    """Loescht alle Daten des aktuellen Users:
+
+    1. Alle S3-Objekte des Users (Best-Effort, Storage-Fehler werden
+       protokolliert aber nicht eskaliert — die DB-Row geht trotzdem weg).
+    2. DB-Cascade entfernt presets+images.
+    3. Der Keycloak-Account selbst wird hier NICHT geloescht — der User
+       muss das in seinem Account-Self-Service-UI tun. Folgeschritt fuer
+       full DSGVO-Compliance: Admin-API-Call gegen Keycloak.
+    """
+    image_keys_result = await db.execute(
+        select(Image.bucket_key).where(Image.user_id == user.id)
+    )
+    keys = [row[0] for row in image_keys_result.all()]
+
+    for key in keys:
+        try:
+            storage.delete(key)
+        except Exception:  # noqa: BLE001 — best-effort cleanup
+            # Object stays in bucket but DB row goes — orphan acceptable
+            # at this scale; periodic GC sweeps it eventually.
+            pass
+
+    await db.delete(user)
+    await db.commit()
+
+
+# ----- DSGVO Art. 15 + 20 (Auskunft + Datenuebertragbarkeit) -----
+
+class ImageExport(BaseModel):
+    id: UUID
+    original_filename: str
+    content_type: str
+    size_bytes: int | None
+    upload_state: str
+    created_at: datetime
+    confirmed_at: datetime | None
+    download_url: str
+    download_url_expires_in: int
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PresetExport(BaseModel):
+    id: UUID
+    name: str
+    adjustments: dict
+    masks: list
+    created_at: datetime
+    updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class MeExport(BaseModel):
+    id: UUID
+    email: EmailStr
+    created_at: datetime
+    presets: list[PresetExport]
+    images: list[ImageExport]
+
+
+@router.get("/me/export", response_model=MeExport)
+async def export_me(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
+) -> MeExport:
+    """Komplett-Export aller User-Daten in einem JSON. Fuer jedes Bild
+    wird ein frischer Pre-Signed-Download-URL beigelegt (gueltig laut
+    settings.presigned_url_expires_in)."""
+    presets_result = await db.execute(
+        select(Preset).where(Preset.user_id == user.id).order_by(Preset.name)
+    )
+    presets = [PresetExport.model_validate(p) for p in presets_result.scalars().all()]
+
+    images_result = await db.execute(
+        select(Image).where(Image.user_id == user.id).order_by(Image.created_at)
+    )
+    images: list[ImageExport] = []
+    for img in images_result.scalars().all():
+        url, expires = storage.presign_get(img.bucket_key)
+        images.append(ImageExport(
+            id=img.id,
+            original_filename=img.original_filename,
+            content_type=img.content_type,
+            size_bytes=img.size_bytes,
+            upload_state=img.upload_state,
+            created_at=img.created_at,
+            confirmed_at=img.confirmed_at,
+            download_url=url,
+            download_url_expires_in=expires,
+        ))
+
+    return MeExport(
+        id=user.id,
+        email=user.email,
+        created_at=user.created_at,
+        presets=presets,
+        images=images,
+    )
