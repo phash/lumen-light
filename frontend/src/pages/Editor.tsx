@@ -25,6 +25,7 @@ import {
   type MaskInstance,
   type RadialMaskInstance,
 } from "../editor/mask";
+import PresetDialog from "../editor/PresetDialog";
 import RadialMaskOverlay from "../editor/RadialMaskOverlay";
 import { decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import Slider from "../editor/Slider";
@@ -74,6 +75,8 @@ export default function Editor() {
   const [imageDims, setImageDims] = useState<{ width: number; height: number } | null>(null);
   const [cropMode, setCropMode] = useState(false);
   const [aspect, setAspect] = useState<AspectRatio>("free");
+  const [presetDialogOpen, setPresetDialogOpen] = useState(false);
+  const [loadedPresetId, setLoadedPresetId] = useState<string | null>(null);
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const setAdjustment = useEditorStore((s) => s.setAdjustment);
@@ -355,6 +358,14 @@ export default function Editor() {
             </button>
             <button
               type="button"
+              data-testid="editor-presets"
+              onClick={() => setPresetDialogOpen(true)}
+              className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
+            >
+              Presets
+            </button>
+            <button
+              type="button"
               data-testid="editor-export"
               onClick={triggerExport}
               className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
@@ -362,6 +373,15 @@ export default function Editor() {
               Exportieren
             </button>
           </div>
+        )}
+
+        {presetDialogOpen && (
+          <PresetDialog
+            open={presetDialogOpen}
+            onClose={() => setPresetDialogOpen(false)}
+            loadedPresetId={loadedPresetId}
+            onLoadedPresetIdChange={setLoadedPresetId}
+          />
         )}
 
         {exportOpen && (
