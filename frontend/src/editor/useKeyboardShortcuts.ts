@@ -6,6 +6,8 @@ interface Shortcuts {
   readonly onOpenFile?: () => void;
   readonly onToggleCrop?: () => void;
   readonly onTogglePresets?: () => void;
+  readonly onUndo?: () => void;
+  readonly onRedo?: () => void;
   readonly setBypass?: (bypass: boolean) => void;
 }
 
@@ -42,6 +44,17 @@ export function useKeyboardShortcuts(shortcuts: Shortcuts): void {
       } else if (e.key.toLowerCase() === "p" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         shortcuts.onTogglePresets?.();
+      } else if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "z") {
+        // Cmd+Shift+Z = Redo (Mac/Win-Konvention).
+        e.preventDefault();
+        shortcuts.onRedo?.();
+      } else if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        shortcuts.onUndo?.();
+      } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
+        // Win-zusaetzlich: Ctrl+Y = Redo.
+        e.preventDefault();
+        shortcuts.onRedo?.();
       }
     };
 

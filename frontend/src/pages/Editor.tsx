@@ -112,6 +112,10 @@ export default function Editor() {
   const setMaskFeather = useEditorStore((s) => s.setMaskFeather);
   const setMaskLocalAdjustment = useEditorStore((s) => s.setMaskLocalAdjustment);
   const removeSelectedMask = useEditorStore((s) => s.removeSelectedMask);
+  const undo = useEditorStore((s) => s.undo);
+  const redo = useEditorStore((s) => s.redo);
+  const canUndo = useEditorStore((s) => s.past.length > 0);
+  const canRedo = useEditorStore((s) => s.future.length > 0);
 
   const selected = useEditorStore(selectedMask);
   const linearCount = countByType(masks, "linear");
@@ -341,6 +345,8 @@ export default function Editor() {
     onOpenFile: triggerFileDialog,
     onToggleCrop: toggleCropMode,
     onTogglePresets: togglePresetDialog,
+    onUndo: undo,
+    onRedo: redo,
     setBypass,
   });
 
@@ -540,6 +546,28 @@ export default function Editor() {
                 title="Zoom + Pan zuruecksetzen"
               >
                 {Math.round(zoom * 100)}%
+              </button>
+              <button
+                type="button"
+                data-testid="editor-undo"
+                onClick={undo}
+                disabled={!canUndo}
+                className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Rueckgaengig (Cmd+Z)"
+                aria-label="Rueckgaengig"
+              >
+                ↶
+              </button>
+              <button
+                type="button"
+                data-testid="editor-redo"
+                onClick={redo}
+                disabled={!canRedo}
+                className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Wiederherstellen (Cmd+Shift+Z)"
+                aria-label="Wiederherstellen"
+              >
+                ↷
               </button>
             </div>
 

@@ -7,6 +7,15 @@ import {
   defaultAdjustments,
 } from "./adjustments";
 import {
+  type DebounceContext,
+  type HistorySnapshot,
+  MAX_HISTORY,
+  captureBeforeChange,
+  flushPending,
+  makeDebounce,
+  takeSnapshot,
+} from "./history";
+import {
   type LensCorrection,
   clampLens,
   defaultLensCorrection,
@@ -73,6 +82,12 @@ export interface EditorState {
   removeSelectedMask: () => void;
   clearMasks: () => void;
   applyMasks: (masks: ReadonlyArray<MaskInstance>) => void;
+  past: ReadonlyArray<HistorySnapshot>;
+  future: ReadonlyArray<HistorySnapshot>;
+  undo: () => void;
+  redo: () => void;
+  canUndo: () => boolean;
+  canRedo: () => boolean;
 }
 
 function findMask(
@@ -91,6 +106,22 @@ function countByType(
   return n;
 }
 
+// Module-scoped Debounce — Snapshots werden nur gepusht, wenn 250 ms
+// keine weitere Aenderung kommt. So entsteht aus einem Slider-Drag mit
+// 100 onChange-Events EIN History-Eintrag.
+const _historyDebounce: DebounceContext = makeDebounce();
+
+function _snapshotBefore(state: EditorState): void {
+  captureBeforeChange(_historyDebounce, state, {
+    pushPast: (snap) => {
+      useEditorStore.setState((s) => ({
+        past: [...s.past.slice(-(MAX_HISTORY - 1)), snap],
+        future: [],
+      }));
+    },
+  });
+}
+
 export const useEditorStore = create<EditorState>((set, get) => ({
   adjustments: defaultAdjustments(),
   bypass: false,
@@ -101,12 +132,20 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   manualLensOverride: false,
   masks: [],
   selectedMaskId: null,
-  setAdjustment: (key, value) =>
+  past: [],
+  future: [],
+  setAdjustment: (key, value) => {
+    _snapshotBefore(get());
     set((state) => ({
       adjustments: { ...state.adjustments, [key]: clampAdjustment(key, value) },
-    })),
-  resetAll: () => set({ adjustments: defaultAdjustments() }),
-  applyAdjustments: (incoming) =>
+    }));
+  },
+  resetAll: () => {
+    _snapshotBefore(get());
+    set({ adjustments: defaultAdjustments() });
+  },
+  applyAdjustments: (incoming) => {
+    _snapshotBefore(get());
     set(() => {
       const base = defaultAdjustments();
       const merged: Adjustments = { ...base };
@@ -114,34 +153,48 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         merged[k] = clampAdjustment(k, v);
       }
       return { adjustments: merged };
-    }),
+    });
+  },
   setBypass: (bypass) => set({ bypass }),
-  setCropRect: (rect) => set({ cropRect: clampCropRect(rect) }),
-  setStraightenAngle: (angle) =>
+  setCropRect: (rect) => {
+    _snapshotBefore(get());
+    set({ cropRect: clampCropRect(rect) });
+  },
+  setStraightenAngle: (angle) => {
+    _snapshotBefore(get());
     set({
       straightenAngle: Math.max(
         -MAX_STRAIGHTEN_RADIANS,
         Math.min(MAX_STRAIGHTEN_RADIANS, angle),
       ),
-    }),
-  setLensCorrection: (next, source = "manual") =>
+    });
+  },
+  setLensCorrection: (next, source = "manual") => {
+    _snapshotBefore(get());
     set((state) => ({
       lensCorrection: clampLens({ ...state.lensCorrection, ...next }),
       manualLensOverride:
         source === "manual" ? true : state.manualLensOverride,
-    })),
-  setLensProfile: (id) => set({ lensProfileId: id, manualLensOverride: false }),
-  resetGeometry: () =>
+    }));
+  },
+  setLensProfile: (id) => {
+    _snapshotBefore(get());
+    set({ lensProfileId: id, manualLensOverride: false });
+  },
+  resetGeometry: () => {
+    _snapshotBefore(get());
     set({
       cropRect: defaultCropRect(),
       straightenAngle: 0,
       lensCorrection: defaultLensCorrection(),
       lensProfileId: null,
       manualLensOverride: false,
-    }),
+    });
+  },
   addLinearMask: () => {
     const state = get();
     if (countByType(state.masks, "linear") >= MAX_LINEAR_MASKS) return null;
+    _snapshotBefore(state);
     const id = newMaskId();
     const instance: LinearMaskInstance = {
       id,
@@ -155,6 +208,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   addRadialMask: () => {
     const state = get();
     if (countByType(state.masks, "radial") >= MAX_RADIAL_MASKS) return null;
+    _snapshotBefore(state);
     const id = newMaskId();
     const instance: RadialMaskInstance = {
       id,
@@ -165,34 +219,41 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set({ masks: [...state.masks, instance], selectedMaskId: id });
     return id;
   },
-  removeMask: (id) =>
+  removeMask: (id) => {
+    _snapshotBefore(get());
     set((state) => ({
       masks: state.masks.filter((m) => m.id !== id),
       selectedMaskId:
         state.selectedMaskId === id ? null : state.selectedMaskId,
-    })),
+    }));
+  },
   selectMask: (id) =>
     set((state) => {
       if (id === null) return { selectedMaskId: null };
       return findMask(state.masks, id) ? { selectedMaskId: id } : state;
     }),
-  setLinearMaskPoint: (id, which, uv) =>
+  setLinearMaskPoint: (id, which, uv) => {
+    _snapshotBefore(get());
     set((state) => ({
       masks: state.masks.map((m) =>
         m.id === id && m.type === "linear"
           ? { ...m, mask: { ...m.mask, [which]: clampUv(uv) } }
           : m,
       ),
-    })),
-  setRadialMaskCenter: (id, uv) =>
+    }));
+  },
+  setRadialMaskCenter: (id, uv) => {
+    _snapshotBefore(get());
     set((state) => ({
       masks: state.masks.map((m) =>
         m.id === id && m.type === "radial"
           ? { ...m, mask: { ...m.mask, center: clampUv(uv) } }
           : m,
       ),
-    })),
-  setRadialMaskRadii: (id, rx, ry) =>
+    }));
+  },
+  setRadialMaskRadii: (id, rx, ry) => {
+    _snapshotBefore(get());
     set((state) => ({
       masks: state.masks.map((m) =>
         m.id === id && m.type === "radial"
@@ -202,8 +263,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             }
           : m,
       ),
-    })),
-  setMaskFeather: (id, feather) =>
+    }));
+  },
+  setMaskFeather: (id, feather) => {
+    _snapshotBefore(get());
     set((state) => ({
       masks: state.masks.map((m): MaskInstance => {
         if (m.id !== id) return m;
@@ -213,8 +276,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
         return { ...m, mask: { ...m.mask, feather: f } };
       }),
-    })),
-  setMaskLocalAdjustment: (id, key, value) =>
+    }));
+  },
+  setMaskLocalAdjustment: (id, key, value) => {
+    _snapshotBefore(get());
     set((state) => ({
       masks: state.masks.map((m) =>
         m.id === id
@@ -227,17 +292,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
             }
           : m,
       ),
-    })),
+    }));
+  },
   removeSelectedMask: () => {
     const id = get().selectedMaskId;
     if (id === null) return;
+    _snapshotBefore(get());
     set((state) => ({
       masks: state.masks.filter((m) => m.id !== id),
       selectedMaskId: null,
     }));
   },
-  clearMasks: () => set({ masks: [], selectedMaskId: null }),
-  applyMasks: (incoming) =>
+  clearMasks: () => {
+    _snapshotBefore(get());
+    set({ masks: [], selectedMaskId: null });
+  },
+  applyMasks: (incoming) => {
+    _snapshotBefore(get());
     set(() => {
       const result: MaskInstance[] = [];
       let lin = 0;
@@ -254,7 +325,56 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         }
       }
       return { masks: result, selectedMaskId: null };
-    }),
+    });
+  },
+  undo: () => {
+    const state = get();
+    // Pending Burst flushen, damit Cmd+Z mid-drag nicht den falschen
+    // Snapshot pickt.
+    flushPending(_historyDebounce, {
+      pushPast: (snap) => {
+        useEditorStore.setState((s) => ({
+          past: [...s.past.slice(-(MAX_HISTORY - 1)), snap],
+          future: [],
+        }));
+      },
+    });
+    const fresh = get();
+    if (fresh.past.length === 0) return;
+    const target = fresh.past[fresh.past.length - 1]!;
+    const current = takeSnapshot(fresh);
+    set({
+      past: fresh.past.slice(0, -1),
+      future: [current, ...fresh.future],
+      adjustments: target.adjustments,
+      masks: target.masks,
+      cropRect: target.cropRect,
+      straightenAngle: target.straightenAngle,
+      lensCorrection: target.lensCorrection,
+      lensProfileId: target.lensProfileId,
+      manualLensOverride: target.manualLensOverride,
+    });
+    void state; // silence unused if other branches removed
+  },
+  redo: () => {
+    const state = get();
+    if (state.future.length === 0) return;
+    const target = state.future[0]!;
+    const current = takeSnapshot(state);
+    set({
+      past: [...state.past, current],
+      future: state.future.slice(1),
+      adjustments: target.adjustments,
+      masks: target.masks,
+      cropRect: target.cropRect,
+      straightenAngle: target.straightenAngle,
+      lensCorrection: target.lensCorrection,
+      lensProfileId: target.lensProfileId,
+      manualLensOverride: target.manualLensOverride,
+    });
+  },
+  canUndo: () => get().past.length > 0,
+  canRedo: () => get().future.length > 0,
 }));
 
 export function selectedMask(state: EditorState): MaskInstance | null {
