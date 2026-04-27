@@ -175,11 +175,14 @@ def _decode_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Token ohne kid-Header.")
 
     key = _jwk_cache.get(kid)
+    # Whitelist statt Header-Wert: verhindert "alg confusion" (Token mit
+    # alg=HS256, das die Bibliothek mit dem RSA-Public-Key als HMAC-Secret
+    # verifizieren wuerde). Keycloak signiert ausschliesslich RS256.
     try:
         return jwt.decode(
             token,
             key,
-            algorithms=[header.get("alg", "RS256")],
+            algorithms=["RS256"],
             audience=settings.keycloak_audience,
             issuer=settings.keycloak_issuer,
         )

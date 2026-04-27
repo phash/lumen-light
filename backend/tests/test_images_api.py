@@ -87,6 +87,37 @@ async def test_confirm_409_if_not_uploaded(client, user_a):
     assert r.status_code == 409
 
 
+async def test_confirm_413_if_actual_object_exceeds_limit(
+    client, user_a, monkeypatch,
+):
+    """Pre-Signed PUT akzeptiert beliebige Body-Groesse. confirm() muss
+    gegen settings.max_image_size_bytes pruefen, bei Verletzung das
+    Object loeschen + DB-Eintrag wegraeumen + 413 zurueckgeben."""
+    from app.config import settings as app_settings
+
+    # Limit auf 100 Bytes runter, damit der Test nicht 200 MB Body braucht.
+    monkeypatch.setattr(app_settings, "max_image_size_bytes", 100)
+
+    init = await _init(
+        client, user_a["headers"], filename="trick.jpg",
+        content_type="image/jpeg", size=50,  # Browser-behauptet
+    )
+    # Echtes Object: 200 Bytes — ueber dem Limit.
+    _put_to_url(init["upload_url"], b"x" * 200, "image/jpeg")
+
+    confirm = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert confirm.status_code == 413, confirm.text
+
+    # Image-Row muss weg sein (idempotenter Cleanup).
+    listing = await client.get(
+        "/api/v1/images?state=all", headers=user_a["headers"]
+    )
+    ids = [it["id"] for it in listing.json()]
+    assert init["id"] not in ids
+
+
 async def test_list_default_returns_only_ready(client, user_a):
     init_pending = await _init(
         client, user_a["headers"], filename="pending.jpg"

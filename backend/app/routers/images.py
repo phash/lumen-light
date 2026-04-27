@@ -102,6 +102,27 @@ async def confirm_upload(
             detail="Object liegt nicht im Bucket — Upload wiederholen.",
         ) from exc
 
+    # Server-side Size-Enforcement: die im init() angegebene size_bytes
+    # ist Browser-behauptet, der echte Object-Size kommt erst hier ans
+    # Licht. Pre-Signed-URLs haben keine Content-Length-Range-Constraint,
+    # also kann ein Angreifer beliebig grosse Objekte pushen. Hard-Fail
+    # mit Storage-Cleanup, damit der Bucket nicht voellt.
+    if size > settings.max_image_size_bytes:
+        try:
+            storage.delete(image.bucket_key)
+        except Exception:
+            # Best effort — DB-Row gleich wegraeumen, sonst zombie-Eintrag.
+            pass
+        await db.delete(image)
+        await db.commit()
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"Objekt-Groesse {size} ueber Maximum "
+                f"{settings.max_image_size_bytes} Bytes — Upload abgelehnt."
+            ),
+        )
+
     image.size_bytes = size
     image.upload_state = "ready"
     image.confirmed_at = datetime.now(timezone.utc)
