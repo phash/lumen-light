@@ -27,6 +27,11 @@ services:
       retries: 10
     networks:
       - lumen-internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   lumen-api:
     build:
@@ -53,6 +58,11 @@ services:
     networks:
       - lumen-internal
       - caddy-proxy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   lumen-web:
     build:
@@ -66,6 +76,11 @@ services:
       - ./config.prod.js:/usr/share/nginx/html/config.js:ro
     networks:
       - caddy-proxy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
 networks:
   lumen-internal:

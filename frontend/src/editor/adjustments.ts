@@ -39,7 +39,7 @@ export const ADJUSTMENTS: ReadonlyArray<AdjustmentDefinition> = [
   { key: "whites",      label: "Weiß",       group: "Licht", min: -1, max: 1, step: 0.01, default: 0 },
   { key: "blacks",      label: "Schwarz",    group: "Licht", min: -1, max: 1, step: 0.01, default: 0 },
   { key: "temperature", label: "Temperatur", group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "tint",        label: "Farbton",    group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
+  { key: "tint",        label: "Tönung",     group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
   { key: "vibrance",    label: "Dynamik",    group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
   { key: "saturation",  label: "Sättigung",  group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
 ] as const;

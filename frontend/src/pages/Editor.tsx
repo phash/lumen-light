@@ -436,21 +436,43 @@ export default function Editor() {
         )}
 
         {error && (
-          <p
+          <div
             data-testid="editor-error"
-            className="absolute top-4 left-1/2 -translate-x-1/2 text-red-400"
+            className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 bg-red-950/80 border border-red-500/60 backdrop-blur"
           >
-            {error}
-          </p>
+            <span className="text-red-300 text-sm">{error}</span>
+            <button
+              type="button"
+              data-testid="editor-error-dismiss"
+              onClick={() => setError(null)}
+              aria-label="Fehler schliessen"
+              className="text-red-400 hover:text-red-200"
+            >
+              ✕
+            </button>
+          </div>
         )}
 
         {decoding && (
-          <p
+          <div
             data-testid="editor-decoding"
-            className="absolute top-4 left-1/2 -translate-x-1/2 text-amber-200"
+            className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-2 px-4 py-2 bg-stone-900/80 border border-amber-300/30 backdrop-blur text-amber-200 text-sm"
+            role="status"
+            aria-live="polite"
           >
+            <svg
+              className="w-4 h-4 animate-spin"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              aria-hidden="true"
+            >
+              <circle cx="12" cy="12" r="10" strokeOpacity="0.3" />
+              <path d="M12 2 a 10 10 0 0 1 10 10" strokeLinecap="round" />
+            </svg>
             RAW wird dekodiert …
-          </p>
+          </div>
         )}
 
         {cameraInfo && (
@@ -463,89 +485,109 @@ export default function Editor() {
         )}
 
         {hasImage && (
-          <div className="absolute bottom-6 left-6 flex gap-2">
-            <button
-              type="button"
-              data-testid="editor-bypass"
-              onPointerDown={() => setBypass(true)}
-              onPointerUp={() => setBypass(false)}
-              onPointerLeave={() => setBypass(false)}
-              className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
-            >
-              {bypass ? "Original" : "Halten für Original"}
-            </button>
-            <button
-              type="button"
-              data-testid="editor-crop-toggle"
-              onClick={toggleCropMode}
-              className={`px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] backdrop-blur border ${
-                cropMode
-                  ? "bg-amber-200/20 border-amber-300 text-amber-200"
-                  : "bg-stone-900/80 border-stone-700 hover:border-amber-300/40 text-stone-300"
-              }`}
-            >
-              {cropMode ? "Crop fertig" : "Beschneiden"}
-            </button>
-            <button
-              type="button"
-              data-testid="editor-linear-mask-toggle"
-              disabled={!canAddLinear}
-              onClick={() => addLinearMask()}
-              className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] backdrop-blur border bg-stone-900/80 border-stone-700 hover:border-amber-300/40 text-stone-300 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              + Verlauf
-            </button>
-            <button
-              type="button"
-              data-testid="editor-radial-mask-toggle"
-              disabled={!canAddRadial}
-              onClick={() => addRadialMask()}
-              className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] backdrop-blur border bg-stone-900/80 border-stone-700 hover:border-amber-300/40 text-stone-300 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              + Radial
-            </button>
-            <button
-              type="button"
-              data-testid="editor-wb-picker"
-              onClick={(e) => {
-                e.stopPropagation();
-                setWbPickerActive((v) => !v);
-              }}
-              className={`px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] backdrop-blur border ${
-                wbPickerActive
-                  ? "bg-amber-200/20 border-amber-300 text-amber-200"
-                  : "bg-stone-900/80 border-stone-700 hover:border-amber-300/40 text-stone-300"
-              }`}
-              title="Klick auf neutralen Bildbereich setzt Weissabgleich"
-            >
-              Weissabgleich
-            </button>
-            <button
-              type="button"
-              data-testid="editor-reset-view"
-              onClick={resetView}
-              disabled={zoom === 1 && pan.x === 0 && pan.y === 0}
-              className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300 disabled:opacity-40"
-              title="Zoom + Pan zuruecksetzen"
-            >
-              {Math.round(zoom * 100)}%
-            </button>
-            <button
-              type="button"
-              data-testid="editor-presets"
-              onClick={() => setPresetDialogOpen(true)}
-              className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
-            >
-              Presets
-            </button>
-            <button
-              type="button"
-              data-testid="editor-export"
-              onClick={triggerExport}
-              className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
-            >
-              Exportieren
-            </button>
+          <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end gap-3 pointer-events-none">
+            {/* Gruppe 1: View — Bypass, Crop, WB, Zoom */}
+            <div className="flex gap-1 pointer-events-auto bg-stone-900/80 backdrop-blur border border-stone-700 p-1 rounded">
+              <button
+                type="button"
+                data-testid="editor-bypass"
+                onPointerDown={() => setBypass(true)}
+                onPointerUp={() => setBypass(false)}
+                onPointerLeave={() => setBypass(false)}
+                className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
+                  bypass ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
+                }`}
+                title="Druecken & halten zeigt Original (Shortcut: \\)"
+                aria-label="Original anzeigen (halten)"
+              >
+                {/* Augen-Icon: Original anzeigen waehrend gedrueckt */}
+                <svg className="w-4 h-4 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              </button>
+              <button
+                type="button"
+                data-testid="editor-crop-toggle"
+                onClick={toggleCropMode}
+                className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
+                  cropMode ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
+                }`}
+                title="Beschneiden (R)"
+              >
+                {cropMode ? "Crop fertig" : "Beschneiden"}
+              </button>
+              <button
+                type="button"
+                data-testid="editor-wb-picker"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setWbPickerActive((v) => !v);
+                }}
+                className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
+                  wbPickerActive ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
+                }`}
+                title="Klick auf neutralen Bildbereich setzt Weissabgleich"
+              >
+                Weissabgleich
+              </button>
+              <button
+                type="button"
+                data-testid="editor-reset-view"
+                onClick={resetView}
+                disabled={zoom === 1 && pan.x === 0 && pan.y === 0}
+                className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Zoom + Pan zuruecksetzen"
+              >
+                {Math.round(zoom * 100)}%
+              </button>
+            </div>
+
+            {/* Gruppe 2: Masken */}
+            <div className="flex gap-1 pointer-events-auto bg-stone-900/80 backdrop-blur border border-stone-700 p-1 rounded">
+              <button
+                type="button"
+                data-testid="editor-linear-mask-toggle"
+                disabled={!canAddLinear}
+                onClick={() => addLinearMask()}
+                className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Linearen Verlaufsfilter hinzufuegen"
+              >
+                + Verlauf
+              </button>
+              <button
+                type="button"
+                data-testid="editor-radial-mask-toggle"
+                disabled={!canAddRadial}
+                onClick={() => addRadialMask()}
+                className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
+                title="Elliptische Radialmaske hinzufuegen"
+              >
+                + Radial
+              </button>
+            </div>
+
+            {/* Gruppe 3: Action — Presets, Export */}
+            <div className="flex gap-1 pointer-events-auto">
+              <button
+                type="button"
+                data-testid="editor-presets"
+                onClick={() => setPresetDialogOpen(true)}
+                className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
+                title="Presets verwalten (P)"
+              >
+                Presets
+              </button>
+              <button
+                type="button"
+                data-testid="editor-export"
+                onClick={triggerExport}
+                className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-amber-200/15 backdrop-blur border border-amber-300/50 hover:border-amber-300 text-amber-200"
+                title="Exportieren (Cmd+E)"
+              >
+                Exportieren
+              </button>
+            </div>
           </div>
         )}
 
@@ -798,6 +840,7 @@ export default function Editor() {
                   onChange={(e) =>
                     setMaskFeather(selectedLinear.id, Number(e.target.value))
                   }
+                  onDoubleClick={() => setMaskFeather(selectedLinear.id, 0)}
                   data-testid="local-feather-slider"
                   className="mt-1 w-full"
                 />
@@ -864,6 +907,7 @@ export default function Editor() {
                   onChange={(e) =>
                     setMaskFeather(selectedRadial.id, Number(e.target.value))
                   }
+                  onDoubleClick={() => setMaskFeather(selectedRadial.id, 0)}
                   data-testid="radial-feather-slider"
                   className="mt-1 w-full"
                 />

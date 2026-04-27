@@ -96,6 +96,7 @@ MaskData = Annotated[
 # ----- Preset -----
 
 class PresetIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=80)
     adjustments: Adjustments
     masks: list[MaskData] = Field(default_factory=list)
@@ -141,6 +142,7 @@ ALLOWED_IMAGE_CONTENT_TYPES = (
 
 
 class ImageInitIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
     filename: str = Field(min_length=1, max_length=255)
     content_type: str
     size_bytes: int = Field(gt=0)
