@@ -73,6 +73,21 @@ docker compose up -d
 # OpenAPI-Docs auf http://localhost:8000/docs
 ```
 
+## Tests
+
+Backend-Tests laufen gegen einen automatisch hochgefahrenen Postgres-Container (`testcontainers`). Voraussetzung: laufender Docker-Daemon.
+
+```bash
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements-dev.txt
+pytest -q
+```
+
+Erste Ausführung lädt `postgres:16-alpine` (~80 MB). Folgende Läufe nutzen das gecachte Image. Pro Test: aktive Transaktion mit SAVEPOINT, am Ende Rollback — Tests sind voneinander vollständig isoliert.
+
+Aktuelle Suite: 35 Tests (Health, Auth-Lifecycle, Presets-CRUD, Tenant-Isolation, Schema-Sync). Lauf in ~20 s nach gecachter Image-Pull.
+
 ## Reihenfolge zum Lesen
 
 1. `docs/01-konzept.md` — was bauen wir und warum
