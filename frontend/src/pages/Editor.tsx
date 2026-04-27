@@ -77,6 +77,12 @@ export default function Editor() {
   const [aspect, setAspect] = useState<AspectRatio>("free");
   const [presetDialogOpen, setPresetDialogOpen] = useState(false);
   const [loadedPresetId, setLoadedPresetId] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panDragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  const viewportRef = useRef<HTMLDivElement>(null);
+  const [wbPickerActive, setWbPickerActive] = useState(false);
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const setAdjustment = useEditorStore((s) => s.setAdjustment);
@@ -130,6 +136,9 @@ export default function Editor() {
     setCameraInfo(null);
     setImageDims(null);
     resetGeometry();
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+    setWbPickerActive(false);
     try {
       const isRaw = await isRawFile(file);
       if (isRaw) {
@@ -215,6 +224,117 @@ export default function Editor() {
     if (hasImage) setPresetDialogOpen((v) => !v);
   }, [hasImage]);
 
+  const resetView = useCallback(() => {
+    setZoom(1);
+    setPan({ x: 0, y: 0 });
+  }, []);
+
+  const onWheel = useCallback(
+    (e: React.WheelEvent<HTMLElement>) => {
+      if (!hasImage) return;
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+      const next = Math.max(0.1, Math.min(10, zoom * factor));
+      // Anker am Mauszeiger: pan so anpassen, dass der Punkt unter dem
+      // Cursor an seiner Stelle bleibt.
+      const rect = viewportRef.current?.getBoundingClientRect();
+      if (rect) {
+        const cx = e.clientX - rect.left - rect.width / 2;
+        const cy = e.clientY - rect.top - rect.height / 2;
+        const ratio = next / zoom;
+        setPan({
+          x: cx - (cx - pan.x) * ratio,
+          y: cy - (cy - pan.y) * ratio,
+        });
+      }
+      setZoom(next);
+    },
+    [hasImage, zoom, pan],
+  );
+
+  const onViewportPointerDown = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!hasImage) return;
+      if (cropMode) return;
+      if (wbPickerActive) return;
+      // Buttons / Inputs / Selects: keine Pan-Aktion (Klick darf
+      // weiterlaufen). Mask-Handles haben bereits stopPropagation.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("button, input, select, textarea, label, a")) return;
+      panDragRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        panX: pan.x,
+        panY: pan.y,
+      };
+      setIsPanning(true);
+      try {
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* jsdom */
+      }
+    },
+    [hasImage, cropMode, wbPickerActive, pan],
+  );
+
+  const onViewportPointerMove = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      const drag = panDragRef.current;
+      if (!drag) return;
+      setPan({
+        x: drag.panX + (e.clientX - drag.startX),
+        y: drag.panY + (e.clientY - drag.startY),
+      });
+    },
+    [],
+  );
+
+  const onViewportPointerUp = useCallback(() => {
+    panDragRef.current = null;
+    setIsPanning(false);
+  }, []);
+
+  const onCanvasClickForWb = useCallback(
+    (e: React.MouseEvent<HTMLDivElement>) => {
+      if (!wbPickerActive || !canvasElement) return;
+      const rect = canvasElement.getBoundingClientRect();
+      const xs = (e.clientX - rect.left) / rect.width;
+      const ys = (e.clientY - rect.top) / rect.height;
+      if (xs < 0 || xs > 1 || ys < 0 || ys > 1) return;
+      const px = Math.max(0, Math.min(canvasElement.width - 1, Math.floor(xs * canvasElement.width)));
+      const py = Math.max(0, Math.min(canvasElement.height - 1, Math.floor(ys * canvasElement.height)));
+      try {
+        const off = new OffscreenCanvas(1, 1);
+        const ctx = off.getContext("2d");
+        if (!ctx) return;
+        ctx.drawImage(canvasElement, px, py, 1, 1, 0, 0, 1, 1);
+        const data = ctx.getImageData(0, 0, 1, 1).data;
+        const r = data[0]! / 255;
+        const g = data[1]! / 255;
+        const b = data[2]! / 255;
+        // Korrektur in zwei Schritten:
+        //   ΔtempK = (B - R) / (B + R)  (gleicht R/B aus)
+        //   ΔtintK = ((R+B)/2 / G) - 1  (gleicht G gegen mean an)
+        // Werte werden zu den aktuellen Slidern addiert und geklemmt.
+        const sumRb = Math.max(0.001, r + b);
+        const dTempK = (b - r) / sumRb;
+        const rEff = r * (1 + dTempK);
+        const bEff = b * (1 - dTempK);
+        const meanRb = (rEff + bEff) / 2;
+        const dTintK = meanRb / Math.max(0.001, g) - 1;
+        const dTempSlider = dTempK / 0.4;
+        const dTintSlider = dTintK / 0.3;
+        const cur = useEditorStore.getState().adjustments;
+        useEditorStore.getState().setAdjustment("temperature", cur.temperature + dTempSlider);
+        useEditorStore.getState().setAdjustment("tint", cur.tint + dTintSlider);
+      } catch {
+        /* readback failed — no-op */
+      }
+      setWbPickerActive(false);
+    },
+    [wbPickerActive, canvasElement],
+  );
+
   useKeyboardShortcuts({
     onResetAll: resetAll,
     onExport: triggerExport,
@@ -232,11 +352,34 @@ export default function Editor() {
   return (
     <section data-testid="page-editor" className="flex h-[calc(100vh-3rem)]">
       <main
+        ref={viewportRef}
         className="flex-1 relative flex items-center justify-center bg-stone-950 overflow-hidden p-8"
         onDrop={onDrop}
         onDragOver={(e) => e.preventDefault()}
+        onWheel={onWheel}
+        onPointerDown={onViewportPointerDown}
+        onPointerMove={onViewportPointerMove}
+        onPointerUp={onViewportPointerUp}
+        onPointerCancel={onViewportPointerUp}
+        onClick={onCanvasClickForWb}
+        style={{
+          cursor: wbPickerActive
+            ? "crosshair"
+            : isPanning
+              ? "grabbing"
+              : hasImage && !cropMode
+                ? "grab"
+                : "default",
+        }}
       >
-        <div className="relative max-w-full max-h-full">
+        <div
+          className="relative max-w-full max-h-full"
+          style={{
+            transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+            transformOrigin: "center center",
+            transition: isPanning ? "none" : "transform 0.05s linear",
+          }}
+        >
           <Canvas
             ref={canvasHandleRef}
             onTick={onTick}
@@ -360,6 +503,32 @@ export default function Editor() {
               className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] backdrop-blur border bg-stone-900/80 border-stone-700 hover:border-amber-300/40 text-stone-300 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               + Radial
+            </button>
+            <button
+              type="button"
+              data-testid="editor-wb-picker"
+              onClick={(e) => {
+                e.stopPropagation();
+                setWbPickerActive((v) => !v);
+              }}
+              className={`px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] backdrop-blur border ${
+                wbPickerActive
+                  ? "bg-amber-200/20 border-amber-300 text-amber-200"
+                  : "bg-stone-900/80 border-stone-700 hover:border-amber-300/40 text-stone-300"
+              }`}
+              title="Klick auf neutralen Bildbereich setzt Weissabgleich"
+            >
+              Weissabgleich
+            </button>
+            <button
+              type="button"
+              data-testid="editor-reset-view"
+              onClick={resetView}
+              disabled={zoom === 1 && pan.x === 0 && pan.y === 0}
+              className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300 disabled:opacity-40"
+              title="Zoom + Pan zuruecksetzen"
+            >
+              {Math.round(zoom * 100)}%
             </button>
             <button
               type="button"

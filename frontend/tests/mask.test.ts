@@ -19,7 +19,7 @@ describe("defaults", () => {
     expect(m.type).toBe("linear");
     expect(m.p1).toEqual({ u: 0.5, v: 0 });
     expect(m.p2).toEqual({ u: 0.5, v: 1 });
-    expect(m.feather).toBe(0.4);
+    expect(m.feather).toBe(0);
   });
   it("defaultLocalAdjustments alle 0", () => {
     expect(defaultLocalAdjustments()).toEqual({
@@ -70,7 +70,7 @@ describe("defaultRadialMask + clampRadius", () => {
     expect(m.center).toEqual({ u: 0.5, v: 0.5 });
     expect(m.rx).toBe(0.25);
     expect(m.ry).toBe(0.25);
-    expect(m.feather).toBe(0.4);
+    expect(m.feather).toBe(0);
   });
 
   it("clampRadius haelt zwischen 0.02 und 1", () => {

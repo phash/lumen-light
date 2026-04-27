@@ -30,7 +30,7 @@ export const defaultRadialMask = (): RadialMask => ({
   center: { u: 0.5, v: 0.5 },
   rx: 0.25,
   ry: 0.25,
-  feather: 0.4,
+  feather: 0,
 });
 
 export function clampRadius(r: number): number {
@@ -90,7 +90,7 @@ export const defaultLinearMask = (): LinearMask => ({
   type: "linear",
   p1: { u: 0.5, v: 0 },
   p2: { u: 0.5, v: 1 },
-  feather: 0.4,
+  feather: 0,
 });
 
 export const LOCAL_ADJUSTMENT_LIMITS: Record<keyof LocalAdjustments, [number, number]> = {
