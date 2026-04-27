@@ -18,6 +18,8 @@ dist/
 # Playwright
 frontend/playwright-report/
 frontend/test-results/
+test-results/
+playwright-report/
 
 # Production-Config (wird auf dem VPS abgelegt, nie ins Repo)
 deployment/config.prod.js
