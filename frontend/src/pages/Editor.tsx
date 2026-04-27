@@ -27,7 +27,7 @@ import {
 } from "../editor/mask";
 import PresetDialog from "../editor/PresetDialog";
 import RadialMaskOverlay from "../editor/RadialMaskOverlay";
-import { decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
+import { FILE_PICKER_ACCEPT, decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import Slider from "../editor/Slider";
 import {
   MAX_STRAIGHTEN_RADIANS,
@@ -274,7 +274,7 @@ export default function Editor() {
           ref={fileInputRef}
           data-testid="editor-file-input"
           type="file"
-          accept="image/*"
+          accept={FILE_PICKER_ACCEPT}
           className="hidden"
           onChange={onPick}
         />

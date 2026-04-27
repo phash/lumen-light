@@ -28,6 +28,14 @@ const RAW_EXTENSIONS: ReadonlyArray<readonly [string, RawFormat]> = [
   [".orf", "orf"],
 ];
 
+/** Accept-Liste fuer File-Picker — generisch + RAW-Extensions explizit. */
+export const FILE_PICKER_ACCEPT = [
+  "image/*",
+  ...RAW_EXTENSIONS.map(([ext]) => ext),
+  ".tif",
+  ".tiff",
+].join(",");
+
 export interface DecodedRaw {
   readonly width: number;
   readonly height: number;

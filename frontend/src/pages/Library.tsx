@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useApi } from "../api/use-api";
 import type { Image } from "../api/client";
 import { uploadImage } from "../api/upload";
+import { FILE_PICKER_ACCEPT } from "../editor/raw";
 
 function formatSize(bytes: number | null): string {
   if (bytes == null) return "—";
@@ -93,7 +94,7 @@ export default function Library() {
           Datei wählen
           <input
             type="file"
-            accept="image/*"
+            accept={FILE_PICKER_ACCEPT}
             className="hidden"
             onChange={onPick}
             data-testid="upload-input"
