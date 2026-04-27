@@ -39,6 +39,14 @@ uniform float u_localExposure;
 uniform float u_localContrast;
 uniform float u_localSaturation;
 uniform float u_localTemperature;
+uniform float u_radialEnabled;
+uniform vec2 u_radialCenter;
+uniform vec2 u_radialRadii;
+uniform float u_radialFeather;
+uniform float u_radialLocalExposure;
+uniform float u_radialLocalContrast;
+uniform float u_radialLocalSaturation;
+uniform float u_radialLocalTemperature;
 out vec4 outColor;
 
 const float DISTORTION_GAIN = 0.4;
@@ -51,6 +59,14 @@ float computeLinearMask(vec2 uv) {
   float t = dot(uv - u_maskP1, d) / len2;
   float halfFeather = max(0.001, u_maskFeather * 0.5);
   return smoothstep(0.5 - halfFeather, 0.5 + halfFeather, t);
+}
+
+float computeRadialMask(vec2 uv) {
+  vec2 r = max(u_radialRadii, vec2(0.001));
+  vec2 d = (uv - u_radialCenter) / r;
+  float dist2 = dot(d, d);
+  float halfFeather = max(0.001, u_radialFeather * 0.5);
+  return 1.0 - smoothstep(1.0 - halfFeather, 1.0 + halfFeather, dist2);
 }
 
 vec3 srgbToLinear(vec3 c) {
@@ -108,13 +124,18 @@ void main() {
   vec4 src = texture(u_tex, src_uv);
   if (u_bypass > 0.5) { outColor = src; return; }
 
-  // Lokale Maske einmal pro Pixel berechnen, dann effektive
-  // Adjustment-Werte = global + maskFactor * local.
-  float m = u_maskEnabled > 0.5 ? computeLinearMask(v_uv) : 0.0;
-  float effExposure    = u_exposure    + m * u_localExposure;
-  float effContrast    = u_contrast    + m * u_localContrast;
-  float effSaturation  = u_saturation  + m * u_localSaturation;
-  float effTemperature = u_temperature + m * u_localTemperature;
+  // Lokale Masken einmal pro Pixel berechnen, dann effektive
+  // Adjustment-Werte = global + linMaskFactor * linLocal + radMaskFactor * radLocal.
+  float mLin = u_maskEnabled > 0.5 ? computeLinearMask(v_uv) : 0.0;
+  float mRad = u_radialEnabled > 0.5 ? computeRadialMask(v_uv) : 0.0;
+  float effExposure    = u_exposure
+    + mLin * u_localExposure    + mRad * u_radialLocalExposure;
+  float effContrast    = u_contrast
+    + mLin * u_localContrast    + mRad * u_radialLocalContrast;
+  float effSaturation  = u_saturation
+    + mLin * u_localSaturation  + mRad * u_radialLocalSaturation;
+  float effTemperature = u_temperature
+    + mLin * u_localTemperature + mRad * u_radialLocalTemperature;
 
   // 1. sRGB -> Linear
   vec3 lin = srgbToLinear(src.rgb);

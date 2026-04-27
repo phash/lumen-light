@@ -62,6 +62,14 @@ interface UniformMap {
   readonly localContrast: WebGLUniformLocation;
   readonly localSaturation: WebGLUniformLocation;
   readonly localTemperature: WebGLUniformLocation;
+  readonly radialEnabled: WebGLUniformLocation;
+  readonly radialCenter: WebGLUniformLocation;
+  readonly radialRadii: WebGLUniformLocation;
+  readonly radialFeather: WebGLUniformLocation;
+  readonly radialLocalExposure: WebGLUniformLocation;
+  readonly radialLocalContrast: WebGLUniformLocation;
+  readonly radialLocalSaturation: WebGLUniformLocation;
+  readonly radialLocalTemperature: WebGLUniformLocation;
   readonly adjustments: ReadonlyMap<string, WebGLUniformLocation>;
 }
 
@@ -78,8 +86,26 @@ export interface LinearMaskUniforms {
   readonly temperature: number;
 }
 
+export interface RadialMaskUniforms {
+  readonly enabled: boolean;
+  readonly cu: number;
+  readonly cv: number;
+  readonly rx: number;
+  readonly ry: number;
+  readonly feather: number;
+  readonly exposure: number;
+  readonly contrast: number;
+  readonly saturation: number;
+  readonly temperature: number;
+}
+
 const DEFAULT_MASK: LinearMaskUniforms = {
   enabled: false, p1u: 0.5, p1v: 0, p2u: 0.5, p2v: 1, feather: 0.4,
+  exposure: 0, contrast: 0, saturation: 0, temperature: 0,
+};
+
+const DEFAULT_RADIAL: RadialMaskUniforms = {
+  enabled: false, cu: 0.5, cv: 0.5, rx: 0.25, ry: 0.25, feather: 0.4,
   exposure: 0, contrast: 0, saturation: 0, temperature: 0,
 };
 
@@ -157,6 +183,14 @@ export class Renderer {
       localContrast: get("u_localContrast"),
       localSaturation: get("u_localSaturation"),
       localTemperature: get("u_localTemperature"),
+      radialEnabled: get("u_radialEnabled"),
+      radialCenter: get("u_radialCenter"),
+      radialRadii: get("u_radialRadii"),
+      radialFeather: get("u_radialFeather"),
+      radialLocalExposure: get("u_radialLocalExposure"),
+      radialLocalContrast: get("u_radialLocalContrast"),
+      radialLocalSaturation: get("u_radialLocalSaturation"),
+      radialLocalTemperature: get("u_radialLocalTemperature"),
       adjustments: adjustmentLocs,
     };
     gl.useProgram(this.program);
@@ -189,6 +223,7 @@ export class Renderer {
     lensDistortion = 0,
     lensVignette = 0,
     mask: LinearMaskUniforms = DEFAULT_MASK,
+    radial: RadialMaskUniforms = DEFAULT_RADIAL,
   ): void {
     if (!this.texture) return;
     const gl = this.gl;
@@ -208,6 +243,14 @@ export class Renderer {
     gl.uniform1f(this.uniforms.localContrast, mask.contrast);
     gl.uniform1f(this.uniforms.localSaturation, mask.saturation);
     gl.uniform1f(this.uniforms.localTemperature, mask.temperature);
+    gl.uniform1f(this.uniforms.radialEnabled, radial.enabled ? 1.0 : 0.0);
+    gl.uniform2f(this.uniforms.radialCenter, radial.cu, radial.cv);
+    gl.uniform2f(this.uniforms.radialRadii, radial.rx, radial.ry);
+    gl.uniform1f(this.uniforms.radialFeather, radial.feather);
+    gl.uniform1f(this.uniforms.radialLocalExposure, radial.exposure);
+    gl.uniform1f(this.uniforms.radialLocalContrast, radial.contrast);
+    gl.uniform1f(this.uniforms.radialLocalSaturation, radial.saturation);
+    gl.uniform1f(this.uniforms.radialLocalTemperature, radial.temperature);
     for (const [key, loc] of this.uniforms.adjustments) {
       gl.uniform1f(loc, adjustments[key as keyof Adjustments]);
     }

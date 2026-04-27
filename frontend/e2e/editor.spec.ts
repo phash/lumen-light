@@ -147,6 +147,34 @@ test.describe("Editor", () => {
     }
   });
 
+  test("Radialfilter: Toggle, Overlay, lokale Slider, Reset", async ({ page }) => {
+    const user = await loginAsNewUser(page);
+    try {
+      await page.goto("/editor");
+      await page.setInputFiles('[data-testid="editor-file-input"]', JPG_PATH);
+      await expect(page.getByTestId("editor-bypass")).toBeVisible({ timeout: 5_000 });
+
+      await page.getByTestId("editor-radial-mask-toggle").click();
+      await expect(page.getByTestId("radial-mask-overlay")).toBeVisible();
+      await expect(page.getByTestId("radial-mask-handle-center")).toBeVisible();
+      await expect(page.getByTestId("radial-mask-handle-rx")).toBeVisible();
+      await expect(page.getByTestId("radial-mask-handle-ry")).toBeVisible();
+
+      const radialSection = page.getByTestId("radial-mask-section");
+      await expect(radialSection).toBeVisible();
+
+      const expoSlider = page.getByTestId("radial-exposure-slider");
+      await expoSlider.fill("-1");
+      await expect(radialSection.getByText(/Belichtung \(-1\.00\)/)).toBeVisible();
+
+      await page.getByTestId("editor-reset-radial").click();
+      await expect(page.getByTestId("radial-mask-overlay")).not.toBeVisible();
+      await expect(radialSection).not.toBeVisible();
+    } finally {
+      await cleanupUser(user);
+    }
+  });
+
   test("Tastenkuerzel: 0=Reset-All, R=Crop-Toggle", async ({ page }) => {
     const user = await loginAsNewUser(page);
     try {

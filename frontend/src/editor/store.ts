@@ -15,11 +15,14 @@ import {
   type LinearMask,
   type LocalAdjustments,
   type PointUv,
+  type RadialMask,
   clampFeather,
   clampLocalAdjustment,
+  clampRadius,
   clampUv,
   defaultLinearMask,
   defaultLocalAdjustments,
+  defaultRadialMask,
 } from "./mask";
 import {
   type CropRect,
@@ -42,6 +45,9 @@ export interface EditorState {
   linearMaskEnabled: boolean;
   linearMask: LinearMask;
   linearLocalAdj: LocalAdjustments;
+  radialMaskEnabled: boolean;
+  radialMask: RadialMask;
+  radialLocalAdj: LocalAdjustments;
   setAdjustment: (key: AdjustmentKey, value: number) => void;
   resetAll: () => void;
   applyAdjustments: (adj: Partial<Adjustments>) => void;
@@ -59,6 +65,15 @@ export interface EditorState {
     value: number,
   ) => void;
   resetLinearMask: () => void;
+  setRadialMaskEnabled: (enabled: boolean) => void;
+  setRadialMaskCenter: (uv: PointUv) => void;
+  setRadialMaskRadii: (rx: number, ry: number) => void;
+  setRadialMaskFeather: (feather: number) => void;
+  setRadialLocalAdjustment: (
+    key: keyof LocalAdjustments,
+    value: number,
+  ) => void;
+  resetRadialMask: () => void;
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -72,6 +87,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   linearMaskEnabled: false,
   linearMask: defaultLinearMask(),
   linearLocalAdj: defaultLocalAdjustments(),
+  radialMaskEnabled: false,
+  radialMask: defaultRadialMask(),
+  radialLocalAdj: defaultLocalAdjustments(),
   setAdjustment: (key, value) =>
     set((state) => ({
       adjustments: { ...state.adjustments, [key]: clampAdjustment(key, value) },
@@ -131,5 +149,35 @@ export const useEditorStore = create<EditorState>((set) => ({
       linearMaskEnabled: false,
       linearMask: defaultLinearMask(),
       linearLocalAdj: defaultLocalAdjustments(),
+    }),
+  setRadialMaskEnabled: (enabled) => set({ radialMaskEnabled: enabled }),
+  setRadialMaskCenter: (uv) =>
+    set((state) => ({
+      radialMask: { ...state.radialMask, center: clampUv(uv) },
+    })),
+  setRadialMaskRadii: (rx, ry) =>
+    set((state) => ({
+      radialMask: {
+        ...state.radialMask,
+        rx: clampRadius(rx),
+        ry: clampRadius(ry),
+      },
+    })),
+  setRadialMaskFeather: (feather) =>
+    set((state) => ({
+      radialMask: { ...state.radialMask, feather: clampFeather(feather) },
+    })),
+  setRadialLocalAdjustment: (key, value) =>
+    set((state) => ({
+      radialLocalAdj: {
+        ...state.radialLocalAdj,
+        [key]: clampLocalAdjustment(key, value),
+      },
+    })),
+  resetRadialMask: () =>
+    set({
+      radialMaskEnabled: false,
+      radialMask: defaultRadialMask(),
+      radialLocalAdj: defaultLocalAdjustments(),
     }),
 }));

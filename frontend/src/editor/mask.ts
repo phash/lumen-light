@@ -17,6 +17,26 @@ export interface LinearMask {
   readonly feather: number;
 }
 
+export interface RadialMask {
+  readonly type: "radial";
+  readonly center: PointUv;
+  readonly rx: number;
+  readonly ry: number;
+  readonly feather: number;
+}
+
+export const defaultRadialMask = (): RadialMask => ({
+  type: "radial",
+  center: { u: 0.5, v: 0.5 },
+  rx: 0.25,
+  ry: 0.25,
+  feather: 0.4,
+});
+
+export function clampRadius(r: number): number {
+  return Math.max(0.02, Math.min(1, r));
+}
+
 export interface LocalAdjustments {
   readonly exposure: number;
   readonly contrast: number;
@@ -89,4 +109,21 @@ export function computeLinearMaskFactor(
   const t = ((uv.u - mask.p1.u) * dx + (uv.v - mask.p1.v) * dy) / len2;
   const halfFeather = Math.max(0.001, mask.feather * 0.5);
   return smoothstep(0.5 - halfFeather, 0.5 + halfFeather, t);
+}
+
+/**
+ * Maskenfaktor an UV-Position fuer eine elliptische Radialmaske.
+ *
+ * @returns 0..1: 1 = innerhalb der Ellipse, 0 = ausserhalb,
+ * Feather-Breite definiert die smoothstep-Zone um die Ellipsenkante.
+ */
+export function computeRadialMaskFactor(
+  mask: RadialMask,
+  uv: PointUv,
+): number {
+  const dx = (uv.u - mask.center.u) / Math.max(0.001, mask.rx);
+  const dy = (uv.v - mask.center.v) / Math.max(0.001, mask.ry);
+  const dist2 = dx * dx + dy * dy;
+  const halfFeather = Math.max(0.001, mask.feather * 0.5);
+  return 1 - smoothstep(1 - halfFeather, 1 + halfFeather, dist2);
 }

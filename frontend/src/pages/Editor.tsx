@@ -20,6 +20,7 @@ import {
   LOCAL_ADJUSTMENT_LIMITS,
   type LocalAdjustments,
 } from "../editor/mask";
+import RadialMaskOverlay from "../editor/RadialMaskOverlay";
 import { decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import Slider from "../editor/Slider";
 import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../editor/store";
@@ -70,6 +71,17 @@ export default function Editor() {
     (s) => s.setLinearLocalAdjustment,
   );
   const resetLinearMask = useEditorStore((s) => s.resetLinearMask);
+  const radialMaskEnabled = useEditorStore((s) => s.radialMaskEnabled);
+  const radialMask = useEditorStore((s) => s.radialMask);
+  const radialLocalAdj = useEditorStore((s) => s.radialLocalAdj);
+  const setRadialMaskEnabled = useEditorStore((s) => s.setRadialMaskEnabled);
+  const setRadialMaskCenter = useEditorStore((s) => s.setRadialMaskCenter);
+  const setRadialMaskRadii = useEditorStore((s) => s.setRadialMaskRadii);
+  const setRadialMaskFeather = useEditorStore((s) => s.setRadialMaskFeather);
+  const setRadialLocalAdjustment = useEditorStore(
+    (s) => s.setRadialLocalAdjustment,
+  );
+  const resetRadialMask = useEditorStore((s) => s.resetRadialMask);
 
   const imageAspect = imageDims ? imageDims.width / imageDims.height : 1;
 
@@ -205,6 +217,13 @@ export default function Editor() {
               onChangePoint={setLinearMaskPoint}
             />
           )}
+          {hasImage && radialMaskEnabled && (
+            <RadialMaskOverlay
+              mask={radialMask}
+              onChangeCenter={setRadialMaskCenter}
+              onChangeRadii={setRadialMaskRadii}
+            />
+          )}
         </div>
 
         <input
@@ -291,6 +310,18 @@ export default function Editor() {
               }`}
             >
               {linearMaskEnabled ? "Verlauf an" : "Verlauf"}
+            </button>
+            <button
+              type="button"
+              data-testid="editor-radial-mask-toggle"
+              onClick={() => setRadialMaskEnabled(!radialMaskEnabled)}
+              className={`px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] backdrop-blur border ${
+                radialMaskEnabled
+                  ? "bg-amber-200/20 border-amber-300 text-amber-200"
+                  : "bg-stone-900/80 border-stone-700 hover:border-amber-300/40 text-stone-300"
+              }`}
+            >
+              {radialMaskEnabled ? "Radial an" : "Radial"}
             </button>
             <button
               type="button"
@@ -507,6 +538,72 @@ export default function Editor() {
                 className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
               >
                 Verlauf zurücksetzen
+              </button>
+            </div>
+          )}
+
+          {radialMaskEnabled && (
+            <div className="mb-5" data-testid="radial-mask-section">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-stone-300 italic">Lokal · Radial</span>
+                <div className="flex-1 h-px bg-stone-800" />
+              </div>
+              {(["exposure", "contrast", "saturation", "temperature"] as const).map(
+                (key) => {
+                  const [min, max] = LOCAL_ADJUSTMENT_LIMITS[key];
+                  const value = radialLocalAdj[key];
+                  const labels: Record<keyof LocalAdjustments, string> = {
+                    exposure: "Belichtung",
+                    contrast: "Kontrast",
+                    saturation: "Sättigung",
+                    temperature: "Temperatur",
+                  };
+                  return (
+                    <label key={key} className="block py-1.5">
+                      <span className="text-[11px] uppercase tracking-wider text-stone-400">
+                        {labels[key]} ({key === "exposure" ? value.toFixed(2) : Math.round(value * 100)})
+                      </span>
+                      <input
+                        type="range"
+                        min={min}
+                        max={max}
+                        step={key === "exposure" ? 0.05 : 0.01}
+                        value={value}
+                        onChange={(e) =>
+                          setRadialLocalAdjustment(key, Number(e.target.value))
+                        }
+                        onDoubleClick={() => setRadialLocalAdjustment(key, 0)}
+                        data-testid={`radial-${key}-slider`}
+                        className="mt-1 w-full"
+                      />
+                    </label>
+                  );
+                },
+              )}
+              <label className="block py-1.5">
+                <span className="text-[11px] uppercase tracking-wider text-stone-400">
+                  Übergang ({Math.round(radialMask.feather * 100)})
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={radialMask.feather}
+                  onChange={(e) =>
+                    setRadialMaskFeather(Number(e.target.value))
+                  }
+                  data-testid="radial-feather-slider"
+                  className="mt-1 w-full"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={resetRadialMask}
+                data-testid="editor-reset-radial"
+                className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
+              >
+                Radial zurücksetzen
               </button>
             </div>
           )}

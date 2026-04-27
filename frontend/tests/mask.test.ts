@@ -3,10 +3,13 @@ import { describe, expect, it } from "vitest";
 import {
   clampFeather,
   clampLocalAdjustment,
+  clampRadius,
   clampUv,
   computeLinearMaskFactor,
+  computeRadialMaskFactor,
   defaultLinearMask,
   defaultLocalAdjustments,
+  defaultRadialMask,
   LOCAL_ADJUSTMENT_LIMITS,
 } from "../src/editor/mask";
 
@@ -57,6 +60,72 @@ describe("computeLinearMaskFactor", () => {
     const sharpAt03 = computeLinearMaskFactor(sharp, { u: 0, v: 0.3 });
     const softAt03 = computeLinearMaskFactor(soft, { u: 0, v: 0.3 });
     expect(softAt03).toBeGreaterThan(sharpAt03);
+  });
+});
+
+describe("defaultRadialMask + clampRadius", () => {
+  it("defaultRadialMask: zentriert, rx=ry=0.25, feather 0.4", () => {
+    const m = defaultRadialMask();
+    expect(m.type).toBe("radial");
+    expect(m.center).toEqual({ u: 0.5, v: 0.5 });
+    expect(m.rx).toBe(0.25);
+    expect(m.ry).toBe(0.25);
+    expect(m.feather).toBe(0.4);
+  });
+
+  it("clampRadius haelt zwischen 0.02 und 1", () => {
+    expect(clampRadius(-1)).toBe(0.02);
+    expect(clampRadius(0)).toBe(0.02);
+    expect(clampRadius(99)).toBe(1);
+    expect(clampRadius(0.3)).toBe(0.3);
+  });
+});
+
+describe("computeRadialMaskFactor", () => {
+  const circle = {
+    type: "radial" as const,
+    center: { u: 0.5, v: 0.5 },
+    rx: 0.2,
+    ry: 0.2,
+    feather: 0.0001,
+  };
+
+  it("Zentrum -> 1 (volle Maske)", () => {
+    expect(computeRadialMaskFactor(circle, { u: 0.5, v: 0.5 })).toBeCloseTo(1, 3);
+  });
+
+  it("ausserhalb der Ellipse -> ~0", () => {
+    expect(computeRadialMaskFactor(circle, { u: 0.95, v: 0.95 })).toBeLessThan(0.05);
+  });
+
+  it("auf der Ellipsenkante -> ~0.5 (smoothstep-Mitte)", () => {
+    // Punkt direkt auf der rx-Achse (u-Distanz = rx, v=center)
+    const f = computeRadialMaskFactor(circle, { u: 0.7, v: 0.5 });
+    expect(f).toBeCloseTo(0.5, 1);
+  });
+
+  it("anisotrope rx != ry: gleiche dist^2 = 1 auf beiden Achsen", () => {
+    const ellipse = {
+      type: "radial" as const,
+      center: { u: 0.5, v: 0.5 },
+      rx: 0.4,
+      ry: 0.1,
+      feather: 0.0001,
+    };
+    const onRx = computeRadialMaskFactor(ellipse, { u: 0.9, v: 0.5 });
+    const onRy = computeRadialMaskFactor(ellipse, { u: 0.5, v: 0.6 });
+    expect(onRx).toBeCloseTo(onRy, 2);
+  });
+
+  it("feather steuert Uebergangsbreite", () => {
+    const sharp = { ...circle, feather: 0.05 };
+    const soft = { ...circle, feather: 0.95 };
+    // Punkt knapp ausserhalb der Kante (dist^2 ~ 1.21):
+    // sharp's Uebergang endet bei 1.025 -> factor=0
+    // soft's Uebergang reicht bis 1.475 -> factor > 0
+    const sharpFar = computeRadialMaskFactor(sharp, { u: 0.72, v: 0.5 });
+    const softFar = computeRadialMaskFactor(soft, { u: 0.72, v: 0.5 });
+    expect(softFar).toBeGreaterThan(sharpFar);
   });
 });
 

@@ -2,7 +2,11 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { defaultAdjustments } from "../src/editor/adjustments";
 import { defaultLensCorrection } from "../src/editor/lens";
-import { defaultLinearMask, defaultLocalAdjustments } from "../src/editor/mask";
+import {
+  defaultLinearMask,
+  defaultLocalAdjustments,
+  defaultRadialMask,
+} from "../src/editor/mask";
 import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../src/editor/store";
 import { defaultCropRect } from "../src/editor/transform";
 
@@ -19,6 +23,9 @@ describe("useEditorStore", () => {
       linearMaskEnabled: false,
       linearMask: defaultLinearMask(),
       linearLocalAdj: defaultLocalAdjustments(),
+      radialMaskEnabled: false,
+      radialMask: defaultRadialMask(),
+      radialLocalAdj: defaultLocalAdjustments(),
     });
   });
 
@@ -186,5 +193,50 @@ describe("useEditorStore", () => {
     expect(s.linearMaskEnabled).toBe(false);
     expect(s.linearMask).toEqual(defaultLinearMask());
     expect(s.linearLocalAdj).toEqual(defaultLocalAdjustments());
+  });
+
+  it("setRadialMaskEnabled toggelt", () => {
+    useEditorStore.getState().setRadialMaskEnabled(true);
+    expect(useEditorStore.getState().radialMaskEnabled).toBe(true);
+    useEditorStore.getState().setRadialMaskEnabled(false);
+    expect(useEditorStore.getState().radialMaskEnabled).toBe(false);
+  });
+
+  it("setRadialMaskCenter clampt UV in [0,1]", () => {
+    useEditorStore.getState().setRadialMaskCenter({ u: -1, v: 2 });
+    expect(useEditorStore.getState().radialMask.center).toEqual({ u: 0, v: 1 });
+  });
+
+  it("setRadialMaskRadii clampt rx und ry getrennt", () => {
+    useEditorStore.getState().setRadialMaskRadii(99, 0);
+    const m = useEditorStore.getState().radialMask;
+    expect(m.rx).toBe(1);
+    expect(m.ry).toBe(0.02);
+  });
+
+  it("setRadialMaskFeather clampt", () => {
+    useEditorStore.getState().setRadialMaskFeather(99);
+    expect(useEditorStore.getState().radialMask.feather).toBe(1);
+    useEditorStore.getState().setRadialMaskFeather(-1);
+    expect(useEditorStore.getState().radialMask.feather).toBe(0);
+  });
+
+  it("setRadialLocalAdjustment clampt pro Key", () => {
+    useEditorStore.getState().setRadialLocalAdjustment("exposure", 99);
+    expect(useEditorStore.getState().radialLocalAdj.exposure).toBe(3);
+    useEditorStore.getState().setRadialLocalAdjustment("contrast", -99);
+    expect(useEditorStore.getState().radialLocalAdj.contrast).toBe(-1);
+  });
+
+  it("resetRadialMask setzt enabled, mask und localAdj zurueck", () => {
+    useEditorStore.getState().setRadialMaskEnabled(true);
+    useEditorStore.getState().setRadialMaskCenter({ u: 0.2, v: 0.3 });
+    useEditorStore.getState().setRadialMaskRadii(0.4, 0.5);
+    useEditorStore.getState().setRadialLocalAdjustment("exposure", 1.5);
+    useEditorStore.getState().resetRadialMask();
+    const s = useEditorStore.getState();
+    expect(s.radialMaskEnabled).toBe(false);
+    expect(s.radialMask).toEqual(defaultRadialMask());
+    expect(s.radialLocalAdj).toEqual(defaultLocalAdjustments());
   });
 });
