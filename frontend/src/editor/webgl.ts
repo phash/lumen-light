@@ -54,8 +54,34 @@ interface UniformMap {
   readonly uvTransform: WebGLUniformLocation;
   readonly lensDistortion: WebGLUniformLocation;
   readonly lensVignette: WebGLUniformLocation;
+  readonly maskEnabled: WebGLUniformLocation;
+  readonly maskP1: WebGLUniformLocation;
+  readonly maskP2: WebGLUniformLocation;
+  readonly maskFeather: WebGLUniformLocation;
+  readonly localExposure: WebGLUniformLocation;
+  readonly localContrast: WebGLUniformLocation;
+  readonly localSaturation: WebGLUniformLocation;
+  readonly localTemperature: WebGLUniformLocation;
   readonly adjustments: ReadonlyMap<string, WebGLUniformLocation>;
 }
+
+export interface LinearMaskUniforms {
+  readonly enabled: boolean;
+  readonly p1u: number;
+  readonly p1v: number;
+  readonly p2u: number;
+  readonly p2v: number;
+  readonly feather: number;
+  readonly exposure: number;
+  readonly contrast: number;
+  readonly saturation: number;
+  readonly temperature: number;
+}
+
+const DEFAULT_MASK: LinearMaskUniforms = {
+  enabled: false, p1u: 0.5, p1v: 0, p2u: 0.5, p2v: 1, feather: 0.4,
+  exposure: 0, contrast: 0, saturation: 0, temperature: 0,
+};
 
 const IDENTITY_UV_TRANSFORM = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
@@ -110,28 +136,27 @@ export class Renderer {
       }
       adjustmentLocs.set(a.key, loc);
     }
-    const tex = gl.getUniformLocation(this.program, "u_tex");
-    const bypass = gl.getUniformLocation(this.program, "u_bypass");
-    const uvTransform = gl.getUniformLocation(this.program, "u_uvTransform");
-    const lensDistortion = gl.getUniformLocation(this.program, "u_lensDistortion");
-    const lensVignette = gl.getUniformLocation(this.program, "u_lensVignette");
-    if (
-      tex === null ||
-      bypass === null ||
-      uvTransform === null ||
-      lensDistortion === null ||
-      lensVignette === null
-    ) {
-      throw new WebGLRendererError(
-        "Uniforms u_tex/u_bypass/u_uvTransform/u_lensDistortion/u_lensVignette nicht gefunden",
-      );
-    }
+    const get = (name: string): WebGLUniformLocation => {
+      const loc = gl.getUniformLocation(this.program, name);
+      if (loc === null) {
+        throw new WebGLRendererError(`Uniform ${name} nicht gefunden`);
+      }
+      return loc;
+    };
     this.uniforms = {
-      tex,
-      bypass,
-      uvTransform,
-      lensDistortion,
-      lensVignette,
+      tex: get("u_tex"),
+      bypass: get("u_bypass"),
+      uvTransform: get("u_uvTransform"),
+      lensDistortion: get("u_lensDistortion"),
+      lensVignette: get("u_lensVignette"),
+      maskEnabled: get("u_maskEnabled"),
+      maskP1: get("u_maskP1"),
+      maskP2: get("u_maskP2"),
+      maskFeather: get("u_maskFeather"),
+      localExposure: get("u_localExposure"),
+      localContrast: get("u_localContrast"),
+      localSaturation: get("u_localSaturation"),
+      localTemperature: get("u_localTemperature"),
       adjustments: adjustmentLocs,
     };
     gl.useProgram(this.program);
@@ -163,6 +188,7 @@ export class Renderer {
     uvTransform: Float32Array = IDENTITY_UV_TRANSFORM,
     lensDistortion = 0,
     lensVignette = 0,
+    mask: LinearMaskUniforms = DEFAULT_MASK,
   ): void {
     if (!this.texture) return;
     const gl = this.gl;
@@ -174,6 +200,14 @@ export class Renderer {
     gl.uniformMatrix3fv(this.uniforms.uvTransform, false, uvTransform);
     gl.uniform1f(this.uniforms.lensDistortion, lensDistortion);
     gl.uniform1f(this.uniforms.lensVignette, lensVignette);
+    gl.uniform1f(this.uniforms.maskEnabled, mask.enabled ? 1.0 : 0.0);
+    gl.uniform2f(this.uniforms.maskP1, mask.p1u, mask.p1v);
+    gl.uniform2f(this.uniforms.maskP2, mask.p2u, mask.p2v);
+    gl.uniform1f(this.uniforms.maskFeather, mask.feather);
+    gl.uniform1f(this.uniforms.localExposure, mask.exposure);
+    gl.uniform1f(this.uniforms.localContrast, mask.contrast);
+    gl.uniform1f(this.uniforms.localSaturation, mask.saturation);
+    gl.uniform1f(this.uniforms.localTemperature, mask.temperature);
     for (const [key, loc] of this.uniforms.adjustments) {
       gl.uniform1f(loc, adjustments[key as keyof Adjustments]);
     }

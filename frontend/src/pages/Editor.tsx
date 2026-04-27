@@ -15,6 +15,11 @@ import {
 } from "../editor/export";
 import Histogram from "../editor/Histogram";
 import { findLensProfile, profileToCorrection } from "../editor/lensProfile";
+import LinearMaskOverlay from "../editor/LinearMaskOverlay";
+import {
+  LOCAL_ADJUSTMENT_LIMITS,
+  type LocalAdjustments,
+} from "../editor/mask";
 import { decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import Slider from "../editor/Slider";
 import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../editor/store";
@@ -55,6 +60,16 @@ export default function Editor() {
   const lensProfileId = useEditorStore((s) => s.lensProfileId);
   const manualLensOverride = useEditorStore((s) => s.manualLensOverride);
   const setLensProfile = useEditorStore((s) => s.setLensProfile);
+  const linearMaskEnabled = useEditorStore((s) => s.linearMaskEnabled);
+  const linearMask = useEditorStore((s) => s.linearMask);
+  const linearLocalAdj = useEditorStore((s) => s.linearLocalAdj);
+  const setLinearMaskEnabled = useEditorStore((s) => s.setLinearMaskEnabled);
+  const setLinearMaskPoint = useEditorStore((s) => s.setLinearMaskPoint);
+  const setLinearMaskFeather = useEditorStore((s) => s.setLinearMaskFeather);
+  const setLinearLocalAdjustment = useEditorStore(
+    (s) => s.setLinearLocalAdjustment,
+  );
+  const resetLinearMask = useEditorStore((s) => s.resetLinearMask);
 
   const imageAspect = imageDims ? imageDims.width / imageDims.height : 1;
 
@@ -184,6 +199,12 @@ export default function Editor() {
               onChange={setCropRect}
             />
           )}
+          {hasImage && linearMaskEnabled && (
+            <LinearMaskOverlay
+              mask={linearMask}
+              onChangePoint={setLinearMaskPoint}
+            />
+          )}
         </div>
 
         <input
@@ -258,6 +279,18 @@ export default function Editor() {
               }`}
             >
               {cropMode ? "Crop fertig" : "Beschneiden"}
+            </button>
+            <button
+              type="button"
+              data-testid="editor-linear-mask-toggle"
+              onClick={() => setLinearMaskEnabled(!linearMaskEnabled)}
+              className={`px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] backdrop-blur border ${
+                linearMaskEnabled
+                  ? "bg-amber-200/20 border-amber-300 text-amber-200"
+                  : "bg-stone-900/80 border-stone-700 hover:border-amber-300/40 text-stone-300"
+              }`}
+            >
+              {linearMaskEnabled ? "Verlauf an" : "Verlauf"}
             </button>
             <button
               type="button"
@@ -411,6 +444,72 @@ export default function Editor() {
               Geometrie zurücksetzen
             </button>
           </div>
+
+          {linearMaskEnabled && (
+            <div className="mb-5" data-testid="local-mask-section">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="text-stone-300 italic">Lokal · Verlauf</span>
+                <div className="flex-1 h-px bg-stone-800" />
+              </div>
+              {(["exposure", "contrast", "saturation", "temperature"] as const).map(
+                (key) => {
+                  const [min, max] = LOCAL_ADJUSTMENT_LIMITS[key];
+                  const value = linearLocalAdj[key];
+                  const labels: Record<keyof LocalAdjustments, string> = {
+                    exposure: "Belichtung",
+                    contrast: "Kontrast",
+                    saturation: "Sättigung",
+                    temperature: "Temperatur",
+                  };
+                  return (
+                    <label key={key} className="block py-1.5">
+                      <span className="text-[11px] uppercase tracking-wider text-stone-400">
+                        {labels[key]} ({key === "exposure" ? value.toFixed(2) : Math.round(value * 100)})
+                      </span>
+                      <input
+                        type="range"
+                        min={min}
+                        max={max}
+                        step={key === "exposure" ? 0.05 : 0.01}
+                        value={value}
+                        onChange={(e) =>
+                          setLinearLocalAdjustment(key, Number(e.target.value))
+                        }
+                        onDoubleClick={() => setLinearLocalAdjustment(key, 0)}
+                        data-testid={`local-${key}-slider`}
+                        className="mt-1 w-full"
+                      />
+                    </label>
+                  );
+                },
+              )}
+              <label className="block py-1.5">
+                <span className="text-[11px] uppercase tracking-wider text-stone-400">
+                  Übergang ({Math.round(linearMask.feather * 100)})
+                </span>
+                <input
+                  type="range"
+                  min={0}
+                  max={1}
+                  step={0.01}
+                  value={linearMask.feather}
+                  onChange={(e) =>
+                    setLinearMaskFeather(Number(e.target.value))
+                  }
+                  data-testid="local-feather-slider"
+                  className="mt-1 w-full"
+                />
+              </label>
+              <button
+                type="button"
+                onClick={resetLinearMask}
+                data-testid="editor-reset-mask"
+                className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
+              >
+                Verlauf zurücksetzen
+              </button>
+            </div>
+          )}
 
           <div className="mb-5" data-testid="lens-section">
             <div className="flex items-center gap-2 mb-2">

@@ -31,10 +31,27 @@ uniform float u_saturation;
 uniform float u_bypass;
 uniform float u_lensDistortion;
 uniform float u_lensVignette;
+uniform float u_maskEnabled;
+uniform vec2 u_maskP1;
+uniform vec2 u_maskP2;
+uniform float u_maskFeather;
+uniform float u_localExposure;
+uniform float u_localContrast;
+uniform float u_localSaturation;
+uniform float u_localTemperature;
 out vec4 outColor;
 
 const float DISTORTION_GAIN = 0.4;
 const float VIGNETTE_GAIN = 2.0;
+
+float computeLinearMask(vec2 uv) {
+  vec2 d = u_maskP2 - u_maskP1;
+  float len2 = dot(d, d);
+  if (len2 < 1e-8) return 0.0;
+  float t = dot(uv - u_maskP1, d) / len2;
+  float halfFeather = max(0.001, u_maskFeather * 0.5);
+  return smoothstep(0.5 - halfFeather, 0.5 + halfFeather, t);
+}
 
 vec3 srgbToLinear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
@@ -91,11 +108,19 @@ void main() {
   vec4 src = texture(u_tex, src_uv);
   if (u_bypass > 0.5) { outColor = src; return; }
 
+  // Lokale Maske einmal pro Pixel berechnen, dann effektive
+  // Adjustment-Werte = global + maskFactor * local.
+  float m = u_maskEnabled > 0.5 ? computeLinearMask(v_uv) : 0.0;
+  float effExposure    = u_exposure    + m * u_localExposure;
+  float effContrast    = u_contrast    + m * u_localContrast;
+  float effSaturation  = u_saturation  + m * u_localSaturation;
+  float effTemperature = u_temperature + m * u_localTemperature;
+
   // 1. sRGB -> Linear
   vec3 lin = srgbToLinear(src.rgb);
 
   // 2. Weissabgleich (in linear): Temperatur shiftet R/B, Tint shiftet G vs M
-  float tempK = u_temperature * 0.4;
+  float tempK = effTemperature * 0.4;
   float tintK = u_tint * 0.3;
   lin.r *= 1.0 + tempK;
   lin.b *= 1.0 - tempK;
@@ -104,7 +129,7 @@ void main() {
   lin.b *= 1.0 - tintK * 0.5;
 
   // 3. Belichtung (linear)
-  lin *= pow(2.0, u_exposure);
+  lin *= pow(2.0, effExposure);
   lin = max(lin, 0.0);
 
   // 4. Linear -> sRGB fuer perzeptive Tonwertarbeit
@@ -123,14 +148,14 @@ void main() {
   c += u_whites     * 0.25 * whiteMask;
 
   // 6. Kontrast um 0.5
-  c = (c - 0.5) * (1.0 + u_contrast) + 0.5;
+  c = (c - 0.5) * (1.0 + effContrast) + 0.5;
   c = clamp(c, 0.0, 1.0);
 
   // 7. Saettigung & Dynamik in HSL
   vec3 hsl = rgbToHsl(c);
   float vibBoost = u_vibrance * (1.0 - hsl.y) * (1.0 - hsl.y);
   hsl.y = clamp(hsl.y + vibBoost, 0.0, 1.0);
-  hsl.y = clamp(hsl.y * (1.0 + u_saturation), 0.0, 1.0);
+  hsl.y = clamp(hsl.y * (1.0 + effSaturation), 0.0, 1.0);
   c = hslToRgb(hsl);
 
   // 8. Vignette (radial, am Ende der Pipeline)

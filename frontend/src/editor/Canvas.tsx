@@ -1,8 +1,28 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 
-import { useEditorStore } from "./store";
+import { useEditorStore, type EditorState } from "./store";
 import { uvTransformMatrix } from "./transform";
-import { Renderer, WebGLRendererError, loadImageFromFile } from "./webgl";
+import {
+  type LinearMaskUniforms,
+  Renderer,
+  WebGLRendererError,
+  loadImageFromFile,
+} from "./webgl";
+
+function buildMaskUniforms(state: EditorState): LinearMaskUniforms {
+  return {
+    enabled: state.linearMaskEnabled,
+    p1u: state.linearMask.p1.u,
+    p1v: state.linearMask.p1.v,
+    p2u: state.linearMask.p2.u,
+    p2v: state.linearMask.p2.v,
+    feather: state.linearMask.feather,
+    exposure: state.linearLocalAdj.exposure,
+    contrast: state.linearLocalAdj.contrast,
+    saturation: state.linearLocalAdj.saturation,
+    temperature: state.linearLocalAdj.temperature,
+  };
+}
 
 export interface CanvasHandle {
   /** Laedt JPEG/PNG via Browser-Decoder. */
@@ -32,10 +52,29 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   const cropRect = useEditorStore((s) => s.cropRect);
   const straightenAngle = useEditorStore((s) => s.straightenAngle);
   const lensCorrection = useEditorStore((s) => s.lensCorrection);
+  const linearMaskEnabled = useEditorStore((s) => s.linearMaskEnabled);
+  const linearMask = useEditorStore((s) => s.linearMask);
+  const linearLocalAdj = useEditorStore((s) => s.linearLocalAdj);
 
   const transform = useMemo(
     () => uvTransformMatrix(cropRect, straightenAngle),
     [cropRect, straightenAngle],
+  );
+
+  const mask = useMemo<LinearMaskUniforms>(
+    () => ({
+      enabled: linearMaskEnabled,
+      p1u: linearMask.p1.u,
+      p1v: linearMask.p1.v,
+      p2u: linearMask.p2.u,
+      p2v: linearMask.p2.v,
+      feather: linearMask.feather,
+      exposure: linearLocalAdj.exposure,
+      contrast: linearLocalAdj.contrast,
+      saturation: linearLocalAdj.saturation,
+      temperature: linearLocalAdj.temperature,
+    }),
+    [linearMaskEnabled, linearMask, linearLocalAdj],
   );
 
   useEffect(() => {
@@ -58,9 +97,10 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
       transform,
       lensCorrection.distortion,
       lensCorrection.vignette,
+      mask,
     );
     onTick();
-  }, [adjustments, bypass, transform, lensCorrection, onTick]);
+  }, [adjustments, bypass, transform, lensCorrection, mask, onTick]);
 
   useImperativeHandle(
     ref,
@@ -77,6 +117,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           uvTransformMatrix(s.cropRect, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
+          buildMaskUniforms(s),
         );
         onTick();
       },
@@ -95,6 +136,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           uvTransformMatrix(s.cropRect, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
+          buildMaskUniforms(s),
         );
         onTick();
       },
@@ -108,6 +150,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           uvTransformMatrix(s.cropRect, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
+          buildMaskUniforms(s),
         );
         onTick();
       },

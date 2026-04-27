@@ -120,6 +120,33 @@ test.describe("Editor", () => {
     }
   });
 
+  test("Linearer Verlaufsfilter: Toggle, Overlay, lokale Slider, Reset", async ({ page }) => {
+    const user = await loginAsNewUser(page);
+    try {
+      await page.goto("/editor");
+      await page.setInputFiles('[data-testid="editor-file-input"]', JPG_PATH);
+      await expect(page.getByTestId("editor-bypass")).toBeVisible({ timeout: 5_000 });
+
+      await page.getByTestId("editor-linear-mask-toggle").click();
+      await expect(page.getByTestId("linear-mask-overlay")).toBeVisible();
+      await expect(page.getByTestId("linear-mask-handle-p1")).toBeVisible();
+      await expect(page.getByTestId("linear-mask-handle-p2")).toBeVisible();
+
+      const localSection = page.getByTestId("local-mask-section");
+      await expect(localSection).toBeVisible();
+
+      const expoSlider = page.getByTestId("local-exposure-slider");
+      await expoSlider.fill("1.5");
+      await expect(localSection.getByText(/Belichtung \(1\.50\)/)).toBeVisible();
+
+      await page.getByTestId("editor-reset-mask").click();
+      await expect(page.getByTestId("linear-mask-overlay")).not.toBeVisible();
+      await expect(localSection).not.toBeVisible();
+    } finally {
+      await cleanupUser(user);
+    }
+  });
+
   test("Tastenkuerzel: 0=Reset-All, R=Crop-Toggle", async ({ page }) => {
     const user = await loginAsNewUser(page);
     try {

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { defaultAdjustments } from "../src/editor/adjustments";
 import { defaultLensCorrection } from "../src/editor/lens";
+import { defaultLinearMask, defaultLocalAdjustments } from "../src/editor/mask";
 import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../src/editor/store";
 import { defaultCropRect } from "../src/editor/transform";
 
@@ -15,6 +16,9 @@ describe("useEditorStore", () => {
       lensCorrection: defaultLensCorrection(),
       lensProfileId: null,
       manualLensOverride: false,
+      linearMaskEnabled: false,
+      linearMask: defaultLinearMask(),
+      linearLocalAdj: defaultLocalAdjustments(),
     });
   });
 
@@ -147,5 +151,40 @@ describe("useEditorStore", () => {
     const s = useEditorStore.getState();
     expect(s.lensProfileId).toBeNull();
     expect(s.manualLensOverride).toBe(false);
+  });
+
+  it("setLinearMaskEnabled toggelt", () => {
+    useEditorStore.getState().setLinearMaskEnabled(true);
+    expect(useEditorStore.getState().linearMaskEnabled).toBe(true);
+    useEditorStore.getState().setLinearMaskEnabled(false);
+    expect(useEditorStore.getState().linearMaskEnabled).toBe(false);
+  });
+
+  it("setLinearMaskPoint clampt UV in [0,1]", () => {
+    useEditorStore.getState().setLinearMaskPoint("p1", { u: -1, v: 2 });
+    expect(useEditorStore.getState().linearMask.p1).toEqual({ u: 0, v: 1 });
+  });
+
+  it("setLinearMaskFeather clampt", () => {
+    useEditorStore.getState().setLinearMaskFeather(99);
+    expect(useEditorStore.getState().linearMask.feather).toBe(1);
+  });
+
+  it("setLinearLocalAdjustment clampt pro Key", () => {
+    useEditorStore.getState().setLinearLocalAdjustment("exposure", 99);
+    expect(useEditorStore.getState().linearLocalAdj.exposure).toBe(3);
+    useEditorStore.getState().setLinearLocalAdjustment("contrast", 99);
+    expect(useEditorStore.getState().linearLocalAdj.contrast).toBe(1);
+  });
+
+  it("resetLinearMask setzt enabled, mask und localAdj zurueck", () => {
+    useEditorStore.getState().setLinearMaskEnabled(true);
+    useEditorStore.getState().setLinearMaskPoint("p1", { u: 0.2, v: 0.3 });
+    useEditorStore.getState().setLinearLocalAdjustment("exposure", 1.5);
+    useEditorStore.getState().resetLinearMask();
+    const s = useEditorStore.getState();
+    expect(s.linearMaskEnabled).toBe(false);
+    expect(s.linearMask).toEqual(defaultLinearMask());
+    expect(s.linearLocalAdj).toEqual(defaultLocalAdjustments());
   });
 });

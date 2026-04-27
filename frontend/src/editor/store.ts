@@ -12,6 +12,16 @@ import {
   defaultLensCorrection,
 } from "./lens";
 import {
+  type LinearMask,
+  type LocalAdjustments,
+  type PointUv,
+  clampFeather,
+  clampLocalAdjustment,
+  clampUv,
+  defaultLinearMask,
+  defaultLocalAdjustments,
+} from "./mask";
+import {
   type CropRect,
   clampCropRect,
   defaultCropRect,
@@ -29,6 +39,9 @@ export interface EditorState {
   lensCorrection: LensCorrection;
   lensProfileId: string | null;
   manualLensOverride: boolean;
+  linearMaskEnabled: boolean;
+  linearMask: LinearMask;
+  linearLocalAdj: LocalAdjustments;
   setAdjustment: (key: AdjustmentKey, value: number) => void;
   resetAll: () => void;
   applyAdjustments: (adj: Partial<Adjustments>) => void;
@@ -38,6 +51,14 @@ export interface EditorState {
   setLensCorrection: (next: Partial<LensCorrection>, source?: LensSource) => void;
   setLensProfile: (id: string | null) => void;
   resetGeometry: () => void;
+  setLinearMaskEnabled: (enabled: boolean) => void;
+  setLinearMaskPoint: (which: "p1" | "p2", uv: PointUv) => void;
+  setLinearMaskFeather: (feather: number) => void;
+  setLinearLocalAdjustment: (
+    key: keyof LocalAdjustments,
+    value: number,
+  ) => void;
+  resetLinearMask: () => void;
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
@@ -48,6 +69,9 @@ export const useEditorStore = create<EditorState>((set) => ({
   lensCorrection: defaultLensCorrection(),
   lensProfileId: null,
   manualLensOverride: false,
+  linearMaskEnabled: false,
+  linearMask: defaultLinearMask(),
+  linearLocalAdj: defaultLocalAdjustments(),
   setAdjustment: (key, value) =>
     set((state) => ({
       adjustments: { ...state.adjustments, [key]: clampAdjustment(key, value) },
@@ -85,5 +109,27 @@ export const useEditorStore = create<EditorState>((set) => ({
       lensCorrection: defaultLensCorrection(),
       lensProfileId: null,
       manualLensOverride: false,
+    }),
+  setLinearMaskEnabled: (enabled) => set({ linearMaskEnabled: enabled }),
+  setLinearMaskPoint: (which, uv) =>
+    set((state) => ({
+      linearMask: { ...state.linearMask, [which]: clampUv(uv) },
+    })),
+  setLinearMaskFeather: (feather) =>
+    set((state) => ({
+      linearMask: { ...state.linearMask, feather: clampFeather(feather) },
+    })),
+  setLinearLocalAdjustment: (key, value) =>
+    set((state) => ({
+      linearLocalAdj: {
+        ...state.linearLocalAdj,
+        [key]: clampLocalAdjustment(key, value),
+      },
+    })),
+  resetLinearMask: () =>
+    set({
+      linearMaskEnabled: false,
+      linearMask: defaultLinearMask(),
+      linearLocalAdj: defaultLocalAdjustments(),
     }),
 }));
