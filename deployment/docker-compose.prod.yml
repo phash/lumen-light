@@ -1,0 +1,76 @@
+# Production-Stack fuer den MRD-Cluster (siehe ADR-010, ADR-011, ADR-012).
+#
+# Voraussetzungen auf dem VPS:
+#   - Docker network 'caddy-proxy' existiert (cluster-shared)
+#   - Keycloak laeuft im caddy-proxy-Network (Realm 'lumen' importiert)
+#   - Garage laeuft, Bucket lumen-images existiert (siehe infra/garage/init.sh)
+#   - .env enthaelt POSTGRES_*, KEYCLOAK_*, GARAGE_*, CORS_ORIGIN
+#   - deployment/config.prod.js mit den richtigen Frontend-Werten existiert
+#
+# Initiales Deployment macht Manuel — siehe infra/deployment-runbook.md.
+
+services:
+  lumen-db:
+    image: postgres:16-alpine
+    container_name: lumen-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - lumen-db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - lumen-internal
+
+  lumen-api:
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
+    container_name: lumen-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: "postgresql+asyncpg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@lumen-db:5432/${POSTGRES_DB}"
+      KEYCLOAK_ISSUER: ${KEYCLOAK_ISSUER}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
+      JWK_CACHE_SECONDS: ${JWK_CACHE_SECONDS:-600}
+      GARAGE_S3_ENDPOINT: ${GARAGE_S3_ENDPOINT}
+      GARAGE_S3_REGION: ${GARAGE_S3_REGION}
+      GARAGE_S3_BUCKET: ${GARAGE_S3_BUCKET}
+      GARAGE_S3_ACCESS_KEY_ID: ${GARAGE_S3_ACCESS_KEY_ID}
+      GARAGE_S3_SECRET_ACCESS_KEY: ${GARAGE_S3_SECRET_ACCESS_KEY}
+      PRESIGNED_URL_EXPIRES_IN: ${PRESIGNED_URL_EXPIRES_IN:-900}
+      MAX_IMAGE_SIZE_BYTES: ${MAX_IMAGE_SIZE_BYTES:-209715200}
+      CORS_ORIGIN: ${CORS_ORIGIN}
+    depends_on:
+      lumen-db:
+        condition: service_healthy
+    networks:
+      - lumen-internal
+      - caddy-proxy
+
+  lumen-web:
+    build:
+      context: ../frontend
+      dockerfile: Dockerfile
+    container_name: lumen-web
+    restart: unless-stopped
+    volumes:
+      # Frontend Run-Time-Config — wird vom VPS-Host bereitgestellt,
+      # ueberschreibt das Default config.js im Image.
+      - ./config.prod.js:/usr/share/nginx/html/config.js:ro
+    networks:
+      - caddy-proxy
+
+networks:
+  lumen-internal:
+  caddy-proxy:
+    external: true
+
+volumes:
+  lumen-db-data:

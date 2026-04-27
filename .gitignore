@@ -15,6 +15,9 @@ dist/
 .vite/
 *.tsbuildinfo
 
+# Production-Config (wird auf dem VPS abgelegt, nie ins Repo)
+deployment/config.prod.js
+
 # Environments
 .env
 .env.local

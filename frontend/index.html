@@ -7,6 +7,9 @@
   </head>
   <body class="bg-stone-950 text-stone-200 antialiased">
     <div id="root"></div>
+    <!-- Run-Time-Konfiguration. In Production gemountet vom Container,
+         lokal optional. Fallback: VITE_*-Build-Time-Vars. -->
+    <script src="/config.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

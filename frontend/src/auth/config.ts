@@ -6,19 +6,11 @@
 import type { AuthProviderProps } from "react-oidc-context";
 import { WebStorageStateStore } from "oidc-client-ts";
 
-const authority = import.meta.env.VITE_KEYCLOAK_AUTHORITY;
-const clientId = import.meta.env.VITE_KEYCLOAK_CLIENT_ID;
-
-if (!authority || !clientId) {
-  throw new Error(
-    "VITE_KEYCLOAK_AUTHORITY und VITE_KEYCLOAK_CLIENT_ID muessen gesetzt sein " +
-      "(siehe frontend/.env.example).",
-  );
-}
+import { RUNTIME_CONFIG } from "../runtime-config";
 
 export const oidcConfig: AuthProviderProps = {
-  authority,
-  client_id: clientId,
+  authority: RUNTIME_CONFIG.KEYCLOAK_AUTHORITY,
+  client_id: RUNTIME_CONFIG.KEYCLOAK_CLIENT_ID,
   redirect_uri: `${window.location.origin}/callback`,
   post_logout_redirect_uri: window.location.origin,
   response_type: "code",

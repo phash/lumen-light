@@ -1,0 +1,32 @@
+# Caddyfile-Snippet fuer Lumen — in /opt/caddyserver/Caddyfile einfuegen.
+#
+# Voraussetzungen:
+#   - lumen-api und lumen-web sind im caddy-proxy-Network mit den Aliasen
+#     'lumen-api' und 'lumen-web' verbunden (siehe infra/deployment-runbook.md)
+#   - DNS-A-Record lumen.mr-development.de zeigt auf den VPS
+
+lumen.mr-development.de {
+    encode gzip zstd
+
+    # API-Pfade gehen ans Backend (FastAPI)
+    @api path /api/* /docs /openapi.json /redoc
+    handle @api {
+        reverse_proxy lumen-api:4100
+    }
+
+    # Alles andere: statisches Frontend (nginx)
+    handle {
+        reverse_proxy lumen-web:80
+    }
+
+    # Sicherheits-Header
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+    }
+
+    # Rate-Limit fuer /api/v1/images (POST init) — siehe API-Spec
+    # Caddy hat kein eingebautes rate_limit; nutzt das im Cluster
+    # bereits konfigurierte Plugin oder verzichtet bewusst.
+}
