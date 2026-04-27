@@ -451,15 +451,38 @@ export default function Editor() {
         />
 
         {!hasImage && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-stone-500 pointer-events-none">
+          <div className="absolute inset-0 flex flex-col items-center justify-center text-stone-500 pointer-events-none gap-3">
             <span className="text-xl">Bild hierhin ziehen</span>
-            <button
-              type="button"
-              onClick={triggerFileDialog}
-              className="mt-3 cursor-pointer text-amber-200 hover:underline pointer-events-auto"
-            >
-              oder Datei wählen
-            </button>
+            <div className="flex gap-3 pointer-events-auto">
+              <button
+                type="button"
+                onClick={triggerFileDialog}
+                className="text-amber-200 hover:underline"
+              >
+                Datei wählen
+              </button>
+              <span className="text-stone-700">·</span>
+              <button
+                type="button"
+                data-testid="editor-load-sample"
+                onClick={() => {
+                  void (async () => {
+                    try {
+                      const resp = await fetch("/sample.jpg");
+                      if (!resp.ok) throw new Error("Sample-Bild nicht erreichbar");
+                      const blob = await resp.blob();
+                      const file = new File([blob], "sample.jpg", { type: "image/jpeg" });
+                      await onFile(file);
+                    } catch (err) {
+                      setError(err instanceof Error ? err.message : "Sample-Load fehlgeschlagen");
+                    }
+                  })();
+                }}
+                className="text-stone-400 hover:text-amber-200 hover:underline"
+              >
+                Beispielbild laden
+              </button>
+            </div>
           </div>
         )}
 
