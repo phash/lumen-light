@@ -19,5 +19,5 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"]
   },
   "include": ["src", "tests"],
-  "exclude": ["legacy", "dist", "node_modules"]
+  "exclude": ["dist", "node_modules"]
 }
