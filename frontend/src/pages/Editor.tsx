@@ -27,6 +27,7 @@ import {
 } from "../editor/mask";
 import PresetDialog from "../editor/PresetDialog";
 import RadialMaskOverlay from "../editor/RadialMaskOverlay";
+import { analyze, computeAutoTone, computeAutoWb } from "../editor/autoAdjust";
 import { FILE_PICKER_ACCEPT, decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import Slider from "../editor/Slider";
 import {
@@ -227,6 +228,24 @@ export default function Editor() {
   const togglePresetDialog = useCallback(() => {
     if (hasImage) setPresetDialogOpen((v) => !v);
   }, [hasImage]);
+
+  const onAutoTone = useCallback(() => {
+    if (!canvasElement) return;
+    const stats = analyze(canvasElement);
+    if (!stats) return;
+    const cur = useEditorStore.getState().adjustments;
+    const delta = computeAutoTone(stats, cur);
+    useEditorStore.getState().applyAdjustments({ ...cur, ...delta });
+  }, [canvasElement]);
+
+  const onAutoWb = useCallback(() => {
+    if (!canvasElement) return;
+    const stats = analyze(canvasElement);
+    if (!stats) return;
+    const cur = useEditorStore.getState().adjustments;
+    const delta = computeAutoWb(stats, cur);
+    useEditorStore.getState().applyAdjustments({ ...cur, ...delta });
+  }, [canvasElement]);
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -525,6 +544,24 @@ export default function Editor() {
               </button>
               <button
                 type="button"
+                data-testid="editor-auto-tone"
+                onClick={onAutoTone}
+                className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200"
+                title="Automatisch Belichtung+Kontrast aus Histogramm setzen"
+              >
+                Auto-Ton
+              </button>
+              <button
+                type="button"
+                data-testid="editor-auto-wb"
+                onClick={onAutoWb}
+                className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200"
+                title="Auto-Weissabgleich (Gray-World)"
+              >
+                Auto-WB
+              </button>
+              <button
+                type="button"
                 data-testid="editor-wb-picker"
                 onClick={(e) => {
                   e.stopPropagation();
@@ -535,7 +572,7 @@ export default function Editor() {
                 }`}
                 title="Klick auf neutralen Bildbereich setzt Weissabgleich"
               >
-                Weissabgleich
+                WB-Picker
               </button>
               <button
                 type="button"
