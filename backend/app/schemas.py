@@ -1,9 +1,9 @@
 """Pydantic-Schemas für Request/Response-Validierung."""
 from datetime import datetime
-from typing import Literal
+from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 
 # ----- Adjustments -----
@@ -34,17 +34,92 @@ class UserOut(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
+# ----- Masken -----
+
+# Limits muessen mit MAX_LINEAR_MASKS / MAX_RADIAL_MASKS in
+# frontend/src/editor/mask.ts und shaders.ts uebereinstimmen.
+MAX_LINEAR_MASKS = 4
+MAX_RADIAL_MASKS = 4
+
+
+class PointUv(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    u: float = Field(ge=0, le=1)
+    v: float = Field(ge=0, le=1)
+
+
+class MaskLocalAdjustments(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    exposure: float = Field(default=0, ge=-3, le=3)
+    contrast: float = Field(default=0, ge=-1, le=1)
+    saturation: float = Field(default=0, ge=-1, le=1)
+    temperature: float = Field(default=0, ge=-1, le=1)
+
+
+class LinearMaskGeometry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    p1: PointUv
+    p2: PointUv
+    feather: float = Field(ge=0, le=1)
+
+
+class RadialMaskGeometry(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    center: PointUv
+    rx: float = Field(ge=0.02, le=1)
+    ry: float = Field(ge=0.02, le=1)
+    feather: float = Field(ge=0, le=1)
+
+
+class LinearMaskData(BaseModel):
+    # camelCase-Felder bewusst — symmetrisch zum TS-Wireformat,
+    # spart die Alias-Indirektion in FastAPI-Responses.
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["linear"]
+    mask: LinearMaskGeometry
+    localAdj: MaskLocalAdjustments  # noqa: N815
+
+
+class RadialMaskData(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    type: Literal["radial"]
+    mask: RadialMaskGeometry
+    localAdj: MaskLocalAdjustments  # noqa: N815
+
+
+MaskData = Annotated[
+    LinearMaskData | RadialMaskData,
+    Field(discriminator="type"),
+]
+
+
 # ----- Preset -----
 
 class PresetIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     adjustments: Adjustments
+    masks: list[MaskData] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_mask_caps(self) -> Self:
+        n_lin = sum(1 for m in self.masks if m.type == "linear")
+        n_rad = sum(1 for m in self.masks if m.type == "radial")
+        if n_lin > MAX_LINEAR_MASKS:
+            raise ValueError(
+                f"max {MAX_LINEAR_MASKS} lineare Masken pro Preset (got {n_lin})"
+            )
+        if n_rad > MAX_RADIAL_MASKS:
+            raise ValueError(
+                f"max {MAX_RADIAL_MASKS} radiale Masken pro Preset (got {n_rad})"
+            )
+        return self
 
 
 class PresetOut(BaseModel):
     id: UUID
     name: str
     adjustments: Adjustments
+    masks: list[MaskData] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)

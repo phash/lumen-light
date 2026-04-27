@@ -50,6 +50,7 @@ async def create_preset(
         user_id=user.id,
         name=payload.name,
         adjustments=payload.adjustments.model_dump(),
+        masks=[m.model_dump() for m in payload.masks],
     )
     db.add(p)
     try:
@@ -76,6 +77,7 @@ async def update_preset(
         raise HTTPException(status_code=404, detail="Preset nicht gefunden.")
     p.name = payload.name
     p.adjustments = payload.adjustments.model_dump()
+    p.masks = [m.model_dump() for m in payload.masks]
     try:
         await db.commit()
     except IntegrityError:

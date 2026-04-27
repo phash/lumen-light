@@ -324,4 +324,36 @@ describe("Multi-Mask", () => {
     }
     expect(ids.size).toBe(MAX_LINEAR_MASKS + MAX_RADIAL_MASKS);
   });
+
+  it("applyMasks ersetzt die Liste atomar und respektiert Caps", () => {
+    useEditorStore.getState().addLinearMask();
+    useEditorStore.getState().addRadialMask();
+    // Eingabe bewusst ueber Cap: 5 linear + 5 radial -> auf 4+4 truncaten
+    const incoming = [
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `lin-${i}`,
+        type: "linear" as const,
+        mask: { type: "linear" as const, p1: { u: 0, v: 0 }, p2: { u: 1, v: 1 }, feather: 0.4 },
+        localAdj: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 },
+      })),
+      ...Array.from({ length: 5 }, (_, i) => ({
+        id: `rad-${i}`,
+        type: "radial" as const,
+        mask: { type: "radial" as const, center: { u: 0.5, v: 0.5 }, rx: 0.25, ry: 0.25, feather: 0.4 },
+        localAdj: { exposure: 0, contrast: 0, saturation: 0, temperature: 0 },
+      })),
+    ];
+    useEditorStore.getState().applyMasks(incoming);
+    const s = useEditorStore.getState();
+    expect(s.masks.filter((m) => m.type === "linear")).toHaveLength(MAX_LINEAR_MASKS);
+    expect(s.masks.filter((m) => m.type === "radial")).toHaveLength(MAX_RADIAL_MASKS);
+    expect(s.selectedMaskId).toBeNull();
+  });
+
+  it("applyMasks([]) leert die Liste", () => {
+    useEditorStore.getState().addLinearMask();
+    useEditorStore.getState().applyMasks([]);
+    expect(useEditorStore.getState().masks).toEqual([]);
+    expect(useEditorStore.getState().selectedMaskId).toBeNull();
+  });
 });

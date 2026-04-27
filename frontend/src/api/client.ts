@@ -30,12 +30,53 @@ export interface Adjustments {
   saturation: number;
 }
 
+export interface PresetMaskLocalAdjustments {
+  exposure: number;
+  contrast: number;
+  saturation: number;
+  temperature: number;
+}
+
+export interface PresetMaskLinearGeometry {
+  p1: { u: number; v: number };
+  p2: { u: number; v: number };
+  feather: number;
+}
+
+export interface PresetMaskRadialGeometry {
+  center: { u: number; v: number };
+  rx: number;
+  ry: number;
+  feather: number;
+}
+
+export interface PresetMaskLinear {
+  type: "linear";
+  mask: PresetMaskLinearGeometry;
+  localAdj: PresetMaskLocalAdjustments;
+}
+
+export interface PresetMaskRadial {
+  type: "radial";
+  mask: PresetMaskRadialGeometry;
+  localAdj: PresetMaskLocalAdjustments;
+}
+
+export type PresetMask = PresetMaskLinear | PresetMaskRadial;
+
 export interface Preset {
   id: string;
   name: string;
   adjustments: Adjustments;
+  masks: PresetMask[];
   created_at: string;
   updated_at: string;
+}
+
+export interface PresetWritePayload {
+  name: string;
+  adjustments: Adjustments;
+  masks?: PresetMask[];
 }
 
 export type UploadState = "pending" | "ready" | "failed";
@@ -68,8 +109,8 @@ export type ImageStateFilter = "ready" | "pending" | "all";
 export interface ApiClient {
   me(): Promise<User>;
   listPresets(): Promise<Preset[]>;
-  createPreset(name: string, adjustments: Adjustments): Promise<Preset>;
-  updatePreset(id: string, name: string, adjustments: Adjustments): Promise<Preset>;
+  createPreset(payload: PresetWritePayload): Promise<Preset>;
+  updatePreset(id: string, payload: PresetWritePayload): Promise<Preset>;
   deletePreset(id: string): Promise<void>;
 
   listImages(state?: ImageStateFilter): Promise<Image[]>;
@@ -116,15 +157,15 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
   return {
     me: () => request<User>("/auth/me"),
     listPresets: () => request<Preset[]>("/presets"),
-    createPreset: (name, adjustments) =>
+    createPreset: (payload) =>
       request<Preset>("/presets", {
         method: "POST",
-        body: JSON.stringify({ name, adjustments }),
+        body: JSON.stringify({ masks: [], ...payload }),
       }),
-    updatePreset: (id, name, adjustments) =>
+    updatePreset: (id, payload) =>
       request<Preset>(`/presets/${id}`, {
         method: "PUT",
-        body: JSON.stringify({ name, adjustments }),
+        body: JSON.stringify({ masks: [], ...payload }),
       }),
     deletePreset: (id) =>
       request<void>(`/presets/${id}`, { method: "DELETE" }),

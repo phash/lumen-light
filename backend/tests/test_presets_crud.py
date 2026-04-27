@@ -6,6 +6,41 @@ ZERO_ADJ = {
     "vibrance": 0.0, "saturation": 0.0,
 }
 
+ZERO_LOCAL_ADJ = {
+    "exposure": 0.0, "contrast": 0.0, "saturation": 0.0, "temperature": 0.0,
+}
+
+
+def _linear_mask(**overrides):
+    base = {
+        "type": "linear",
+        "mask": {
+            "p1": {"u": 0.5, "v": 0.0},
+            "p2": {"u": 0.5, "v": 1.0},
+            "feather": 0.4,
+        },
+        "localAdj": {**ZERO_LOCAL_ADJ},
+    }
+    base["localAdj"] = {**base["localAdj"], **overrides.pop("localAdj", {})}
+    base.update(overrides)
+    return base
+
+
+def _radial_mask(**overrides):
+    base = {
+        "type": "radial",
+        "mask": {
+            "center": {"u": 0.5, "v": 0.5},
+            "rx": 0.3,
+            "ry": 0.2,
+            "feather": 0.4,
+        },
+        "localAdj": {**ZERO_LOCAL_ADJ},
+    }
+    base["localAdj"] = {**base["localAdj"], **overrides.pop("localAdj", {})}
+    base.update(overrides)
+    return base
+
 
 async def test_list_presets_for_new_user_returns_defaults(client, user_a):
     r = await client.get("/api/v1/presets", headers=user_a["headers"])
@@ -124,3 +159,125 @@ async def test_list_supports_sort_minus_name(client, user_a):
     assert r.status_code == 200
     names = [p["name"] for p in r.json()]
     assert names == sorted(names, reverse=True)
+
+
+# ---- Masken-Persistenz (iteration 19b) ----
+
+async def test_default_presets_have_empty_masks(client, user_a):
+    r = await client.get("/api/v1/presets", headers=user_a["headers"])
+    assert r.status_code == 200
+    for p in r.json():
+        assert p["masks"] == []
+
+
+async def test_create_preset_with_masks_roundtrips(client, user_a):
+    masks = [
+        _linear_mask(localAdj={"exposure": 1.0, "contrast": 0.2}),
+        _radial_mask(localAdj={"exposure": -0.5, "saturation": 0.3}),
+    ]
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "Mit Masken", "adjustments": ZERO_ADJ, "masks": masks},
+    )
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert len(body["masks"]) == 2
+    assert body["masks"][0]["type"] == "linear"
+    assert body["masks"][0]["localAdj"]["exposure"] == 1.0
+    assert body["masks"][1]["type"] == "radial"
+    assert body["masks"][1]["localAdj"]["saturation"] == 0.3
+    assert body["masks"][1]["mask"]["rx"] == 0.3
+
+    # GET liefert dieselben Masken zurueck (DB-Roundtrip)
+    listing = await client.get("/api/v1/presets", headers=user_a["headers"])
+    [persisted] = [p for p in listing.json() if p["name"] == "Mit Masken"]
+    assert persisted["masks"] == body["masks"]
+
+
+async def test_create_preset_default_masks_is_empty_list(client, user_a):
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "Ohne Masken", "adjustments": ZERO_ADJ},
+    )
+    assert r.status_code == 201
+    assert r.json()["masks"] == []
+
+
+async def test_update_preset_overwrites_masks(client, user_a):
+    create = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={
+            "name": "MaskUpdate",
+            "adjustments": ZERO_ADJ,
+            "masks": [_linear_mask()],
+        },
+    )
+    pid = create.json()["id"]
+
+    upd = await client.put(
+        f"/api/v1/presets/{pid}",
+        headers=user_a["headers"],
+        json={
+            "name": "MaskUpdate",
+            "adjustments": ZERO_ADJ,
+            "masks": [_radial_mask(), _radial_mask()],
+        },
+    )
+    assert upd.status_code == 200
+    assert [m["type"] for m in upd.json()["masks"]] == ["radial", "radial"]
+
+
+async def test_invalid_mask_type_returns_422(client, user_a):
+    bad = {**_linear_mask(), "type": "bogus"}
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "Bogus", "adjustments": ZERO_ADJ, "masks": [bad]},
+    )
+    assert r.status_code == 422
+
+
+async def test_mask_uv_out_of_range_returns_422(client, user_a):
+    bad = _linear_mask()
+    bad["mask"]["p1"]["u"] = 1.5
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "BadUv", "adjustments": ZERO_ADJ, "masks": [bad]},
+    )
+    assert r.status_code == 422
+
+
+async def test_too_many_linear_masks_returns_422(client, user_a):
+    masks = [_linear_mask() for _ in range(5)]
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "TooMany", "adjustments": ZERO_ADJ, "masks": masks},
+    )
+    assert r.status_code == 422
+
+
+async def test_max_caps_combination_accepted(client, user_a):
+    # Genau 4 linear + 4 radial darf passieren (Cap-Grenze)
+    masks = [_linear_mask() for _ in range(4)] + [_radial_mask() for _ in range(4)]
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "FullCaps", "adjustments": ZERO_ADJ, "masks": masks},
+    )
+    assert r.status_code == 201
+    assert len(r.json()["masks"]) == 8
+
+
+async def test_mask_extra_field_returns_422(client, user_a):
+    bad = {**_linear_mask(), "unexpected": "field"}
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "ExtraField", "adjustments": ZERO_ADJ, "masks": [bad]},
+    )
+    assert r.status_code == 422

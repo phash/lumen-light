@@ -78,6 +78,7 @@ export interface EditorState {
   ) => void;
   removeSelectedMask: () => void;
   clearMasks: () => void;
+  applyMasks: (masks: ReadonlyArray<MaskInstance>) => void;
 }
 
 function findMask(
@@ -242,6 +243,24 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     }));
   },
   clearMasks: () => set({ masks: [], selectedMaskId: null }),
+  applyMasks: (incoming) =>
+    set(() => {
+      const result: MaskInstance[] = [];
+      let lin = 0;
+      let rad = 0;
+      for (const m of incoming) {
+        if (m.type === "linear") {
+          if (lin < MAX_LINEAR_MASKS) {
+            result.push(m);
+            lin++;
+          }
+        } else if (rad < MAX_RADIAL_MASKS) {
+          result.push(m);
+          rad++;
+        }
+      }
+      return { masks: result, selectedMaskId: null };
+    }),
 }));
 
 export function selectedMask(state: EditorState): MaskInstance | null {
