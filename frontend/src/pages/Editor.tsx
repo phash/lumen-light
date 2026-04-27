@@ -14,6 +14,7 @@ import {
   suggestFilename,
 } from "../editor/export";
 import Histogram from "../editor/Histogram";
+import { findLensProfile, profileToCorrection } from "../editor/lensProfile";
 import { decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import Slider from "../editor/Slider";
 import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../editor/store";
@@ -51,6 +52,9 @@ export default function Editor() {
   const resetGeometry = useEditorStore((s) => s.resetGeometry);
   const lensCorrection = useEditorStore((s) => s.lensCorrection);
   const setLensCorrection = useEditorStore((s) => s.setLensCorrection);
+  const lensProfileId = useEditorStore((s) => s.lensProfileId);
+  const manualLensOverride = useEditorStore((s) => s.manualLensOverride);
+  const setLensProfile = useEditorStore((s) => s.setLensProfile);
 
   const imageAspect = imageDims ? imageDims.width / imageDims.height : 1;
 
@@ -81,6 +85,18 @@ export default function Editor() {
           setCameraInfo(
             [decoded.cameraMake, decoded.cameraModel].filter(Boolean).join(" "),
           );
+        }
+
+        // Lens-Profil-Auto-Detection: matches setzen die Slider und
+        // markieren das Profil als 'auto'.
+        const lookup = findLensProfile(
+          decoded.cameraMake,
+          decoded.cameraModel,
+          decoded.focalLen,
+        );
+        if (lookup.profile) {
+          setLensCorrection(profileToCorrection(lookup.profile), "auto");
+          setLensProfile(lookup.profile.id);
         }
       } else {
         await canvasHandleRef.current?.loadFile(file);
@@ -400,6 +416,16 @@ export default function Editor() {
             <div className="flex items-center gap-2 mb-2">
               <span className="text-stone-300 italic">Objektiv</span>
               <div className="flex-1 h-px bg-stone-800" />
+            </div>
+            <div
+              className="text-[10px] uppercase tracking-[0.18em] text-stone-500 mb-2"
+              data-testid="lens-profile-status"
+            >
+              {lensProfileId == null
+                ? "Kein Profil"
+                : manualLensOverride
+                  ? `${lensProfileId} (manuell überschrieben)`
+                  : `${lensProfileId} (auto)`}
             </div>
             <label className="block py-1.5">
               <span className="text-[11px] uppercase tracking-wider text-stone-400">

@@ -13,6 +13,8 @@ describe("useEditorStore", () => {
       cropRect: defaultCropRect(),
       straightenAngle: 0,
       lensCorrection: defaultLensCorrection(),
+      lensProfileId: null,
+      manualLensOverride: false,
     });
   });
 
@@ -118,5 +120,32 @@ describe("useEditorStore", () => {
       distortion: 1,
       vignette: -1,
     });
+  });
+
+  it("setLensCorrection mit source='auto' setzt manualLensOverride NICHT", () => {
+    useEditorStore.getState().setLensCorrection({ distortion: 0.4 }, "auto");
+    expect(useEditorStore.getState().manualLensOverride).toBe(false);
+  });
+
+  it("setLensCorrection mit source='manual' (default) setzt manualLensOverride=true", () => {
+    useEditorStore.getState().setLensCorrection({ distortion: 0.4 });
+    expect(useEditorStore.getState().manualLensOverride).toBe(true);
+  });
+
+  it("setLensProfile setzt profileId und resettet override", () => {
+    useEditorStore.getState().setLensCorrection({ distortion: 0.5 });
+    expect(useEditorStore.getState().manualLensOverride).toBe(true);
+    useEditorStore.getState().setLensProfile("test-profile");
+    expect(useEditorStore.getState().lensProfileId).toBe("test-profile");
+    expect(useEditorStore.getState().manualLensOverride).toBe(false);
+  });
+
+  it("resetGeometry setzt auch lensProfileId und manualLensOverride zurueck", () => {
+    useEditorStore.getState().setLensProfile("p");
+    useEditorStore.getState().setLensCorrection({ distortion: 0.5 });
+    useEditorStore.getState().resetGeometry();
+    const s = useEditorStore.getState();
+    expect(s.lensProfileId).toBeNull();
+    expect(s.manualLensOverride).toBe(false);
   });
 });

@@ -31,6 +31,7 @@ const RAW_EXTENSIONS: ReadonlyArray<readonly [string, RawFormat]> = [
 export interface DecodedRaw {
   readonly width: number;
   readonly height: number;
+  readonly focalLen: number | null;
   /** RGB-Pixel-Buffer (nicht RGBA). Laenge = width × height × 3. */
   readonly rgb: Uint8Array;
   readonly cameraMake: string | null;
@@ -125,6 +126,7 @@ export async function decodeRaw(file: File): Promise<DecodedRaw> {
       width,
       height,
       rgb,
+      focalLen: pickNumber(meta, "focal_len"),
       cameraMake: pickString(meta, "camera_make", "make"),
       cameraModel: pickString(meta, "camera_model", "model"),
     };
@@ -139,6 +141,14 @@ export async function decodeRaw(file: File): Promise<DecodedRaw> {
  * Pfade als Array). Erster nicht-leerer String gewinnt; Whitespace wird
  * gestrippt.
  */
+function pickNumber(source: unknown, key: string): number | null {
+  if (source && typeof source === "object" && key in (source as Record<string, unknown>)) {
+    const v = (source as Record<string, unknown>)[key];
+    if (typeof v === "number" && Number.isFinite(v)) return v;
+  }
+  return null;
+}
+
 function pickString(
   source: unknown,
   ...paths: ReadonlyArray<string | ReadonlyArray<string>>

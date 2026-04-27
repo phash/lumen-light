@@ -19,19 +19,24 @@ import {
 
 export const MAX_STRAIGHTEN_RADIANS = (10 * Math.PI) / 180; // ±10°
 
+export type LensSource = "manual" | "auto";
+
 export interface EditorState {
   adjustments: Adjustments;
   bypass: boolean;
   cropRect: CropRect;
   straightenAngle: number;
   lensCorrection: LensCorrection;
+  lensProfileId: string | null;
+  manualLensOverride: boolean;
   setAdjustment: (key: AdjustmentKey, value: number) => void;
   resetAll: () => void;
   applyAdjustments: (adj: Partial<Adjustments>) => void;
   setBypass: (bypass: boolean) => void;
   setCropRect: (rect: CropRect) => void;
   setStraightenAngle: (angle: number) => void;
-  setLensCorrection: (next: Partial<LensCorrection>) => void;
+  setLensCorrection: (next: Partial<LensCorrection>, source?: LensSource) => void;
+  setLensProfile: (id: string | null) => void;
   resetGeometry: () => void;
 }
 
@@ -41,6 +46,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   cropRect: defaultCropRect(),
   straightenAngle: 0,
   lensCorrection: defaultLensCorrection(),
+  lensProfileId: null,
+  manualLensOverride: false,
   setAdjustment: (key, value) =>
     set((state) => ({
       adjustments: { ...state.adjustments, [key]: clampAdjustment(key, value) },
@@ -64,14 +71,19 @@ export const useEditorStore = create<EditorState>((set) => ({
         Math.min(MAX_STRAIGHTEN_RADIANS, angle),
       ),
     }),
-  setLensCorrection: (next) =>
+  setLensCorrection: (next, source = "manual") =>
     set((state) => ({
       lensCorrection: clampLens({ ...state.lensCorrection, ...next }),
+      manualLensOverride:
+        source === "manual" ? true : state.manualLensOverride,
     })),
+  setLensProfile: (id) => set({ lensProfileId: id, manualLensOverride: false }),
   resetGeometry: () =>
     set({
       cropRect: defaultCropRect(),
       straightenAngle: 0,
       lensCorrection: defaultLensCorrection(),
+      lensProfileId: null,
+      manualLensOverride: false,
     }),
 }));

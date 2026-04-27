@@ -69,6 +69,11 @@ test.describe("RAW-Pipeline gegen echten Korpus", () => {
           expect(text.toLowerCase()).toContain(
             sample.expectedMake.toLowerCase().split(" ")[0]!,
           );
+
+          // Lens-Profil wurde automatisch angewendet — alle Korpus-Files
+          // matchen ein Profil aus infra/lensfun/profiles.json.
+          const lensStatus = page.getByTestId("lens-profile-status");
+          await expect(lensStatus).toContainText("auto");
         } finally {
           await cleanupUser(user);
         }

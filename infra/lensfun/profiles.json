@@ -1,0 +1,159 @@
+{
+  "$comment": "Vereinfachte Lensfun-aehnliche Profil-DB. Match auf (make, modelMatch [substring, case-insensitive], optional focalMin/focalMax). k1 ist Brown-Conrady 1-Term (-1..+1, in unsere Distortion-Slider-Skala uebersetzt: distortion = k1 / DISTORTION_GAIN, also Slider-Wert in -1..+1). vignette ist der Slider-Wert (positiv = Vignette korrigieren = Ecken aufhellen).",
+  "version": 1,
+  "profiles": [
+    {
+      "id": "canon-eos-600d-kit-wide",
+      "make": "Canon",
+      "modelMatch": "EOS 600D",
+      "focalMax": 30,
+      "k1": -0.30,
+      "vignette": 0.30,
+      "comment": "Canon EOS 600D mit Standard-Kit 18-55 STM @18-30mm Wide-End: deutliche Tonne + Vignette"
+    },
+    {
+      "id": "canon-eos-600d-kit-mid",
+      "make": "Canon",
+      "modelMatch": "EOS 600D",
+      "focalMin": 30,
+      "focalMax": 70,
+      "k1": -0.10,
+      "vignette": 0.15
+    },
+    {
+      "id": "canon-eos-600d-kit-tele",
+      "make": "Canon",
+      "modelMatch": "EOS 600D",
+      "focalMin": 70,
+      "k1": 0.05,
+      "vignette": 0.10,
+      "comment": "Tele-Bereich: leichte Pincushion + minimale Vignette"
+    },
+    {
+      "id": "canon-eos-r-rf-wide",
+      "make": "Canon",
+      "modelMatch": "EOS R",
+      "focalMax": 35,
+      "k1": -0.20,
+      "vignette": 0.35
+    },
+    {
+      "id": "canon-eos-r-rf-mid",
+      "make": "Canon",
+      "modelMatch": "EOS R",
+      "focalMin": 35,
+      "focalMax": 80,
+      "k1": -0.08,
+      "vignette": 0.20
+    },
+    {
+      "id": "canon-eos-r-rf-tele",
+      "make": "Canon",
+      "modelMatch": "EOS R",
+      "focalMin": 80,
+      "k1": 0.04,
+      "vignette": 0.10
+    },
+    {
+      "id": "sony-a7m3-fe-wide",
+      "make": "Sony",
+      "modelMatch": "ILCE-7M3",
+      "focalMax": 35,
+      "k1": -0.25,
+      "vignette": 0.40
+    },
+    {
+      "id": "sony-a7m3-fe-mid",
+      "make": "Sony",
+      "modelMatch": "ILCE-7M3",
+      "focalMin": 35,
+      "focalMax": 85,
+      "k1": -0.05,
+      "vignette": 0.20
+    },
+    {
+      "id": "sony-a7m3-fe-tele",
+      "make": "Sony",
+      "modelMatch": "ILCE-7M3",
+      "focalMin": 85,
+      "k1": 0.06,
+      "vignette": 0.10
+    },
+    {
+      "id": "nikon-d7100-dx-wide",
+      "make": "Nikon",
+      "modelMatch": "D7100",
+      "focalMax": 35,
+      "k1": -0.28,
+      "vignette": 0.30
+    },
+    {
+      "id": "nikon-d7100-dx-mid",
+      "make": "Nikon",
+      "modelMatch": "D7100",
+      "focalMin": 35,
+      "focalMax": 105,
+      "k1": -0.05,
+      "vignette": 0.15
+    },
+    {
+      "id": "nikon-d7100-dx-tele",
+      "make": "Nikon",
+      "modelMatch": "D7100",
+      "focalMin": 105,
+      "k1": 0.04,
+      "vignette": 0.08
+    },
+    {
+      "id": "fujifilm-x-pro1-wide",
+      "make": "Fujifilm",
+      "modelMatch": "X-Pro1",
+      "focalMax": 24,
+      "k1": -0.22,
+      "vignette": 0.35
+    },
+    {
+      "id": "fujifilm-x-pro1-mid",
+      "make": "Fujifilm",
+      "modelMatch": "X-Pro1",
+      "focalMin": 24,
+      "focalMax": 60,
+      "k1": -0.06,
+      "vignette": 0.18
+    },
+    {
+      "id": "olympus-em5-mft-wide",
+      "make": "Olympus",
+      "modelMatch": "E-M5",
+      "focalMax": 24,
+      "k1": -0.20,
+      "vignette": 0.25
+    },
+    {
+      "id": "olympus-em5-mft-mid",
+      "make": "Olympus",
+      "modelMatch": "E-M5",
+      "focalMin": 24,
+      "focalMax": 60,
+      "k1": -0.05,
+      "vignette": 0.15
+    },
+    {
+      "id": "panasonic-g9-mft-wide",
+      "make": "Panasonic",
+      "modelMatch": "DC-G9",
+      "focalMax": 25,
+      "k1": -0.20,
+      "vignette": 0.25
+    },
+    {
+      "id": "panasonic-g9-mft-mid",
+      "make": "Panasonic",
+      "modelMatch": "DC-G9",
+      "focalMin": 25,
+      "focalMax": 60,
+      "k1": -0.05,
+      "vignette": 0.15
+    }
+  ]
+}
