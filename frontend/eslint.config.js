@@ -7,9 +7,9 @@ import globals from "globals";
 export default tseslint.config(
   { ignores: ["dist", "node_modules", "legacy"] },
   js.configs.recommended,
-  ...tseslint.configs.recommendedTypeChecked,
   {
     files: ["**/*.{ts,tsx}"],
+    extends: [...tseslint.configs.recommendedTypeChecked],
     languageOptions: {
       ecmaVersion: 2023,
       globals: { ...globals.browser, ...globals.node },
@@ -26,5 +26,9 @@ export default tseslint.config(
       "react/react-in-jsx-scope": "off",
       "react/jsx-uses-react": "off",
     },
+  },
+  {
+    files: ["**/*.{js,mjs,cjs}"],
+    ...tseslint.configs.disableTypeChecked,
   },
 );

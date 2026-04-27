@@ -1,0 +1,12 @@
+@import "tailwindcss";
+
+@theme {
+  --color-lumen-bg: #0a0908;
+  --color-lumen-accent: #fde68a;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
