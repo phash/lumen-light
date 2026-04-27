@@ -1,89 +1,27 @@
 # 04 · API-Spezifikation
 
-Basis-URL: `https://lumen.example.com/api/v1`
+Basis-URL: `https://lumen.mr-development.de/api/v1`
 
-Alle Bodies & Responses: `application/json`. Auth via `Authorization: Bearer <jwt>`.
+Alle Bodies & Responses: `application/json`. Auth via `Authorization: Bearer <Keycloak-Access-JWT>` — siehe ADR-010.
 
 OpenAPI-Spec wird automatisch unter `/docs` (Swagger UI) und `/redoc` von FastAPI bereitgestellt — diese Datei dient als kuratierte Übersicht.
 
-## Auth
+## Auth (extern: Keycloak)
 
-### POST /auth/register
+Lumen hat **keine eigenen Auth-Endpoints mehr.** Login/Logout/Refresh laufen über den Keycloak-Realm `lumen`:
 
-Registriert einen neuen User und legt Default-Presets an.
+| Funktion | Endpoint (Keycloak) |
+|---|---|
+| Login (OIDC Authorization Code + PKCE) | `https://auth.<domain>/realms/lumen/protocol/openid-connect/auth` |
+| Token-Tausch | `https://auth.<domain>/realms/lumen/protocol/openid-connect/token` |
+| Token-Verifikation (JWK-Set) | `https://auth.<domain>/realms/lumen/protocol/openid-connect/certs` |
+| Logout | `https://auth.<domain>/realms/lumen/protocol/openid-connect/logout` |
 
-**Request:**
-```json
-{
-  "email": "manuel@example.com",
-  "password": "mindestens-12-zeichen-bitte"
-}
-```
-
-**Response 201:**
-```json
-{
-  "id": "0d9fa7cc-…",
-  "email": "manuel@example.com",
-  "created_at": "2026-04-27T10:00:00Z"
-}
-```
-
-**Fehler:**
-- `400` E-Mail bereits registriert
-- `422` Passwort zu kurz (< 12 Zeichen)
-
----
-
-### POST /auth/login
-
-**Request:**
-```json
-{ "email": "manuel@example.com", "password": "…" }
-```
-
-**Response 200:**
-```json
-{
-  "access_token": "eyJ…",
-  "refresh_token": "eyJ…",
-  "token_type": "bearer",
-  "expires_in": 900
-}
-```
-
-**Fehler:**
-- `401` Ungültige Credentials (bewusst nicht zwischen "User existiert nicht" und "falsches PW" unterscheiden)
-
----
-
-### POST /auth/refresh
-
-**Request:**
-```json
-{ "refresh_token": "eyJ…" }
-```
-
-**Response 200:** Wie `/login`. Alter Refresh-Token wird invalidiert (Rotation).
-
----
-
-### POST /auth/logout
-
-Invalidiert den übergebenen Refresh-Token.
-
-**Request:**
-```json
-{ "refresh_token": "eyJ…" }
-```
-
-**Response 204** (kein Body)
-
----
+Das Frontend nutzt eine OIDC-Library (z. B. `react-oidc-context`), die den ganzen Flow abstrahiert. Der Backend-Pfad sieht nur das fertige `Authorization: Bearer <JWT>`-Header.
 
 ### GET /me
 
-Liefert das aktuelle User-Profil.
+Liefert das lokal gespiegelte User-Profil. Bei erstem Aufruf eines neuen Keycloak-Users wird die `users`-Row JIT angelegt.
 
 **Response 200:**
 ```json
@@ -93,6 +31,10 @@ Liefert das aktuelle User-Profil.
   "created_at": "2026-04-27T10:00:00Z"
 }
 ```
+
+**Fehler:**
+- `401` Token fehlt, ungültig oder abgelaufen
+- `403` Token gültig, aber Realm-Mismatch oder fehlende Audience-Claim
 
 ## Presets
 
@@ -174,6 +116,80 @@ Aktualisiert ein Preset (Name und/oder Adjustments).
 
 **Response 204** (kein Body)
 
+## Images (Iteration 6+)
+
+Direkter Pixel-Pfad ist Browser↔Garage. Backend issuiert nur Pre-Signed URLs nach Auth-Check und führt eine Metadaten-Tabelle.
+
+### POST /images
+
+Initiiert einen Upload. Liefert eine Pre-Signed PUT-URL zurück, die der Browser direkt nutzt, ohne die FastAPI mit Bytes zu belasten.
+
+**Request:**
+```json
+{
+  "filename": "IMG_0042.CR2",
+  "content_type": "image/x-canon-cr2",
+  "size_bytes": 24572838
+}
+```
+
+**Response 201:**
+```json
+{
+  "id": "11111111-…",
+  "upload_url": "https://garage.<domain>/lumen-images/<user_id>/originals/<image_id>?X-Amz-Algorithm=…",
+  "expires_in": 900
+}
+```
+
+**Fehler:**
+- `413` `size_bytes` über der harten 200-MB-Grenze
+- `415` `content_type` nicht erlaubt (nur image/jpeg|png|tiff + RAW-Varianten)
+- `422` Felder fehlen / ungültige Werte
+
+---
+
+### POST /images/{id}/confirm
+
+Bestätigt, dass der Browser den Upload abgeschlossen hat. Backend prüft via S3 `HEAD`, dass das Objekt tatsächlich existiert und die Größe übereinstimmt; setzt `upload_state=ready`.
+
+**Response 200:** vollständiges `ImageOut`-Objekt.
+
+**Fehler:**
+- `404` Image-ID gehört nicht zu diesem User oder existiert nicht
+- `409` Objekt fehlt im Bucket (Upload nicht abgeschlossen) — `upload_state` bleibt `pending`, Frontend kann erneut PUT versuchen
+
+---
+
+### GET /images
+
+Listet die Images des eingeloggten Users.
+
+**Query-Parameter:**
+- `state`: `ready` (default) | `pending` | `all`
+- `sort`: `-created_at` (default) | `created_at` | `original_filename` | `-original_filename`
+
+**Response 200:** Array von `ImageOut`.
+
+---
+
+### GET /images/{id}/url
+
+Liefert eine Pre-Signed GET-URL für den direkten Download/Anzeige im Browser.
+
+**Response 200:**
+```json
+{ "url": "https://garage.<domain>/…", "expires_in": 900 }
+```
+
+---
+
+### DELETE /images/{id}
+
+Löscht die DB-Zeile UND das Garage-Objekt (best effort: bei Garage-Fehler wird die DB-Zeile auf `failed`-Tombstone gesetzt und ein Re-Try-Job protokolliert — Details in Iteration 6).
+
+**Response 204** (kein Body)
+
 ## Fehler-Format
 
 Einheitliches Fehler-Format aller Endpoints:
@@ -191,11 +207,12 @@ Einheitliches Fehler-Format aller Endpoints:
 
 | Endpoint | Limit |
 |---|---|
-| `/auth/login`, `/auth/register` | 5 / Minute / IP |
-| `/auth/refresh` | 30 / Minute / User |
-| Restliche `/api/*` | 120 / Minute / User |
+| Keycloak (`/realms/lumen/...`) | Brute-Force-Schutz von Keycloak konfiguriert (Failed-Login-Lockout) |
+| `/api/v1/images` (POST init) | 30 / Minute / User |
+| `/api/v1/presets/*` | 120 / Minute / User |
+| Restliche `/api/v1/*` | 120 / Minute / User |
 
-Implementiert in Nginx (`limit_req_zone`).
+Implementiert in Caddy (`@rate_limit` Matcher) auf Cluster-Ebene.
 
 ## CORS
 

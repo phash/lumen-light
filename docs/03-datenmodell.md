@@ -1,31 +1,38 @@
 # 03 · Datenmodell
 
-## Übersicht
+## Übersicht (Stand ADR-010 + ADR-011)
 
-Drei Tabellen reichen für das MVP:
+Mit Keycloak als IdP fällt die `refresh_tokens`-Tabelle weg, `users.password_hash` wird ersetzt durch `keycloak_sub` (UUID-String aus dem Token). Mit Garage S3 als Storage kommt `images` hinzu.
 
 ```
-users              presets                  refresh_tokens
-─────              ───────                  ──────────────
-id (UUID, PK)      id (UUID, PK)            id (UUID, PK)
-email (unique)     user_id (FK users)       user_id (FK users)
-password_hash      name                     token_hash
-created_at         adjustments (JSONB)      expires_at
-                   created_at               revoked
-                   updated_at
+users                   presets                images
+─────                   ───────                ──────
+id (UUID, PK)           id (UUID, PK)          id (UUID, PK)
+keycloak_sub (unique)   user_id (FK users)     user_id (FK users)
+email (Spiegel,         name                   bucket_key (unique)
+   nicht autoritativ)   adjustments (JSONB)    original_filename
+created_at              created_at             content_type
+                        updated_at             size_bytes
+                                               upload_state
+                                               created_at
+                                               confirmed_at
 ```
 
-## SQL-DDL
+`keycloak_sub` ist das **autoritative** User-Identitätsmerkmal. `email` wird beim Just-in-Time-Provisioning aus dem Token gespiegelt — bei späteren Token-Refreshs aktualisiert. Nicht für Lookups verwenden, sondern nur für die UI-Anzeige.
+
+## SQL-DDL (Soll-Zustand)
 
 ```sql
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
 CREATE TABLE users (
     id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    email         CITEXT UNIQUE NOT NULL,
-    password_hash TEXT NOT NULL,
+    keycloak_sub  TEXT UNIQUE NOT NULL,
+    email         TEXT NOT NULL,
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+CREATE INDEX idx_users_keycloak_sub ON users(keycloak_sub);
 
 CREATE TABLE presets (
     id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -40,19 +47,27 @@ CREATE TABLE presets (
 CREATE INDEX idx_presets_user_id ON presets(user_id);
 CREATE INDEX idx_presets_adjustments ON presets USING GIN (adjustments);
 
-CREATE TABLE refresh_tokens (
-    id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    token_hash TEXT NOT NULL,
-    expires_at TIMESTAMPTZ NOT NULL,
-    revoked    BOOLEAN NOT NULL DEFAULT false,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+CREATE TABLE images (
+    id                UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id           UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    bucket_key        TEXT UNIQUE NOT NULL,
+    original_filename TEXT NOT NULL,
+    content_type      TEXT NOT NULL,
+    size_bytes        BIGINT,
+    upload_state      TEXT NOT NULL CHECK (upload_state IN ('pending','ready','failed')),
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT now(),
+    confirmed_at      TIMESTAMPTZ
 );
 
-CREATE INDEX idx_refresh_tokens_user_id ON refresh_tokens(user_id);
+CREATE INDEX idx_images_user_id ON images(user_id);
+CREATE INDEX idx_images_state   ON images(upload_state);
 ```
 
-`CITEXT` macht E-Mail-Vergleiche case-insensitive ohne extra `LOWER()`-Indizes.
+**Bucket-Key-Konvention:** `<user_id>/originals/<image_id>` (per-User-Prefix verhindert Cross-Tenant-Reads über S3-Listing). Backend prüft beim Issue von Pre-Signed URLs, dass der Prefix zum eingeloggten User passt — Defense in Depth zusätzlich zur Pre-Signing-Signature.
+
+**Migrations-Plan (Iteration 4 + 6):**
+- Migration `002_keycloak_schema.py`: `users.password_hash` → drop, `users.keycloak_sub` → add (NOT NULL, UNIQUE), `users.email` → drop CITEXT-Constraint (nicht mehr autoritativ). `refresh_tokens` → drop. Bestehende Daten: keine — Iteration 1 nutzt nur Test-DB.
+- Migration `003_images.py`: `images`-Tabelle anlegen.
 
 ## Adjustment-Schema (JSONB)
 
@@ -122,13 +137,14 @@ DEFAULT_PRESETS = [
 
 Damit hat jeder neue Account einen Startpunkt und sieht, wie Presets aussehen.
 
-## Pydantic-Modelle (Auszug)
+## Pydantic-Modelle (Auszug, Soll-Zustand)
 
 ```python
-# backend/app/schemas.py
+# backend/app/schemas.py (Soll)
 from pydantic import BaseModel, EmailStr, Field, ConfigDict
 from datetime import datetime
 from uuid import UUID
+from typing import Literal
 
 class Adjustments(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -143,9 +159,18 @@ class Adjustments(BaseModel):
     vibrance: float    = Field(ge=-1, le=1,  default=0)
     saturation: float  = Field(ge=-1, le=1,  default=0)
 
+
+class UserOut(BaseModel):
+    id: UUID
+    email: EmailStr
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
 class PresetIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     adjustments: Adjustments
+
 
 class PresetOut(BaseModel):
     id: UUID
@@ -154,6 +179,32 @@ class PresetOut(BaseModel):
     created_at: datetime
     updated_at: datetime
     model_config = ConfigDict(from_attributes=True)
+
+
+# --- Images (neu in Iteration 6) ---
+
+class ImageInitIn(BaseModel):
+    filename: str = Field(min_length=1, max_length=255)
+    content_type: str = Field(pattern=r"^image/(jpeg|png|tiff|x-(canon-cr2|nikon-nef|sony-arw|fuji-raf|adobe-dng))$")
+    size_bytes: int = Field(gt=0, le=200 * 1024 * 1024)  # 200 MB harte Obergrenze
+
+
+class ImageInitOut(BaseModel):
+    id: UUID
+    upload_url: str
+    expires_in: int  # Sekunden bis pre-signed URL ungueltig wird
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ImageOut(BaseModel):
+    id: UUID
+    original_filename: str
+    content_type: str
+    size_bytes: int | None
+    upload_state: Literal["pending", "ready", "failed"]
+    created_at: datetime
+    confirmed_at: datetime | None
+    model_config = ConfigDict(from_attributes=True)
 ```
 
-Die vollständige Version liegt im Code-Skeleton in `backend/app/schemas.py`.
+Was bleibt unverändert: `Adjustments` und damit `adjustments.schema.json`, `PresetIn`/`PresetOut`. Was wegfällt: `UserCreate`, `LoginRequest`, `TokenPair`, `RefreshRequest` — alles, was zur eigenen Auth gehörte.

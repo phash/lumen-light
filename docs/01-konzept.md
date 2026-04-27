@@ -2,9 +2,11 @@
 
 ## Vision
 
-Ein browser-basierter, self-hosted RAW-Entwickler, der die wichtigsten 80 % der Lightroom-Funktionalität abdeckt — ohne Subscription, ohne Cloud-Zwang, mit voller Datensouveränität.
+Ein browser-basierter, self-hosted RAW-Entwickler, der die wichtigsten 80 % der Lightroom-Funktionalität abdeckt — ohne Subscription, ohne Cloud-Zwang, mit **vom User kontrollierter Datensouveränität**.
 
 Arbeitsname: **Lumen · light**
+
+**Datensouveränität in der Praxis:** Bilder bleiben standardmäßig auf dem Gerät, das sie bearbeitet. Wer sie hochladen will (für Multi-Device-Sync, Archiv, Sharing), entscheidet das pro Bild bewusst — nichts wandert *automatisch* zum Server. Upload geht direkt vom Browser zum eigenen S3-Bucket (Garage), das Backend speichert nur Metadaten, niemals Pixeldaten.
 
 ## Problem
 
@@ -49,8 +51,9 @@ Es fehlt ein **moderner, schlanker, browser-nativer Mittelweg**: simpel wie Ligh
 - Beschneiden + Begradigen
 - Objektivkorrektur via Lensfun-Profil-DB (clientseitig, statisch)
 - Presets: speichern, anwenden, löschen, umbenennen
-- User-Accounts mit E-Mail/Passwort
-- JPEG-Export in beliebiger Auflösung
+- **Auth via Keycloak** (eigener Realm `lumen`, OIDC Authorization Code + PKCE)
+- **Optionaler Image-Upload nach Garage S3** (per-User-Bucket-Prefix, Pre-Signed URLs, Pixel laufen direkt Browser↔Garage)
+- JPEG-Export in beliebiger Auflösung (lokal; optionales Hochladen ins Bucket)
 - Self-hosting via Docker Compose
 
 **Drin als Stretch (Wochen 17–22):**
@@ -74,8 +77,9 @@ Diese Punkte landen nach dem MVP auf der Backlog-Liste, nach Nutzer-Feedback pri
 Das MVP ist erfolgreich, wenn:
 1. Ein Bild von Drag-and-Drop bis Export in unter 30 Sekunden bearbeitet werden kann.
 2. Die Shader-Pipeline auf einem Mittelklasse-Laptop (Intel Iris Xe / M1) bei einem 24-MP-Bild bei jedem Slider-Move flüssig (≥30 fps) reagiert.
-3. Eigene Presets über Geräte hinweg synchronisiert werden (eingeloggt im selben Account).
-4. Die ganze Stack via `docker compose up -d` auf einem 4-GB-VPS läuft.
+3. Eigene Presets über Geräte hinweg synchronisiert werden (Single-Sign-On via Keycloak).
+4. Optional hochgeladene Bilder können auf einem zweiten Gerät weiter bearbeitet werden.
+5. Die ganze Stack via `docker compose up -d` auf einem 4-GB-VPS läuft (oder als Add-On in einem bestehenden `caddy-proxy`-Cluster wie MRD Production).
 
 ## Nicht-Ziele
 

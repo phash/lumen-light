@@ -2,28 +2,44 @@
 
 Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Annahme: ~10–15 Stunden Entwicklung pro Woche (Side-Projekt-Tempo).
 
-## Phase 1 · Bildverarbeitung im Browser (Wochen 1–3)
+**Hinweis 2026-04-27:** Die ursprünglichen Phasen 1–6 sind durch die Architektur-Updates (ADR-010 Keycloak, ADR-011 Garage, ADR-012 Caddy) neu strukturiert. Iterationen sind feiner granular als die alten "Phasen" — siehe `docs/superpowers/specs|plans/` für jede einzelne. Nachfolgende Tabelle zeigt den aktuellen Stand.
+
+## Iteration-Übersicht (Stand 2026-04-27)
+
+| It. | Thema | Status |
+|---|---|---|
+| 0 | Grundordnung (Git, arc42, Spec/Plan-Dirs) | abgeschlossen |
+| 1 | Backend test-tauglich (testcontainers, 35 Tests) | abgeschlossen |
+| 2 | Vite-Frontend-Skelett (5 Routes, Vitest) | abgeschlossen |
+| 3 | Architektur-Update (Keycloak + Garage + Caddy in Doku) | in Arbeit |
+| 4 | Backend auf Keycloak (`/auth/*` raus, JWK-Verifikation rein) | geplant |
+| 5 | Frontend Auth (OIDC via `react-oidc-context`, AuthGuard) | geplant |
+| 6 | Image-Storage (Garage, Pre-Signed URLs, Library-UI) | geplant |
+| 7 | Production-Deployment (`docker-compose.prod.yml`, Caddyfile) | geplant |
+| 8+ | Phase-1-Roadmap-Inhalte: Editor-Logik aus Prototyp extrahieren, Slider, Histogramm, Export | folgt |
+
+## Phase 1 · Bildverarbeitung im Browser (urspr. Wochen 1–3, jetzt Iteration 8+)
 
 **Ziel:** JPEG laden, alle 10 Slider funktional, Vorher/Nachher, Export.
 
 | Woche | Aufgabe |
 |---|---|
-| 1 | Vite-Projekt-Setup, React + Tailwind. WebGL2-Boilerplate (Quad, Programm, Texture-Upload). Erstes Bild rendert mit Identity-Shader. |
-| 2 | Komplette Shader-Pipeline (sRGB↔Linear, alle 10 Adjustments). Custom Slider-Component. Histogramm via Canvas-Readback. |
-| 3 | Vorher/Nachher-Toggle. Tastatur-Shortcuts. Export als JPEG/PNG mit Quality-Slider. Polish & Bugfixes. |
+| ~ | WebGL2-Boilerplate (Quad, Programm, Texture-Upload) im Vite-Projekt. Erstes Bild rendert mit Identity-Shader. |
+| ~ | Komplette Shader-Pipeline (sRGB↔Linear, alle 10 Adjustments). Custom Slider-Component. Histogramm via Canvas-Readback. |
+| ~ | Vorher/Nachher-Toggle. Tastatur-Shortcuts. Export als JPEG/PNG mit Quality-Slider. Polish & Bugfixes. |
 
 **Demo-Stand:** Bild reinziehen, alle Slider bewegen, exportieren. Keine Persistenz, alles flüchtig.
 
-## Phase 2 · Auth & Presets-Backend (Wochen 4–5)
+## Phase 2 · Auth & Presets (urspr. Wochen 4–5, jetzt Iterationen 4+5)
 
-**Ziel:** User-Account, Login, Presets serverseitig speichern.
+**Ziel ändert sich gegenüber dem Original:** statt eigenem Auth-Server nutzen wir Keycloak (siehe ADR-010). Presets-CRUD bleibt im Lumen-Backend.
 
-| Woche | Aufgabe |
+| Iteration | Aufgabe |
 |---|---|
-| 4 | FastAPI-Skeleton, Postgres in Docker, SQLAlchemy + Alembic Setup. `users`, `presets`, `refresh_tokens`-Migrationen. Auth-Endpoints (register, login, refresh, logout, /me). |
-| 5 | Presets-CRUD-Endpoints. CORS, Rate Limiting (für Auth), Tests. Frontend-Integration: Login-Form, geschützte Route, Preset-Liste in Editor. |
+| 4 | Backend: `/auth/*` zurückbauen, JWK-basierte JWT-Verifikation gegen Keycloak-Realm `lumen`, JIT-User-Provisioning, Tests-Suite umstellen (Test-Keycloak via testcontainers oder Mock-JWK-Server). |
+| 5 | Frontend: OIDC-Library einbinden, Login-/Logout-Buttons reden mit Keycloak, AuthGuard schützt `/editor` und `/account`, Preset-API-Calls mit Bearer-Token. |
 
-**Demo-Stand:** Account anlegen, einloggen, Preset speichern, einloggen auf zweitem Gerät, dort Preset wiederfinden.
+**Demo-Stand:** Account in Keycloak anlegen, einloggen, Preset speichern, auf zweitem Gerät einloggen (SSO), dort Preset wiederfinden.
 
 ## Phase 3 · RAW-Decoding (Wochen 6–8)
 
@@ -62,13 +78,16 @@ Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Anna
 
 ## Phase 6 · Polish & Deployment (Wochen 14–16)
 
-| Woche | Aufgabe |
-|---|---|
-| 14 | UI-Polish, Tastatur-Shortcuts vollständig, Touch-Optimierung. PWA-Manifest. Offline-fähig (Service Worker). |
-| 15 | Docker-Compose-Setup finalisieren. CI/CD via GitHub Actions: Build → Test → Deploy. Backup-Strategie (`pg_dump` Cron). |
-| 16 | Beta-Test mit 5–10 echten Usern, Bug-Backlog abarbeiten. Release-Notes, Doku, Selfhosting-Anleitung. |
+Nach dem Architektur-Update entspricht das den Iterationen 6 (Image-Storage), 7 (Production-Deployment) und einer abschließenden Polish-Iteration.
 
-**Demo-Stand:** Öffentlich nutzbar unter eigener Domain. README beschreibt Selfhosting in 5 Minuten.
+| Iteration | Aufgabe |
+|---|---|
+| 6 | Image-Storage: Garage-Bucket-Setup, Backend `/images/*`-Endpoints (init/confirm/list/url/delete), Frontend Library-Panel mit Upload, Tests gegen lokalen Garage-Container. |
+| 7 | Production-Deployment: `docker-compose.prod.yml` mit `caddy-proxy`-Network-Anschluss, Caddyfile-Eintrag, Realm-Export, Garage-Init-Script, initiales Deployment durch Manuel. Backup-Strategie (`pg_dump` Cron für Lumen + Keycloak DB, Garage-Replikation). |
+| 8 | UI-Polish, Tastatur-Shortcuts vollständig, Touch-Optimierung. PWA-Manifest. Offline-fähig (Service Worker). |
+| 9 | Beta-Test mit 5–10 echten Usern, Bug-Backlog abarbeiten. Release-Notes, Doku, Selfhosting-Anleitung. |
+
+**Demo-Stand:** Öffentlich nutzbar unter `lumen.mr-development.de`. README beschreibt Selfhosting (Cluster-Add-On *oder* Standalone-Compose) in unter 10 Minuten.
 
 ## Nach dem MVP (Backlog)
 

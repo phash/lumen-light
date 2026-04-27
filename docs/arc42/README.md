@@ -29,6 +29,16 @@ Wo arc42 mehr verlangt als die Konzept-Dokumente liefern, gibt es ein eigenes Do
 - [`10-qualitaet.md`](10-qualitaet.md) — messbare Qualitätsziele, Test-Strategie
 - [`12-glossar.md`](12-glossar.md) — Fachbegriffe (Adjustment, sRGB↔Linear, Vibrance, Tonwertbereiche, …)
 
+## Wichtige Architektur-Entscheidungen (Stand 2026-04-27)
+
+Folgende ADRs prägen die Bausteinsicht und Verteilungssicht maßgeblich:
+
+- **ADR-010 (Keycloak)** — externer IdP, FastAPI ist nur Resource Server. Ersetzt das ursprüngliche eigene JWT-Auth-System (ADR-004 obsolet).
+- **ADR-011 (Garage S3)** — optionaler Image-Storage. Pixel laufen direkt Browser↔Garage via Pre-Signed URLs, nie durch FastAPI.
+- **ADR-012 (Caddy)** — Reverse Proxy + TLS, Cluster-shared im `caddy-proxy`-Network.
+
+Vor dieser Iteration war Lumen als Standalone-Stack mit eigenem Auth und reiner Browser-only-Pixelverarbeitung gedacht. Mit dem Cluster-Setup wird es zu einem Add-On, das zentrale Cluster-Services (Keycloak, Garage) mitbenutzt.
+
 ## Synchronisation mit MRD
 
 Wenn ein Konzept-Dokument hier geändert wird, wird das entsprechende MRD-Document aktualisiert:

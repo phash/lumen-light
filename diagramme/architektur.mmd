@@ -1,33 +1,56 @@
-%% Lumen · light — Systemarchitektur
+%% Lumen · light — Systemarchitektur (Stand ADR-010, ADR-011, ADR-012)
 %% Anzeige: in jedem Markdown-Renderer mit Mermaid-Support, oder mermaid.live
 
 flowchart TB
     subgraph Browser["Browser (Client)"]
-        UI["React UI<br/>Slider · Histogramm · Presets"]
+        UI["React UI<br/>Slider · Histogramm · Presets · Library"]
         WGL["WebGL2 Renderer<br/>Shader-Pipeline"]
         IMG["Image Source<br/>JPEG/PNG · libraw-wasm"]
         IDB[("IndexedDB<br/>Session-Cache")]
+        OIDC["OIDC-Client<br/>(react-oidc-context)"]
         UI -->|"Slider-Werte"| WGL
         IMG -->|"Texture"| WGL
         WGL -->|"Cache"| IDB
+        UI -->|"Login/Logout"| OIDC
     end
 
-    subgraph Backend["Backend"]
-        API["FastAPI<br/>Auth · Presets"]
-        DB[("PostgreSQL<br/>users · presets · refresh_tokens")]
-        API <-->|"asyncpg"| DB
+    subgraph Cluster["Cluster (caddy-proxy network)"]
+        CADDY["Caddy<br/>TLS · Rate Limiting"]
+
+        subgraph Lumen["Lumen-Stack"]
+            API["lumen-api<br/>FastAPI · JWK-Verify · S3-URL-Issuer"]
+            WEB["lumen-web<br/>nginx + Vite-Build"]
+            DB[("lumen-db<br/>users · presets · images")]
+            API <-->|"asyncpg"| DB
+        end
+
+        subgraph Auth["Auth-Stack (cluster-shared)"]
+            KC["Keycloak<br/>Realm: lumen<br/>(JWK-Set)"]
+            KCDB[("keycloak-db")]
+            KC <-->|"JDBC"| KCDB
+        end
+
+        subgraph Storage["Storage (cluster-shared)"]
+            GAR[("Garage S3<br/>Bucket: lumen-images")]
+        end
+
+        CADDY -->|"/api/v1/*"| API
+        CADDY -->|"static"| WEB
+        CADDY -->|"auth.<d>"| KC
     end
 
-    subgraph Deployment["VPS"]
-        NGX["Nginx<br/>TLS · Static Files · Rate Limiting"]
-        NGX -->|"reverse proxy"| API
-        NGX -->|"static"| Static["Frontend Build<br/>(dist/)"]
-    end
-
-    UI <-.->|"HTTPS · JWT"| NGX
+    OIDC <-.->|"OIDC<br/>Auth Code+PKCE"| KC
+    UI <-.->|"HTTPS · Bearer JWT"| CADDY
+    API -.->|"JWK-Set fetch"| KC
+    API -->|"S3-API: HEAD,<br/>presign URL"| GAR
+    UI <==>|"Pre-Signed PUT/GET<br/>(direkt, kein Backend)"| GAR
 
     style Browser fill:#1a1a1a,stroke:#d4a373,color:#e8e2d4
-    style Backend fill:#1a1a1a,stroke:#d4a373,color:#e8e2d4
-    style Deployment fill:#1a1a1a,stroke:#d4a373,color:#e8e2d4
+    style Cluster fill:#0e0e0e,stroke:#888,color:#e8e2d4
+    style Lumen fill:#1a1a1a,stroke:#d4a373,color:#e8e2d4
+    style Auth fill:#1a1a1a,stroke:#7aa6d6,color:#e8e2d4
+    style Storage fill:#1a1a1a,stroke:#a3d4a3,color:#e8e2d4
     style IDB fill:#2a2a2a,stroke:#666,color:#e8e2d4
     style DB fill:#2a2a2a,stroke:#666,color:#e8e2d4
+    style KCDB fill:#2a2a2a,stroke:#666,color:#e8e2d4
+    style GAR fill:#2a2a2a,stroke:#666,color:#e8e2d4
