@@ -4,6 +4,7 @@
  * ein State-Container, der explizit instanziiert wird.
  */
 import { ADJUSTMENTS, type Adjustments } from "./adjustments";
+import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "./mask";
 import { FRAG_SRC, VERT_SRC } from "./shaders";
 
 export class WebGLRendererError extends Error {
@@ -54,27 +55,26 @@ interface UniformMap {
   readonly uvTransform: WebGLUniformLocation;
   readonly lensDistortion: WebGLUniformLocation;
   readonly lensVignette: WebGLUniformLocation;
-  readonly maskEnabled: WebGLUniformLocation;
-  readonly maskP1: WebGLUniformLocation;
-  readonly maskP2: WebGLUniformLocation;
-  readonly maskFeather: WebGLUniformLocation;
-  readonly localExposure: WebGLUniformLocation;
-  readonly localContrast: WebGLUniformLocation;
-  readonly localSaturation: WebGLUniformLocation;
-  readonly localTemperature: WebGLUniformLocation;
-  readonly radialEnabled: WebGLUniformLocation;
-  readonly radialCenter: WebGLUniformLocation;
-  readonly radialRadii: WebGLUniformLocation;
-  readonly radialFeather: WebGLUniformLocation;
-  readonly radialLocalExposure: WebGLUniformLocation;
-  readonly radialLocalContrast: WebGLUniformLocation;
-  readonly radialLocalSaturation: WebGLUniformLocation;
-  readonly radialLocalTemperature: WebGLUniformLocation;
+  readonly numLinearMasks: WebGLUniformLocation;
+  readonly linMaskP1: WebGLUniformLocation;
+  readonly linMaskP2: WebGLUniformLocation;
+  readonly linMaskFeather: WebGLUniformLocation;
+  readonly linLocalExposure: WebGLUniformLocation;
+  readonly linLocalContrast: WebGLUniformLocation;
+  readonly linLocalSaturation: WebGLUniformLocation;
+  readonly linLocalTemperature: WebGLUniformLocation;
+  readonly numRadialMasks: WebGLUniformLocation;
+  readonly radMaskCenter: WebGLUniformLocation;
+  readonly radMaskRadii: WebGLUniformLocation;
+  readonly radMaskFeather: WebGLUniformLocation;
+  readonly radLocalExposure: WebGLUniformLocation;
+  readonly radLocalContrast: WebGLUniformLocation;
+  readonly radLocalSaturation: WebGLUniformLocation;
+  readonly radLocalTemperature: WebGLUniformLocation;
   readonly adjustments: ReadonlyMap<string, WebGLUniformLocation>;
 }
 
-export interface LinearMaskUniforms {
-  readonly enabled: boolean;
+export interface LinearMaskParams {
   readonly p1u: number;
   readonly p1v: number;
   readonly p2u: number;
@@ -86,8 +86,7 @@ export interface LinearMaskUniforms {
   readonly temperature: number;
 }
 
-export interface RadialMaskUniforms {
-  readonly enabled: boolean;
+export interface RadialMaskParams {
   readonly cu: number;
   readonly cv: number;
   readonly rx: number;
@@ -99,15 +98,12 @@ export interface RadialMaskUniforms {
   readonly temperature: number;
 }
 
-const DEFAULT_MASK: LinearMaskUniforms = {
-  enabled: false, p1u: 0.5, p1v: 0, p2u: 0.5, p2v: 1, feather: 0.4,
-  exposure: 0, contrast: 0, saturation: 0, temperature: 0,
-};
+export interface MasksUniforms {
+  readonly linear: ReadonlyArray<LinearMaskParams>;
+  readonly radial: ReadonlyArray<RadialMaskParams>;
+}
 
-const DEFAULT_RADIAL: RadialMaskUniforms = {
-  enabled: false, cu: 0.5, cv: 0.5, rx: 0.25, ry: 0.25, feather: 0.4,
-  exposure: 0, contrast: 0, saturation: 0, temperature: 0,
-};
+const EMPTY_MASKS: MasksUniforms = { linear: [], radial: [] };
 
 const IDENTITY_UV_TRANSFORM = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
@@ -116,6 +112,22 @@ export class Renderer {
   private readonly program: WebGLProgram;
   private readonly uniforms: UniformMap;
   private texture: WebGLTexture | null = null;
+
+  // Pre-allocated typed arrays — vermeiden Allocation pro Frame.
+  private readonly linP1 = new Float32Array(MAX_LINEAR_MASKS * 2);
+  private readonly linP2 = new Float32Array(MAX_LINEAR_MASKS * 2);
+  private readonly linFeather = new Float32Array(MAX_LINEAR_MASKS);
+  private readonly linExposure = new Float32Array(MAX_LINEAR_MASKS);
+  private readonly linContrast = new Float32Array(MAX_LINEAR_MASKS);
+  private readonly linSaturation = new Float32Array(MAX_LINEAR_MASKS);
+  private readonly linTemperature = new Float32Array(MAX_LINEAR_MASKS);
+  private readonly radCenter = new Float32Array(MAX_RADIAL_MASKS * 2);
+  private readonly radRadii = new Float32Array(MAX_RADIAL_MASKS * 2);
+  private readonly radFeather = new Float32Array(MAX_RADIAL_MASKS);
+  private readonly radExposure = new Float32Array(MAX_RADIAL_MASKS);
+  private readonly radContrast = new Float32Array(MAX_RADIAL_MASKS);
+  private readonly radSaturation = new Float32Array(MAX_RADIAL_MASKS);
+  private readonly radTemperature = new Float32Array(MAX_RADIAL_MASKS);
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", {
@@ -175,22 +187,22 @@ export class Renderer {
       uvTransform: get("u_uvTransform"),
       lensDistortion: get("u_lensDistortion"),
       lensVignette: get("u_lensVignette"),
-      maskEnabled: get("u_maskEnabled"),
-      maskP1: get("u_maskP1"),
-      maskP2: get("u_maskP2"),
-      maskFeather: get("u_maskFeather"),
-      localExposure: get("u_localExposure"),
-      localContrast: get("u_localContrast"),
-      localSaturation: get("u_localSaturation"),
-      localTemperature: get("u_localTemperature"),
-      radialEnabled: get("u_radialEnabled"),
-      radialCenter: get("u_radialCenter"),
-      radialRadii: get("u_radialRadii"),
-      radialFeather: get("u_radialFeather"),
-      radialLocalExposure: get("u_radialLocalExposure"),
-      radialLocalContrast: get("u_radialLocalContrast"),
-      radialLocalSaturation: get("u_radialLocalSaturation"),
-      radialLocalTemperature: get("u_radialLocalTemperature"),
+      numLinearMasks: get("u_numLinearMasks"),
+      linMaskP1: get("u_linMaskP1[0]"),
+      linMaskP2: get("u_linMaskP2[0]"),
+      linMaskFeather: get("u_linMaskFeather[0]"),
+      linLocalExposure: get("u_linLocalExposure[0]"),
+      linLocalContrast: get("u_linLocalContrast[0]"),
+      linLocalSaturation: get("u_linLocalSaturation[0]"),
+      linLocalTemperature: get("u_linLocalTemperature[0]"),
+      numRadialMasks: get("u_numRadialMasks"),
+      radMaskCenter: get("u_radMaskCenter[0]"),
+      radMaskRadii: get("u_radMaskRadii[0]"),
+      radMaskFeather: get("u_radMaskFeather[0]"),
+      radLocalExposure: get("u_radLocalExposure[0]"),
+      radLocalContrast: get("u_radLocalContrast[0]"),
+      radLocalSaturation: get("u_radLocalSaturation[0]"),
+      radLocalTemperature: get("u_radLocalTemperature[0]"),
       adjustments: adjustmentLocs,
     };
     gl.useProgram(this.program);
@@ -216,14 +228,61 @@ export class Renderer {
     return this.texture !== null;
   }
 
+  private packLinearMasks(linear: ReadonlyArray<LinearMaskParams>): number {
+    const n = Math.min(linear.length, MAX_LINEAR_MASKS);
+    this.linP1.fill(0);
+    this.linP2.fill(0);
+    this.linFeather.fill(0);
+    this.linExposure.fill(0);
+    this.linContrast.fill(0);
+    this.linSaturation.fill(0);
+    this.linTemperature.fill(0);
+    for (let i = 0; i < n; i++) {
+      const m = linear[i]!;
+      this.linP1[2 * i] = m.p1u;
+      this.linP1[2 * i + 1] = m.p1v;
+      this.linP2[2 * i] = m.p2u;
+      this.linP2[2 * i + 1] = m.p2v;
+      this.linFeather[i] = m.feather;
+      this.linExposure[i] = m.exposure;
+      this.linContrast[i] = m.contrast;
+      this.linSaturation[i] = m.saturation;
+      this.linTemperature[i] = m.temperature;
+    }
+    return n;
+  }
+
+  private packRadialMasks(radial: ReadonlyArray<RadialMaskParams>): number {
+    const n = Math.min(radial.length, MAX_RADIAL_MASKS);
+    this.radCenter.fill(0);
+    this.radRadii.fill(0);
+    this.radFeather.fill(0);
+    this.radExposure.fill(0);
+    this.radContrast.fill(0);
+    this.radSaturation.fill(0);
+    this.radTemperature.fill(0);
+    for (let i = 0; i < n; i++) {
+      const m = radial[i]!;
+      this.radCenter[2 * i] = m.cu;
+      this.radCenter[2 * i + 1] = m.cv;
+      this.radRadii[2 * i] = m.rx;
+      this.radRadii[2 * i + 1] = m.ry;
+      this.radFeather[i] = m.feather;
+      this.radExposure[i] = m.exposure;
+      this.radContrast[i] = m.contrast;
+      this.radSaturation[i] = m.saturation;
+      this.radTemperature[i] = m.temperature;
+    }
+    return n;
+  }
+
   render(
     adjustments: Adjustments,
     bypass: boolean,
     uvTransform: Float32Array = IDENTITY_UV_TRANSFORM,
     lensDistortion = 0,
     lensVignette = 0,
-    mask: LinearMaskUniforms = DEFAULT_MASK,
-    radial: RadialMaskUniforms = DEFAULT_RADIAL,
+    masks: MasksUniforms = EMPTY_MASKS,
   ): void {
     if (!this.texture) return;
     const gl = this.gl;
@@ -235,22 +294,27 @@ export class Renderer {
     gl.uniformMatrix3fv(this.uniforms.uvTransform, false, uvTransform);
     gl.uniform1f(this.uniforms.lensDistortion, lensDistortion);
     gl.uniform1f(this.uniforms.lensVignette, lensVignette);
-    gl.uniform1f(this.uniforms.maskEnabled, mask.enabled ? 1.0 : 0.0);
-    gl.uniform2f(this.uniforms.maskP1, mask.p1u, mask.p1v);
-    gl.uniform2f(this.uniforms.maskP2, mask.p2u, mask.p2v);
-    gl.uniform1f(this.uniforms.maskFeather, mask.feather);
-    gl.uniform1f(this.uniforms.localExposure, mask.exposure);
-    gl.uniform1f(this.uniforms.localContrast, mask.contrast);
-    gl.uniform1f(this.uniforms.localSaturation, mask.saturation);
-    gl.uniform1f(this.uniforms.localTemperature, mask.temperature);
-    gl.uniform1f(this.uniforms.radialEnabled, radial.enabled ? 1.0 : 0.0);
-    gl.uniform2f(this.uniforms.radialCenter, radial.cu, radial.cv);
-    gl.uniform2f(this.uniforms.radialRadii, radial.rx, radial.ry);
-    gl.uniform1f(this.uniforms.radialFeather, radial.feather);
-    gl.uniform1f(this.uniforms.radialLocalExposure, radial.exposure);
-    gl.uniform1f(this.uniforms.radialLocalContrast, radial.contrast);
-    gl.uniform1f(this.uniforms.radialLocalSaturation, radial.saturation);
-    gl.uniform1f(this.uniforms.radialLocalTemperature, radial.temperature);
+
+    const numLin = this.packLinearMasks(masks.linear);
+    gl.uniform1i(this.uniforms.numLinearMasks, numLin);
+    gl.uniform2fv(this.uniforms.linMaskP1, this.linP1);
+    gl.uniform2fv(this.uniforms.linMaskP2, this.linP2);
+    gl.uniform1fv(this.uniforms.linMaskFeather, this.linFeather);
+    gl.uniform1fv(this.uniforms.linLocalExposure, this.linExposure);
+    gl.uniform1fv(this.uniforms.linLocalContrast, this.linContrast);
+    gl.uniform1fv(this.uniforms.linLocalSaturation, this.linSaturation);
+    gl.uniform1fv(this.uniforms.linLocalTemperature, this.linTemperature);
+
+    const numRad = this.packRadialMasks(masks.radial);
+    gl.uniform1i(this.uniforms.numRadialMasks, numRad);
+    gl.uniform2fv(this.uniforms.radMaskCenter, this.radCenter);
+    gl.uniform2fv(this.uniforms.radMaskRadii, this.radRadii);
+    gl.uniform1fv(this.uniforms.radMaskFeather, this.radFeather);
+    gl.uniform1fv(this.uniforms.radLocalExposure, this.radExposure);
+    gl.uniform1fv(this.uniforms.radLocalContrast, this.radContrast);
+    gl.uniform1fv(this.uniforms.radLocalSaturation, this.radSaturation);
+    gl.uniform1fv(this.uniforms.radLocalTemperature, this.radTemperature);
+
     for (const [key, loc] of this.uniforms.adjustments) {
       gl.uniform1f(loc, adjustments[key as keyof Adjustments]);
     }

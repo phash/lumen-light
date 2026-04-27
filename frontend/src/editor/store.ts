@@ -12,10 +12,13 @@ import {
   defaultLensCorrection,
 } from "./lens";
 import {
-  type LinearMask,
+  type LinearMaskInstance,
   type LocalAdjustments,
+  MAX_LINEAR_MASKS,
+  MAX_RADIAL_MASKS,
+  type MaskInstance,
   type PointUv,
-  type RadialMask,
+  type RadialMaskInstance,
   clampFeather,
   clampLocalAdjustment,
   clampRadius,
@@ -34,6 +37,13 @@ export const MAX_STRAIGHTEN_RADIANS = (10 * Math.PI) / 180; // ±10°
 
 export type LensSource = "manual" | "auto";
 
+function newId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `m-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export interface EditorState {
   adjustments: Adjustments;
   bypass: boolean;
@@ -42,12 +52,8 @@ export interface EditorState {
   lensCorrection: LensCorrection;
   lensProfileId: string | null;
   manualLensOverride: boolean;
-  linearMaskEnabled: boolean;
-  linearMask: LinearMask;
-  linearLocalAdj: LocalAdjustments;
-  radialMaskEnabled: boolean;
-  radialMask: RadialMask;
-  radialLocalAdj: LocalAdjustments;
+  masks: ReadonlyArray<MaskInstance>;
+  selectedMaskId: string | null;
   setAdjustment: (key: AdjustmentKey, value: number) => void;
   resetAll: () => void;
   applyAdjustments: (adj: Partial<Adjustments>) => void;
@@ -57,26 +63,40 @@ export interface EditorState {
   setLensCorrection: (next: Partial<LensCorrection>, source?: LensSource) => void;
   setLensProfile: (id: string | null) => void;
   resetGeometry: () => void;
-  setLinearMaskEnabled: (enabled: boolean) => void;
-  setLinearMaskPoint: (which: "p1" | "p2", uv: PointUv) => void;
-  setLinearMaskFeather: (feather: number) => void;
-  setLinearLocalAdjustment: (
+  addLinearMask: () => string | null;
+  addRadialMask: () => string | null;
+  removeMask: (id: string) => void;
+  selectMask: (id: string | null) => void;
+  setLinearMaskPoint: (id: string, which: "p1" | "p2", uv: PointUv) => void;
+  setRadialMaskCenter: (id: string, uv: PointUv) => void;
+  setRadialMaskRadii: (id: string, rx: number, ry: number) => void;
+  setMaskFeather: (id: string, feather: number) => void;
+  setMaskLocalAdjustment: (
+    id: string,
     key: keyof LocalAdjustments,
     value: number,
   ) => void;
-  resetLinearMask: () => void;
-  setRadialMaskEnabled: (enabled: boolean) => void;
-  setRadialMaskCenter: (uv: PointUv) => void;
-  setRadialMaskRadii: (rx: number, ry: number) => void;
-  setRadialMaskFeather: (feather: number) => void;
-  setRadialLocalAdjustment: (
-    key: keyof LocalAdjustments,
-    value: number,
-  ) => void;
-  resetRadialMask: () => void;
+  removeSelectedMask: () => void;
+  clearMasks: () => void;
 }
 
-export const useEditorStore = create<EditorState>((set) => ({
+function findMask(
+  masks: ReadonlyArray<MaskInstance>,
+  id: string,
+): MaskInstance | undefined {
+  return masks.find((m) => m.id === id);
+}
+
+function countByType(
+  masks: ReadonlyArray<MaskInstance>,
+  type: "linear" | "radial",
+): number {
+  let n = 0;
+  for (const m of masks) if (m.type === type) n++;
+  return n;
+}
+
+export const useEditorStore = create<EditorState>((set, get) => ({
   adjustments: defaultAdjustments(),
   bypass: false,
   cropRect: defaultCropRect(),
@@ -84,12 +104,8 @@ export const useEditorStore = create<EditorState>((set) => ({
   lensCorrection: defaultLensCorrection(),
   lensProfileId: null,
   manualLensOverride: false,
-  linearMaskEnabled: false,
-  linearMask: defaultLinearMask(),
-  linearLocalAdj: defaultLocalAdjustments(),
-  radialMaskEnabled: false,
-  radialMask: defaultRadialMask(),
-  radialLocalAdj: defaultLocalAdjustments(),
+  masks: [],
+  selectedMaskId: null,
   setAdjustment: (key, value) =>
     set((state) => ({
       adjustments: { ...state.adjustments, [key]: clampAdjustment(key, value) },
@@ -128,56 +144,107 @@ export const useEditorStore = create<EditorState>((set) => ({
       lensProfileId: null,
       manualLensOverride: false,
     }),
-  setLinearMaskEnabled: (enabled) => set({ linearMaskEnabled: enabled }),
-  setLinearMaskPoint: (which, uv) =>
+  addLinearMask: () => {
+    const state = get();
+    if (countByType(state.masks, "linear") >= MAX_LINEAR_MASKS) return null;
+    const id = newId();
+    const instance: LinearMaskInstance = {
+      id,
+      type: "linear",
+      mask: defaultLinearMask(),
+      localAdj: defaultLocalAdjustments(),
+    };
+    set({ masks: [...state.masks, instance], selectedMaskId: id });
+    return id;
+  },
+  addRadialMask: () => {
+    const state = get();
+    if (countByType(state.masks, "radial") >= MAX_RADIAL_MASKS) return null;
+    const id = newId();
+    const instance: RadialMaskInstance = {
+      id,
+      type: "radial",
+      mask: defaultRadialMask(),
+      localAdj: defaultLocalAdjustments(),
+    };
+    set({ masks: [...state.masks, instance], selectedMaskId: id });
+    return id;
+  },
+  removeMask: (id) =>
     set((state) => ({
-      linearMask: { ...state.linearMask, [which]: clampUv(uv) },
+      masks: state.masks.filter((m) => m.id !== id),
+      selectedMaskId:
+        state.selectedMaskId === id ? null : state.selectedMaskId,
     })),
-  setLinearMaskFeather: (feather) =>
-    set((state) => ({
-      linearMask: { ...state.linearMask, feather: clampFeather(feather) },
-    })),
-  setLinearLocalAdjustment: (key, value) =>
-    set((state) => ({
-      linearLocalAdj: {
-        ...state.linearLocalAdj,
-        [key]: clampLocalAdjustment(key, value),
-      },
-    })),
-  resetLinearMask: () =>
-    set({
-      linearMaskEnabled: false,
-      linearMask: defaultLinearMask(),
-      linearLocalAdj: defaultLocalAdjustments(),
+  selectMask: (id) =>
+    set((state) => {
+      if (id === null) return { selectedMaskId: null };
+      return findMask(state.masks, id) ? { selectedMaskId: id } : state;
     }),
-  setRadialMaskEnabled: (enabled) => set({ radialMaskEnabled: enabled }),
-  setRadialMaskCenter: (uv) =>
+  setLinearMaskPoint: (id, which, uv) =>
     set((state) => ({
-      radialMask: { ...state.radialMask, center: clampUv(uv) },
+      masks: state.masks.map((m) =>
+        m.id === id && m.type === "linear"
+          ? { ...m, mask: { ...m.mask, [which]: clampUv(uv) } }
+          : m,
+      ),
     })),
-  setRadialMaskRadii: (rx, ry) =>
+  setRadialMaskCenter: (id, uv) =>
     set((state) => ({
-      radialMask: {
-        ...state.radialMask,
-        rx: clampRadius(rx),
-        ry: clampRadius(ry),
-      },
+      masks: state.masks.map((m) =>
+        m.id === id && m.type === "radial"
+          ? { ...m, mask: { ...m.mask, center: clampUv(uv) } }
+          : m,
+      ),
     })),
-  setRadialMaskFeather: (feather) =>
+  setRadialMaskRadii: (id, rx, ry) =>
     set((state) => ({
-      radialMask: { ...state.radialMask, feather: clampFeather(feather) },
+      masks: state.masks.map((m) =>
+        m.id === id && m.type === "radial"
+          ? {
+              ...m,
+              mask: { ...m.mask, rx: clampRadius(rx), ry: clampRadius(ry) },
+            }
+          : m,
+      ),
     })),
-  setRadialLocalAdjustment: (key, value) =>
+  setMaskFeather: (id, feather) =>
     set((state) => ({
-      radialLocalAdj: {
-        ...state.radialLocalAdj,
-        [key]: clampLocalAdjustment(key, value),
-      },
+      masks: state.masks.map((m): MaskInstance => {
+        if (m.id !== id) return m;
+        const f = clampFeather(feather);
+        if (m.type === "linear") {
+          return { ...m, mask: { ...m.mask, feather: f } };
+        }
+        return { ...m, mask: { ...m.mask, feather: f } };
+      }),
     })),
-  resetRadialMask: () =>
-    set({
-      radialMaskEnabled: false,
-      radialMask: defaultRadialMask(),
-      radialLocalAdj: defaultLocalAdjustments(),
-    }),
+  setMaskLocalAdjustment: (id, key, value) =>
+    set((state) => ({
+      masks: state.masks.map((m) =>
+        m.id === id
+          ? {
+              ...m,
+              localAdj: {
+                ...m.localAdj,
+                [key]: clampLocalAdjustment(key, value),
+              },
+            }
+          : m,
+      ),
+    })),
+  removeSelectedMask: () => {
+    const id = get().selectedMaskId;
+    if (id === null) return;
+    set((state) => ({
+      masks: state.masks.filter((m) => m.id !== id),
+      selectedMaskId: null,
+    }));
+  },
+  clearMasks: () => set({ masks: [], selectedMaskId: null }),
 }));
+
+export function selectedMask(state: EditorState): MaskInstance | null {
+  if (state.selectedMaskId === null) return null;
+  return findMask(state.masks, state.selectedMaskId) ?? null;
+}

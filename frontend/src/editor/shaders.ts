@@ -1,6 +1,10 @@
 /**
  * GLSL-Shader fuer die WebGL2-Pipeline.
  * Reihenfolge der Operationen siehe docs/05-frontend-konzept.md "WebGL-Pipeline".
+ *
+ * Multi-Mask: bis zu MAX_LINEAR_MASKS lineare und MAX_RADIAL_MASKS radiale
+ * Masken werden ueber Uniform-Arrays uebergeben. Die Schleife laeuft bis
+ * u_numLinearMasks bzw. u_numRadialMasks (uniform-driven, WebGL2-zulaessig).
  */
 
 export const VERT_SRC = `#version 300 es
@@ -31,41 +35,47 @@ uniform float u_saturation;
 uniform float u_bypass;
 uniform float u_lensDistortion;
 uniform float u_lensVignette;
-uniform float u_maskEnabled;
-uniform vec2 u_maskP1;
-uniform vec2 u_maskP2;
-uniform float u_maskFeather;
-uniform float u_localExposure;
-uniform float u_localContrast;
-uniform float u_localSaturation;
-uniform float u_localTemperature;
-uniform float u_radialEnabled;
-uniform vec2 u_radialCenter;
-uniform vec2 u_radialRadii;
-uniform float u_radialFeather;
-uniform float u_radialLocalExposure;
-uniform float u_radialLocalContrast;
-uniform float u_radialLocalSaturation;
-uniform float u_radialLocalTemperature;
+
+const int MAX_LINEAR_MASKS = 4;
+const int MAX_RADIAL_MASKS = 4;
+
+uniform int u_numLinearMasks;
+uniform vec2 u_linMaskP1[MAX_LINEAR_MASKS];
+uniform vec2 u_linMaskP2[MAX_LINEAR_MASKS];
+uniform float u_linMaskFeather[MAX_LINEAR_MASKS];
+uniform float u_linLocalExposure[MAX_LINEAR_MASKS];
+uniform float u_linLocalContrast[MAX_LINEAR_MASKS];
+uniform float u_linLocalSaturation[MAX_LINEAR_MASKS];
+uniform float u_linLocalTemperature[MAX_LINEAR_MASKS];
+
+uniform int u_numRadialMasks;
+uniform vec2 u_radMaskCenter[MAX_RADIAL_MASKS];
+uniform vec2 u_radMaskRadii[MAX_RADIAL_MASKS];
+uniform float u_radMaskFeather[MAX_RADIAL_MASKS];
+uniform float u_radLocalExposure[MAX_RADIAL_MASKS];
+uniform float u_radLocalContrast[MAX_RADIAL_MASKS];
+uniform float u_radLocalSaturation[MAX_RADIAL_MASKS];
+uniform float u_radLocalTemperature[MAX_RADIAL_MASKS];
+
 out vec4 outColor;
 
 const float DISTORTION_GAIN = 0.4;
 const float VIGNETTE_GAIN = 2.0;
 
-float computeLinearMask(vec2 uv) {
-  vec2 d = u_maskP2 - u_maskP1;
+float computeLinearMaskN(int i, vec2 uv) {
+  vec2 d = u_linMaskP2[i] - u_linMaskP1[i];
   float len2 = dot(d, d);
   if (len2 < 1e-8) return 0.0;
-  float t = dot(uv - u_maskP1, d) / len2;
-  float halfFeather = max(0.001, u_maskFeather * 0.5);
+  float t = dot(uv - u_linMaskP1[i], d) / len2;
+  float halfFeather = max(0.001, u_linMaskFeather[i] * 0.5);
   return smoothstep(0.5 - halfFeather, 0.5 + halfFeather, t);
 }
 
-float computeRadialMask(vec2 uv) {
-  vec2 r = max(u_radialRadii, vec2(0.001));
-  vec2 d = (uv - u_radialCenter) / r;
+float computeRadialMaskN(int i, vec2 uv) {
+  vec2 r = max(u_radMaskRadii[i], vec2(0.001));
+  vec2 d = (uv - u_radMaskCenter[i]) / r;
   float dist2 = dot(d, d);
-  float halfFeather = max(0.001, u_radialFeather * 0.5);
+  float halfFeather = max(0.001, u_radMaskFeather[i] * 0.5);
   return 1.0 - smoothstep(1.0 - halfFeather, 1.0 + halfFeather, dist2);
 }
 
@@ -124,18 +134,28 @@ void main() {
   vec4 src = texture(u_tex, src_uv);
   if (u_bypass > 0.5) { outColor = src; return; }
 
-  // Lokale Masken einmal pro Pixel berechnen, dann effektive
-  // Adjustment-Werte = global + linMaskFactor * linLocal + radMaskFactor * radLocal.
-  float mLin = u_maskEnabled > 0.5 ? computeLinearMask(v_uv) : 0.0;
-  float mRad = u_radialEnabled > 0.5 ? computeRadialMask(v_uv) : 0.0;
-  float effExposure    = u_exposure
-    + mLin * u_localExposure    + mRad * u_radialLocalExposure;
-  float effContrast    = u_contrast
-    + mLin * u_localContrast    + mRad * u_radialLocalContrast;
-  float effSaturation  = u_saturation
-    + mLin * u_localSaturation  + mRad * u_radialLocalSaturation;
-  float effTemperature = u_temperature
-    + mLin * u_localTemperature + mRad * u_radialLocalTemperature;
+  // Lokale Masken summieren: effective = global + Sum_i(maskFactor_i * local_i).
+  float effExposure    = u_exposure;
+  float effContrast    = u_contrast;
+  float effSaturation  = u_saturation;
+  float effTemperature = u_temperature;
+
+  for (int i = 0; i < MAX_LINEAR_MASKS; i++) {
+    if (i >= u_numLinearMasks) break;
+    float m = computeLinearMaskN(i, v_uv);
+    effExposure    += m * u_linLocalExposure[i];
+    effContrast    += m * u_linLocalContrast[i];
+    effSaturation  += m * u_linLocalSaturation[i];
+    effTemperature += m * u_linLocalTemperature[i];
+  }
+  for (int i = 0; i < MAX_RADIAL_MASKS; i++) {
+    if (i >= u_numRadialMasks) break;
+    float m = computeRadialMaskN(i, v_uv);
+    effExposure    += m * u_radLocalExposure[i];
+    effContrast    += m * u_radLocalContrast[i];
+    effSaturation  += m * u_radLocalSaturation[i];
+    effTemperature += m * u_radLocalTemperature[i];
+  }
 
   // 1. sRGB -> Linear
   vec3 lin = srgbToLinear(src.rgb);

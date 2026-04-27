@@ -44,6 +44,29 @@ export interface LocalAdjustments {
   readonly temperature: number;
 }
 
+/**
+ * Hard-Caps fuer das Shader-Uniform-Array. Synchron halten mit
+ * MAX_LINEAR_MASKS / MAX_RADIAL_MASKS in shaders.ts und webgl.ts.
+ */
+export const MAX_LINEAR_MASKS = 4;
+export const MAX_RADIAL_MASKS = 4;
+
+export interface LinearMaskInstance {
+  readonly id: string;
+  readonly type: "linear";
+  readonly mask: LinearMask;
+  readonly localAdj: LocalAdjustments;
+}
+
+export interface RadialMaskInstance {
+  readonly id: string;
+  readonly type: "radial";
+  readonly mask: RadialMask;
+  readonly localAdj: LocalAdjustments;
+}
+
+export type MaskInstance = LinearMaskInstance | RadialMaskInstance;
+
 export const defaultLocalAdjustments = (): LocalAdjustments => ({
   exposure: 0,
   contrast: 0,

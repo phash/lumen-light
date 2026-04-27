@@ -1,43 +1,54 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 
+import type { MaskInstance } from "./mask";
 import { useEditorStore, type EditorState } from "./store";
 import { uvTransformMatrix } from "./transform";
 import {
-  type LinearMaskUniforms,
-  type RadialMaskUniforms,
+  type LinearMaskParams,
+  type MasksUniforms,
+  type RadialMaskParams,
   Renderer,
   WebGLRendererError,
   loadImageFromFile,
 } from "./webgl";
 
-function buildMaskUniforms(state: EditorState): LinearMaskUniforms {
-  return {
-    enabled: state.linearMaskEnabled,
-    p1u: state.linearMask.p1.u,
-    p1v: state.linearMask.p1.v,
-    p2u: state.linearMask.p2.u,
-    p2v: state.linearMask.p2.v,
-    feather: state.linearMask.feather,
-    exposure: state.linearLocalAdj.exposure,
-    contrast: state.linearLocalAdj.contrast,
-    saturation: state.linearLocalAdj.saturation,
-    temperature: state.linearLocalAdj.temperature,
-  };
+function buildMasksUniforms(
+  masks: ReadonlyArray<MaskInstance>,
+): MasksUniforms {
+  const linear: LinearMaskParams[] = [];
+  const radial: RadialMaskParams[] = [];
+  for (const m of masks) {
+    if (m.type === "linear") {
+      linear.push({
+        p1u: m.mask.p1.u,
+        p1v: m.mask.p1.v,
+        p2u: m.mask.p2.u,
+        p2v: m.mask.p2.v,
+        feather: m.mask.feather,
+        exposure: m.localAdj.exposure,
+        contrast: m.localAdj.contrast,
+        saturation: m.localAdj.saturation,
+        temperature: m.localAdj.temperature,
+      });
+    } else {
+      radial.push({
+        cu: m.mask.center.u,
+        cv: m.mask.center.v,
+        rx: m.mask.rx,
+        ry: m.mask.ry,
+        feather: m.mask.feather,
+        exposure: m.localAdj.exposure,
+        contrast: m.localAdj.contrast,
+        saturation: m.localAdj.saturation,
+        temperature: m.localAdj.temperature,
+      });
+    }
+  }
+  return { linear, radial };
 }
 
-function buildRadialUniforms(state: EditorState): RadialMaskUniforms {
-  return {
-    enabled: state.radialMaskEnabled,
-    cu: state.radialMask.center.u,
-    cv: state.radialMask.center.v,
-    rx: state.radialMask.rx,
-    ry: state.radialMask.ry,
-    feather: state.radialMask.feather,
-    exposure: state.radialLocalAdj.exposure,
-    contrast: state.radialLocalAdj.contrast,
-    saturation: state.radialLocalAdj.saturation,
-    temperature: state.radialLocalAdj.temperature,
-  };
+function masksFromState(state: EditorState): MasksUniforms {
+  return buildMasksUniforms(state.masks);
 }
 
 export interface CanvasHandle {
@@ -68,48 +79,16 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   const cropRect = useEditorStore((s) => s.cropRect);
   const straightenAngle = useEditorStore((s) => s.straightenAngle);
   const lensCorrection = useEditorStore((s) => s.lensCorrection);
-  const linearMaskEnabled = useEditorStore((s) => s.linearMaskEnabled);
-  const linearMask = useEditorStore((s) => s.linearMask);
-  const linearLocalAdj = useEditorStore((s) => s.linearLocalAdj);
-  const radialMaskEnabled = useEditorStore((s) => s.radialMaskEnabled);
-  const radialMask = useEditorStore((s) => s.radialMask);
-  const radialLocalAdj = useEditorStore((s) => s.radialLocalAdj);
+  const masks = useEditorStore((s) => s.masks);
 
   const transform = useMemo(
     () => uvTransformMatrix(cropRect, straightenAngle),
     [cropRect, straightenAngle],
   );
 
-  const mask = useMemo<LinearMaskUniforms>(
-    () => ({
-      enabled: linearMaskEnabled,
-      p1u: linearMask.p1.u,
-      p1v: linearMask.p1.v,
-      p2u: linearMask.p2.u,
-      p2v: linearMask.p2.v,
-      feather: linearMask.feather,
-      exposure: linearLocalAdj.exposure,
-      contrast: linearLocalAdj.contrast,
-      saturation: linearLocalAdj.saturation,
-      temperature: linearLocalAdj.temperature,
-    }),
-    [linearMaskEnabled, linearMask, linearLocalAdj],
-  );
-
-  const radial = useMemo<RadialMaskUniforms>(
-    () => ({
-      enabled: radialMaskEnabled,
-      cu: radialMask.center.u,
-      cv: radialMask.center.v,
-      rx: radialMask.rx,
-      ry: radialMask.ry,
-      feather: radialMask.feather,
-      exposure: radialLocalAdj.exposure,
-      contrast: radialLocalAdj.contrast,
-      saturation: radialLocalAdj.saturation,
-      temperature: radialLocalAdj.temperature,
-    }),
-    [radialMaskEnabled, radialMask, radialLocalAdj],
+  const masksUniforms = useMemo<MasksUniforms>(
+    () => buildMasksUniforms(masks),
+    [masks],
   );
 
   useEffect(() => {
@@ -132,11 +111,10 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
       transform,
       lensCorrection.distortion,
       lensCorrection.vignette,
-      mask,
-      radial,
+      masksUniforms,
     );
     onTick();
-  }, [adjustments, bypass, transform, lensCorrection, mask, radial, onTick]);
+  }, [adjustments, bypass, transform, lensCorrection, masksUniforms, onTick]);
 
   useImperativeHandle(
     ref,
@@ -153,8 +131,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           uvTransformMatrix(s.cropRect, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
-          buildMaskUniforms(s),
-          buildRadialUniforms(s),
+          masksFromState(s),
         );
         onTick();
       },
@@ -173,8 +150,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           uvTransformMatrix(s.cropRect, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
-          buildMaskUniforms(s),
-          buildRadialUniforms(s),
+          masksFromState(s),
         );
         onTick();
       },
@@ -188,8 +164,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           uvTransformMatrix(s.cropRect, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
-          buildMaskUniforms(s),
-          buildRadialUniforms(s),
+          masksFromState(s),
         );
         onTick();
       },

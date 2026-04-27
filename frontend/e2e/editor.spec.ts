@@ -147,6 +147,53 @@ test.describe("Editor", () => {
     }
   });
 
+  test("Multi-Mask: zwei Verlaeufe + Radial, Selektion, Loeschen", async ({ page }) => {
+    const user = await loginAsNewUser(page);
+    try {
+      await page.goto("/editor");
+      await page.setInputFiles('[data-testid="editor-file-input"]', JPG_PATH);
+      await expect(page.getByTestId("editor-bypass")).toBeVisible({ timeout: 5_000 });
+
+      // Drei Masken hinzufuegen
+      await page.getByTestId("editor-linear-mask-toggle").click();
+      await page.getByTestId("editor-linear-mask-toggle").click();
+      await page.getByTestId("editor-radial-mask-toggle").click();
+
+      const list = page.getByTestId("mask-list");
+      await expect(list).toBeVisible();
+      await expect(list).toContainText("Masken (3)");
+      await expect(page.getByTestId("mask-list-item-0")).toContainText("Verlauf 1");
+      await expect(page.getByTestId("mask-list-item-1")).toContainText("Verlauf 2");
+      await expect(page.getByTestId("mask-list-item-2")).toContainText("Radial 1");
+
+      // Letzte Maske ist initial selektiert -> Radial-Section sichtbar
+      await expect(page.getByTestId("radial-mask-section")).toBeVisible();
+      await expect(page.getByTestId("local-mask-section")).not.toBeVisible();
+
+      // Auf Verlauf 1 klicken -> Local-Section umschalten
+      await page.getByTestId("mask-list-item-0").click();
+      await expect(page.getByTestId("local-mask-section")).toBeVisible();
+      await expect(page.getByTestId("radial-mask-section")).not.toBeVisible();
+
+      // Verlauf 2 loeschen ueber das ✕
+      await page.getByTestId("mask-list-delete-1").click();
+      await expect(list).toContainText("Masken (2)");
+
+      // Pro-Maske gespeicherte Slider: Verlauf 1 bekommt exposure=1, Radial=−1
+      await page.getByTestId("mask-list-item-0").click();
+      await page.getByTestId("local-exposure-slider").fill("1");
+      await page.getByTestId("mask-list-item-1").click();
+      await page.getByTestId("radial-exposure-slider").fill("-1");
+
+      // Zurueck zu Verlauf 1 — Wert wurde nicht ueberschrieben
+      await page.getByTestId("mask-list-item-0").click();
+      const localSection = page.getByTestId("local-mask-section");
+      await expect(localSection.getByText(/Belichtung \(1\.00\)/)).toBeVisible();
+    } finally {
+      await cleanupUser(user);
+    }
+  });
+
   test("Radialfilter: Toggle, Overlay, lokale Slider, Reset", async ({ page }) => {
     const user = await loginAsNewUser(page);
     try {

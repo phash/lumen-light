@@ -2,12 +2,12 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { defaultAdjustments } from "../src/editor/adjustments";
 import { defaultLensCorrection } from "../src/editor/lens";
+import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "../src/editor/mask";
 import {
-  defaultLinearMask,
-  defaultLocalAdjustments,
-  defaultRadialMask,
-} from "../src/editor/mask";
-import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../src/editor/store";
+  MAX_STRAIGHTEN_RADIANS,
+  selectedMask,
+  useEditorStore,
+} from "../src/editor/store";
 import { defaultCropRect } from "../src/editor/transform";
 
 describe("useEditorStore", () => {
@@ -20,12 +20,8 @@ describe("useEditorStore", () => {
       lensCorrection: defaultLensCorrection(),
       lensProfileId: null,
       manualLensOverride: false,
-      linearMaskEnabled: false,
-      linearMask: defaultLinearMask(),
-      linearLocalAdj: defaultLocalAdjustments(),
-      radialMaskEnabled: false,
-      radialMask: defaultRadialMask(),
-      radialLocalAdj: defaultLocalAdjustments(),
+      masks: [],
+      selectedMaskId: null,
     });
   });
 
@@ -159,84 +155,173 @@ describe("useEditorStore", () => {
     expect(s.lensProfileId).toBeNull();
     expect(s.manualLensOverride).toBe(false);
   });
+});
 
-  it("setLinearMaskEnabled toggelt", () => {
-    useEditorStore.getState().setLinearMaskEnabled(true);
-    expect(useEditorStore.getState().linearMaskEnabled).toBe(true);
-    useEditorStore.getState().setLinearMaskEnabled(false);
-    expect(useEditorStore.getState().linearMaskEnabled).toBe(false);
+describe("Multi-Mask", () => {
+  beforeEach(() => {
+    useEditorStore.setState({ masks: [], selectedMaskId: null });
   });
 
-  it("setLinearMaskPoint clampt UV in [0,1]", () => {
-    useEditorStore.getState().setLinearMaskPoint("p1", { u: -1, v: 2 });
-    expect(useEditorStore.getState().linearMask.p1).toEqual({ u: 0, v: 1 });
-  });
-
-  it("setLinearMaskFeather clampt", () => {
-    useEditorStore.getState().setLinearMaskFeather(99);
-    expect(useEditorStore.getState().linearMask.feather).toBe(1);
-  });
-
-  it("setLinearLocalAdjustment clampt pro Key", () => {
-    useEditorStore.getState().setLinearLocalAdjustment("exposure", 99);
-    expect(useEditorStore.getState().linearLocalAdj.exposure).toBe(3);
-    useEditorStore.getState().setLinearLocalAdjustment("contrast", 99);
-    expect(useEditorStore.getState().linearLocalAdj.contrast).toBe(1);
-  });
-
-  it("resetLinearMask setzt enabled, mask und localAdj zurueck", () => {
-    useEditorStore.getState().setLinearMaskEnabled(true);
-    useEditorStore.getState().setLinearMaskPoint("p1", { u: 0.2, v: 0.3 });
-    useEditorStore.getState().setLinearLocalAdjustment("exposure", 1.5);
-    useEditorStore.getState().resetLinearMask();
+  it("addLinearMask haengt eine Linear-Maske an und selektiert sie", () => {
+    const id = useEditorStore.getState().addLinearMask();
+    expect(id).not.toBeNull();
     const s = useEditorStore.getState();
-    expect(s.linearMaskEnabled).toBe(false);
-    expect(s.linearMask).toEqual(defaultLinearMask());
-    expect(s.linearLocalAdj).toEqual(defaultLocalAdjustments());
+    expect(s.masks).toHaveLength(1);
+    expect(s.masks[0]!.type).toBe("linear");
+    expect(s.selectedMaskId).toBe(id);
   });
 
-  it("setRadialMaskEnabled toggelt", () => {
-    useEditorStore.getState().setRadialMaskEnabled(true);
-    expect(useEditorStore.getState().radialMaskEnabled).toBe(true);
-    useEditorStore.getState().setRadialMaskEnabled(false);
-    expect(useEditorStore.getState().radialMaskEnabled).toBe(false);
+  it("addRadialMask haengt eine Radial-Maske an und selektiert sie", () => {
+    const id = useEditorStore.getState().addRadialMask();
+    const s = useEditorStore.getState();
+    expect(s.masks).toHaveLength(1);
+    expect(s.masks[0]!.type).toBe("radial");
+    expect(s.selectedMaskId).toBe(id);
   });
 
-  it("setRadialMaskCenter clampt UV in [0,1]", () => {
-    useEditorStore.getState().setRadialMaskCenter({ u: -1, v: 2 });
-    expect(useEditorStore.getState().radialMask.center).toEqual({ u: 0, v: 1 });
+  it("Linear+Radial koexistieren in einer Liste", () => {
+    useEditorStore.getState().addLinearMask();
+    useEditorStore.getState().addRadialMask();
+    useEditorStore.getState().addLinearMask();
+    const s = useEditorStore.getState();
+    expect(s.masks).toHaveLength(3);
+    expect(s.masks.map((m) => m.type)).toEqual(["linear", "radial", "linear"]);
+  });
+
+  it("addLinearMask gibt null zurueck wenn MAX_LINEAR_MASKS erreicht ist", () => {
+    for (let i = 0; i < MAX_LINEAR_MASKS; i++) {
+      expect(useEditorStore.getState().addLinearMask()).not.toBeNull();
+    }
+    expect(useEditorStore.getState().addLinearMask()).toBeNull();
+    expect(useEditorStore.getState().masks).toHaveLength(MAX_LINEAR_MASKS);
+  });
+
+  it("addRadialMask gibt null zurueck wenn MAX_RADIAL_MASKS erreicht ist", () => {
+    for (let i = 0; i < MAX_RADIAL_MASKS; i++) {
+      expect(useEditorStore.getState().addRadialMask()).not.toBeNull();
+    }
+    expect(useEditorStore.getState().addRadialMask()).toBeNull();
+  });
+
+  it("removeMask entfernt die Maske und clearet Selection wenn betroffen", () => {
+    const a = useEditorStore.getState().addLinearMask()!;
+    const b = useEditorStore.getState().addLinearMask()!;
+    expect(useEditorStore.getState().selectedMaskId).toBe(b);
+    useEditorStore.getState().removeMask(b);
+    expect(useEditorStore.getState().masks).toHaveLength(1);
+    expect(useEditorStore.getState().selectedMaskId).toBeNull();
+    // unbetroffene Maske bleibt
+    expect(useEditorStore.getState().masks[0]!.id).toBe(a);
+  });
+
+  it("removeMask laesst Selection unveraendert wenn andere Maske geloescht wird", () => {
+    const a = useEditorStore.getState().addLinearMask()!;
+    const b = useEditorStore.getState().addLinearMask()!;
+    useEditorStore.getState().selectMask(a);
+    useEditorStore.getState().removeMask(b);
+    expect(useEditorStore.getState().selectedMaskId).toBe(a);
+  });
+
+  it("selectMask wechselt Selektion, ignoriert unbekannte IDs", () => {
+    const a = useEditorStore.getState().addLinearMask()!;
+    const b = useEditorStore.getState().addRadialMask()!;
+    useEditorStore.getState().selectMask(a);
+    expect(useEditorStore.getState().selectedMaskId).toBe(a);
+    useEditorStore.getState().selectMask("nonexistent-id");
+    expect(useEditorStore.getState().selectedMaskId).toBe(a);
+    useEditorStore.getState().selectMask(b);
+    expect(useEditorStore.getState().selectedMaskId).toBe(b);
+    useEditorStore.getState().selectMask(null);
+    expect(useEditorStore.getState().selectedMaskId).toBeNull();
+  });
+
+  it("setLinearMaskPoint clampt UV und greift nur fuer Linear-Masken", () => {
+    const id = useEditorStore.getState().addLinearMask()!;
+    useEditorStore.getState().setLinearMaskPoint(id, "p1", { u: -1, v: 2 });
+    const m = useEditorStore.getState().masks[0]!;
+    if (m.type !== "linear") throw new Error("expected linear");
+    expect(m.mask.p1).toEqual({ u: 0, v: 1 });
+  });
+
+  it("setRadialMaskCenter clampt UV", () => {
+    const id = useEditorStore.getState().addRadialMask()!;
+    useEditorStore.getState().setRadialMaskCenter(id, { u: -1, v: 2 });
+    const m = useEditorStore.getState().masks[0]!;
+    if (m.type !== "radial") throw new Error("expected radial");
+    expect(m.mask.center).toEqual({ u: 0, v: 1 });
   });
 
   it("setRadialMaskRadii clampt rx und ry getrennt", () => {
-    useEditorStore.getState().setRadialMaskRadii(99, 0);
-    const m = useEditorStore.getState().radialMask;
-    expect(m.rx).toBe(1);
-    expect(m.ry).toBe(0.02);
+    const id = useEditorStore.getState().addRadialMask()!;
+    useEditorStore.getState().setRadialMaskRadii(id, 99, 0);
+    const m = useEditorStore.getState().masks[0]!;
+    if (m.type !== "radial") throw new Error("expected radial");
+    expect(m.mask.rx).toBe(1);
+    expect(m.mask.ry).toBe(0.02);
   });
 
-  it("setRadialMaskFeather clampt", () => {
-    useEditorStore.getState().setRadialMaskFeather(99);
-    expect(useEditorStore.getState().radialMask.feather).toBe(1);
-    useEditorStore.getState().setRadialMaskFeather(-1);
-    expect(useEditorStore.getState().radialMask.feather).toBe(0);
+  it("setMaskFeather klemmt + funktioniert fuer Linear und Radial", () => {
+    const lin = useEditorStore.getState().addLinearMask()!;
+    const rad = useEditorStore.getState().addRadialMask()!;
+    useEditorStore.getState().setMaskFeather(lin, 99);
+    useEditorStore.getState().setMaskFeather(rad, -1);
+    const masks = useEditorStore.getState().masks;
+    expect(masks[0]!.mask.feather).toBe(1);
+    expect(masks[1]!.mask.feather).toBe(0);
   });
 
-  it("setRadialLocalAdjustment clampt pro Key", () => {
-    useEditorStore.getState().setRadialLocalAdjustment("exposure", 99);
-    expect(useEditorStore.getState().radialLocalAdj.exposure).toBe(3);
-    useEditorStore.getState().setRadialLocalAdjustment("contrast", -99);
-    expect(useEditorStore.getState().radialLocalAdj.contrast).toBe(-1);
+  it("setMaskLocalAdjustment clampt pro Key", () => {
+    const id = useEditorStore.getState().addLinearMask()!;
+    useEditorStore.getState().setMaskLocalAdjustment(id, "exposure", 99);
+    expect(useEditorStore.getState().masks[0]!.localAdj.exposure).toBe(3);
+    useEditorStore.getState().setMaskLocalAdjustment(id, "contrast", -99);
+    expect(useEditorStore.getState().masks[0]!.localAdj.contrast).toBe(-1);
   });
 
-  it("resetRadialMask setzt enabled, mask und localAdj zurueck", () => {
-    useEditorStore.getState().setRadialMaskEnabled(true);
-    useEditorStore.getState().setRadialMaskCenter({ u: 0.2, v: 0.3 });
-    useEditorStore.getState().setRadialMaskRadii(0.4, 0.5);
-    useEditorStore.getState().setRadialLocalAdjustment("exposure", 1.5);
-    useEditorStore.getState().resetRadialMask();
+  it("removeSelectedMask entfernt nur die selektierte Maske", () => {
+    const a = useEditorStore.getState().addLinearMask()!;
+    useEditorStore.getState().addLinearMask();
+    useEditorStore.getState().selectMask(a);
+    useEditorStore.getState().removeSelectedMask();
     const s = useEditorStore.getState();
-    expect(s.radialMaskEnabled).toBe(false);
-    expect(s.radialMask).toEqual(defaultRadialMask());
-    expect(s.radialLocalAdj).toEqual(defaultLocalAdjustments());
+    expect(s.masks).toHaveLength(1);
+    expect(s.selectedMaskId).toBeNull();
+  });
+
+  it("removeSelectedMask ist no-op ohne Selection", () => {
+    useEditorStore.getState().addLinearMask();
+    useEditorStore.getState().selectMask(null);
+    useEditorStore.getState().removeSelectedMask();
+    expect(useEditorStore.getState().masks).toHaveLength(1);
+  });
+
+  it("clearMasks leert die Liste komplett", () => {
+    useEditorStore.getState().addLinearMask();
+    useEditorStore.getState().addRadialMask();
+    useEditorStore.getState().clearMasks();
+    const s = useEditorStore.getState();
+    expect(s.masks).toEqual([]);
+    expect(s.selectedMaskId).toBeNull();
+  });
+
+  it("selectedMask-Selector liefert die selektierte Maske oder null", () => {
+    expect(selectedMask(useEditorStore.getState())).toBeNull();
+    const id = useEditorStore.getState().addLinearMask()!;
+    const m = selectedMask(useEditorStore.getState());
+    expect(m?.id).toBe(id);
+    expect(m?.type).toBe("linear");
+  });
+
+  it("Mask-IDs sind eindeutig", () => {
+    const ids = new Set<string>();
+    for (let i = 0; i < MAX_LINEAR_MASKS; i++) {
+      const id = useEditorStore.getState().addLinearMask()!;
+      ids.add(id);
+    }
+    for (let i = 0; i < MAX_RADIAL_MASKS; i++) {
+      const id = useEditorStore.getState().addRadialMask()!;
+      ids.add(id);
+    }
+    expect(ids.size).toBe(MAX_LINEAR_MASKS + MAX_RADIAL_MASKS);
   });
 });
