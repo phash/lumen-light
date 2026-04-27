@@ -1,0 +1,3 @@
+# Sample-RAWs werden NICHT committed (zu gross, mit eigenen Lizenzen).
+# Mit scripts/fetch-test-images.sh ziehen.
+raw-samples/

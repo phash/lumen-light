@@ -1,0 +1,61 @@
+{
+  "$comment": "Kuratierter Test-Bilder-Korpus. Files werden NICHT committed (zu gross). Mit scripts/fetch-test-images.sh herunterladbar. Quelle: raw.pixls.us (PlayRaw-Sektion, von User-Communities zur freien Verwendung beigetragen — vor kommerziellem Einsatz im Einzelfall pruefen).",
+  "samples": [
+    {
+      "filename": "Canon_EOS_600D.CR2",
+      "url": "https://raw.pixls.us/data/Canon/EOS%20600D/_MG_2587.CR2",
+      "approxSizeMb": 23,
+      "format": "cr2",
+      "expectedMake": "Canon",
+      "expectedModelContains": "600D"
+    },
+    {
+      "filename": "Canon_EOS_R.CR3",
+      "url": "https://raw.pixls.us/data/Canon/EOS%20R/Canon_EOS_R_CRAW_ISO_100_crop_nodual.CR3",
+      "approxSizeMb": 8,
+      "format": "cr3",
+      "expectedMake": "Canon",
+      "expectedModelContains": "EOS R"
+    },
+    {
+      "filename": "Sony_A7M3.ARW",
+      "url": "https://raw.pixls.us/data/Sony/ILCE-7M3/_DSC0009.ARW",
+      "approxSizeMb": 25,
+      "format": "arw",
+      "expectedMake": "Sony",
+      "expectedModelContains": "ILCE-7M3"
+    },
+    {
+      "filename": "Nikon_D7100.NEF",
+      "url": "https://raw.pixls.us/data/Nikon/D7100/JCR_4305.NEF",
+      "approxSizeMb": 28,
+      "format": "nef",
+      "expectedMake": "Nikon",
+      "expectedModelContains": "D7100"
+    },
+    {
+      "filename": "Fujifilm_X-Pro1.RAF",
+      "url": "https://raw.pixls.us/data/Fujifilm/X-Pro1/DSCF2131.RAF",
+      "approxSizeMb": 25,
+      "format": "raf",
+      "expectedMake": "Fujifilm",
+      "expectedModelContains": "X-Pro1"
+    },
+    {
+      "filename": "Olympus_E-M5.ORF",
+      "url": "https://raw.pixls.us/data/Olympus/E-M5/P2082705.ORF",
+      "approxSizeMb": 14,
+      "format": "orf",
+      "expectedMake": "Olympus",
+      "expectedModelContains": "E-M5"
+    },
+    {
+      "filename": "Panasonic_DC-G9.RW2",
+      "url": "https://raw.pixls.us/data/Panasonic/DC-G9/P1000951.RW2",
+      "approxSizeMb": 23,
+      "format": "rw2",
+      "expectedMake": "Panasonic",
+      "expectedModelContains": "DC-G9"
+    }
+  ]
+}
