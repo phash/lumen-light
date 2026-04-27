@@ -21,7 +21,10 @@ from app.models import Preset, User
 
 
 # Default-Presets, die bei JIT-Provisioning eines neuen Users angelegt werden.
-# Spec: docs/03-datenmodell.md.
+# Spec: docs/03-datenmodell.md. Die genre-spezifischen Presets stammen
+# aus typischen Lightroom-Empfehlungen fuer Anfaenger und sind bewusst
+# moderat — sie sollen den Bild-Charakter unterstreichen, nicht
+# uebertreiben.
 _DEFAULT_PRESETS: list[dict] = [
     {
         "name": "Neutral",
@@ -52,6 +55,61 @@ _DEFAULT_PRESETS: list[dict] = [
             "exposure": 0, "contrast": 0.20, "highlights": 0, "shadows": 0,
             "whites": 0, "blacks": 0, "temperature": 0, "tint": 0,
             "vibrance": 0, "saturation": -1.0,
+        },
+    },
+    # --- Genre-Presets (Phase 5+) ---
+    {
+        # Hauttoene weich, Lichter zaehmen, Schatten oeffnen, leicht warm.
+        "name": "Portrait",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.10, "highlights": -0.20, "shadows": 0.20,
+            "whites": -0.05, "blacks": 0.05, "temperature": 0.05, "tint": 0,
+            "vibrance": 0.20, "saturation": 0,
+        },
+    },
+    {
+        # Drama im Himmel, Vordergrund auf, Gruen/Blau pop ueber Vibrance.
+        "name": "Landschaft",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.25, "highlights": -0.35, "shadows": 0.30,
+            "whites": 0.15, "blacks": -0.10, "temperature": -0.05, "tint": 0,
+            "vibrance": 0.40, "saturation": 0.10,
+        },
+    },
+    {
+        # Architektur: Kontrast, Linien betonen, leicht kuehl, gedaempfte Saettigung.
+        "name": "Stadt",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.30, "highlights": -0.20, "shadows": 0.15,
+            "whites": 0.10, "blacks": -0.15, "temperature": -0.10, "tint": 0,
+            "vibrance": 0.10, "saturation": -0.05,
+        },
+    },
+    {
+        # Wald/Wiese: lebendige Gruentoene, neutrale Farbtemperatur, weiche Schatten.
+        "name": "Natur",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.20, "highlights": -0.25, "shadows": 0.25,
+            "whites": 0.05, "blacks": -0.05, "temperature": 0, "tint": 0,
+            "vibrance": 0.45, "saturation": 0.05,
+        },
+    },
+    {
+        # Fell/Augen: Mid-Kontrast, leicht warm, moderate Vibrance.
+        "name": "Tiere",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.20, "highlights": -0.20, "shadows": 0.20,
+            "whites": 0.05, "blacks": -0.10, "temperature": 0.05, "tint": 0,
+            "vibrance": 0.25, "saturation": 0,
+        },
+    },
+    {
+        # Dynamik: Punch, tiefe Schwarz, Lichter unter Kontrolle.
+        "name": "Sport",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.35, "highlights": -0.25, "shadows": 0.10,
+            "whites": 0.10, "blacks": -0.20, "temperature": 0, "tint": 0,
+            "vibrance": 0.30, "saturation": 0.05,
         },
     },
 ]
