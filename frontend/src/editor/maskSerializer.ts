@@ -10,18 +10,12 @@ import type {
   PresetMaskLinear,
   PresetMaskRadial,
 } from "../api/client";
-import type {
-  LinearMaskInstance,
-  MaskInstance,
-  RadialMaskInstance,
+import {
+  type LinearMaskInstance,
+  type MaskInstance,
+  type RadialMaskInstance,
+  newMaskId,
 } from "./mask";
-
-function newId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `m-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 export function maskInstanceToWire(m: MaskInstance): PresetMask {
   if (m.type === "linear") {
@@ -50,7 +44,7 @@ export function maskInstanceToWire(m: MaskInstance): PresetMask {
 }
 
 export function wireToMaskInstance(w: PresetMask): MaskInstance {
-  const id = newId();
+  const id = newMaskId();
   if (w.type === "linear") {
     const inst: LinearMaskInstance = {
       id,

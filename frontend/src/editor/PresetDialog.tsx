@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { ApiError, type Preset } from "../api/client";
 import { useApi } from "../api/use-api";
@@ -30,21 +30,35 @@ export default function PresetDialog({
   const applyAdjustments = useEditorStore((s) => s.applyAdjustments);
   const applyMasks = useEditorStore((s) => s.applyMasks);
 
+  // Mount-Guard: verhindert setState nach Unmount oder Close, wenn ein
+  // langlaufender Network-Request noch antwortet.
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
       const list = await api.listPresets();
+      if (!mountedRef.current) return;
       setPresets(list);
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "Liste laden fehlgeschlagen");
     } finally {
-      setLoading(false);
+      if (mountedRef.current) setLoading(false);
     }
   }, [api]);
 
   useEffect(() => {
     if (!open) return;
+    // refresh() ist async, set-state passiert erst nach await innerhalb
+    // — der Mount-Guard fängt setState-after-unmount sauber ab.
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [open, refresh]);
@@ -62,12 +76,14 @@ export default function PresetDialog({
     setBusy(true);
     try {
       await api.deletePreset(id);
+      if (!mountedRef.current) return;
       if (loadedPresetId === id) onLoadedPresetIdChange(null);
       await refresh();
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   };
 
@@ -85,17 +101,19 @@ export default function PresetDialog({
         adjustments,
         masks: masksToWire(masks),
       });
+      if (!mountedRef.current) return;
       onLoadedPresetIdChange(created.id);
       setName("");
       await refresh();
     } catch (err) {
+      if (!mountedRef.current) return;
       if (err instanceof ApiError && err.status === 409) {
         setError("Ein Preset mit diesem Namen existiert bereits.");
       } else {
         setError(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
       }
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   };
 
@@ -111,11 +129,13 @@ export default function PresetDialog({
         adjustments,
         masks: masksToWire(masks),
       });
+      if (!mountedRef.current) return;
       await refresh();
     } catch (err) {
+      if (!mountedRef.current) return;
       setError(err instanceof Error ? err.message : "Aktualisieren fehlgeschlagen");
     } finally {
-      setBusy(false);
+      if (mountedRef.current) setBusy(false);
     }
   };
 
@@ -219,7 +239,7 @@ export default function PresetDialog({
               disabled={busy}
               className="w-full py-1.5 text-[10px] uppercase tracking-[0.2em] text-amber-200 border border-amber-300/40 hover:border-amber-300 disabled:opacity-40"
             >
-              {`„${loadedPreset.name}" überschreiben`}
+              {`„${loadedPreset.name}“ überschreiben`}
             </button>
           )}
 

@@ -64,17 +64,28 @@ Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Anna
 
 **Demo-Stand:** Bild schief? Begradigen. Beschneiden. Objektiv aus EXIF erkannt → Verzerrung weg.
 
-## Phase 5 · Lokale Anpassungen (Wochen 11–13)
+## Phase 5 · Lokale Anpassungen (Wochen 11–13) — abgeschlossen
 
 **Ziel:** Linearer Verlaufsfilter und radialer Filter.
 
-| Woche | Aufgabe |
-|---|---|
-| 11 | Multi-Pass-Pipeline mit Framebuffer-Objekten. Architektur-Refactoring: Pipeline als Liste von Stages. |
-| 12 | Linearer Verlaufsfilter: zwei Drag-Punkte, lokale Adjustment-Werte. Maskenberechnung im Shader (Distance-to-Line). |
-| 13 | Radialer Filter (Ellipse). UI für Maskenauswahl-Liste. Persistenz im Preset-Format (Adjustments + Masken). |
+| Woche | Aufgabe | Status |
+|---|---|---|
+| 11 | ~~Multi-Pass-Pipeline mit Framebuffer-Objekten.~~ → Single-Fragment-Shader mit Uniform-Arrays + uniform-driven Loop (siehe Kasten unten) | umgesetzt anders |
+| 12 | Linearer Verlaufsfilter: zwei Drag-Punkte, lokale Adjustment-Werte. Maskenberechnung im Shader (Distance-to-Line). | abgeschlossen (It 17) |
+| 13 | Radialer Filter (Ellipse). UI für Maskenauswahl-Liste. Persistenz im Preset-Format (Adjustments + Masken). | abgeschlossen (It 18, 19a, 19b, 19c) |
 
-**Demo-Stand:** Himmel mit Verlaufsfilter abdunkeln, ohne den Rest zu verändern.
+**Architektur-Abweichung Woche 11:** Der ursprünglich vorgesehene
+FBO-Pingpong-Refactor wurde nicht umgesetzt. Stattdessen läuft Multi-Mask
+in **einem** Fragment-Shader mit Uniform-Arrays (`MAX_LINEAR_MASKS=4`,
+`MAX_RADIAL_MASKS=4`) und zwei Schleifen mit konstantem Loop-Bound plus
+`if (i >= u_num*) break;` als uniform-driven Early-Termination
+(GLSL ES 3.00-konform). Begründung in
+`docs/superpowers/specs/2026-04-27-multi-mask-and-preset-persistence-design.md`.
+Wenn die lokalen Adjustments später auf alle 10 Slider erweitert werden,
+wird der FBO-Refactor unausweichlich — bis dahin pragmatisch.
+
+**Demo-Stand:** Himmel mit Verlaufsfilter abdunkeln, Gesicht mit Radial
+aufhellen, Preset speichern und auf zweitem Bild laden — funktioniert.
 
 ## Phase 6 · Polish & Deployment (Wochen 14–16)
 

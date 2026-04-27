@@ -67,6 +67,18 @@ export interface RadialMaskInstance {
 
 export type MaskInstance = LinearMaskInstance | RadialMaskInstance;
 
+/**
+ * Generiert eine eindeutige Mask-ID. Verwendet `crypto.randomUUID`, wenn
+ * verfuegbar (alle modernen Browser + jsdom 29+); sonst Math.random-Fallback
+ * fuer Edge-Cases (Node-Test ohne Web-Crypto, alte Mobile-Browser).
+ */
+export function newMaskId(): string {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  return `m-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export const defaultLocalAdjustments = (): LocalAdjustments => ({
   exposure: 0,
   contrast: 0,

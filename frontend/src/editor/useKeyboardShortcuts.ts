@@ -5,6 +5,7 @@ interface Shortcuts {
   readonly onExport?: () => void;
   readonly onOpenFile?: () => void;
   readonly onToggleCrop?: () => void;
+  readonly onTogglePresets?: () => void;
   readonly setBypass?: (bypass: boolean) => void;
 }
 
@@ -38,6 +39,9 @@ export function useKeyboardShortcuts(shortcuts: Shortcuts): void {
       } else if (e.key.toLowerCase() === "r" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
         shortcuts.onToggleCrop?.();
+      } else if (e.key.toLowerCase() === "p" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        e.preventDefault();
+        shortcuts.onTogglePresets?.();
       }
     };
 

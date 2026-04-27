@@ -211,11 +211,16 @@ export default function Editor() {
     if (hasImage) setCropMode((m) => !m);
   }, [hasImage]);
 
+  const togglePresetDialog = useCallback(() => {
+    if (hasImage) setPresetDialogOpen((v) => !v);
+  }, [hasImage]);
+
   useKeyboardShortcuts({
     onResetAll: resetAll,
     onExport: triggerExport,
     onOpenFile: triggerFileDialog,
     onToggleCrop: toggleCropMode,
+    onTogglePresets: togglePresetDialog,
     setBypass,
   });
 

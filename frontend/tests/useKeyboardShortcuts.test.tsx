@@ -49,4 +49,22 @@ describe("useKeyboardShortcuts", () => {
     fireEvent.keyDown(input, { key: "0" });
     expect(onResetAll).not.toHaveBeenCalled();
   });
+
+  it("R -> onToggleCrop, P -> onTogglePresets (ohne Modifier)", () => {
+    const onToggleCrop = vi.fn();
+    const onTogglePresets = vi.fn();
+    render(
+      <Harness
+        onToggleCrop={onToggleCrop}
+        onTogglePresets={onTogglePresets}
+      />,
+    );
+    fireEvent.keyDown(window, { key: "r" });
+    expect(onToggleCrop).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(window, { key: "p" });
+    expect(onTogglePresets).toHaveBeenCalledTimes(1);
+    // Mit Modifier wird P ignoriert (sonst Konflikt mit Cmd+P = Print)
+    fireEvent.keyDown(window, { key: "p", metaKey: true });
+    expect(onTogglePresets).toHaveBeenCalledTimes(1);
+  });
 });

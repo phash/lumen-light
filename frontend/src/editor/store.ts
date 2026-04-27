@@ -26,6 +26,7 @@ import {
   defaultLinearMask,
   defaultLocalAdjustments,
   defaultRadialMask,
+  newMaskId,
 } from "./mask";
 import {
   type CropRect,
@@ -36,13 +37,6 @@ import {
 export const MAX_STRAIGHTEN_RADIANS = (10 * Math.PI) / 180; // ±10°
 
 export type LensSource = "manual" | "auto";
-
-function newId(): string {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `m-${Math.random().toString(36).slice(2, 10)}`;
-}
 
 export interface EditorState {
   adjustments: Adjustments;
@@ -148,7 +142,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   addLinearMask: () => {
     const state = get();
     if (countByType(state.masks, "linear") >= MAX_LINEAR_MASKS) return null;
-    const id = newId();
+    const id = newMaskId();
     const instance: LinearMaskInstance = {
       id,
       type: "linear",
@@ -161,7 +155,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   addRadialMask: () => {
     const state = get();
     if (countByType(state.masks, "radial") >= MAX_RADIAL_MASKS) return null;
-    const id = newId();
+    const id = newMaskId();
     const instance: RadialMaskInstance = {
       id,
       type: "radial",
