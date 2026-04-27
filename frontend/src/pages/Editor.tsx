@@ -13,6 +13,7 @@ import {
   suggestFilename,
 } from "../editor/export";
 import Histogram from "../editor/Histogram";
+import { decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import Slider from "../editor/Slider";
 import { useEditorStore } from "../editor/store";
 import { useKeyboardShortcuts } from "../editor/useKeyboardShortcuts";
@@ -30,6 +31,8 @@ export default function Editor() {
   const [exportQuality, setExportQuality] = useState(0.92);
   const [exportWidth, setExportWidth] = useState<number | "native">("native");
   const [exporting, setExporting] = useState(false);
+  const [decoding, setDecoding] = useState(false);
+  const [cameraInfo, setCameraInfo] = useState<string | null>(null);
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const setAdjustment = useEditorStore((s) => s.setAdjustment);
@@ -49,11 +52,27 @@ export default function Editor() {
   const onFile = async (file: File) => {
     setError(null);
     setOriginalFilename(file.name);
+    setCameraInfo(null);
     try {
-      await canvasHandleRef.current?.loadFile(file);
+      const isRaw = await isRawFile(file);
+      if (isRaw) {
+        setDecoding(true);
+        const decoded = await decodeRaw(file);
+        const bitmap = await rgbToImageBitmap(decoded.rgb, decoded.width, decoded.height);
+        canvasHandleRef.current?.loadBitmap(bitmap, decoded.width, decoded.height);
+        if (decoded.cameraMake || decoded.cameraModel) {
+          setCameraInfo(
+            [decoded.cameraMake, decoded.cameraModel].filter(Boolean).join(" "),
+          );
+        }
+      } else {
+        await canvasHandleRef.current?.loadFile(file);
+      }
       setHasImage(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Bild konnte nicht geladen werden");
+    } finally {
+      setDecoding(false);
     }
   };
 
@@ -144,6 +163,24 @@ export default function Editor() {
             className="absolute top-4 left-1/2 -translate-x-1/2 text-red-400"
           >
             {error}
+          </p>
+        )}
+
+        {decoding && (
+          <p
+            data-testid="editor-decoding"
+            className="absolute top-4 left-1/2 -translate-x-1/2 text-amber-200"
+          >
+            RAW wird dekodiert …
+          </p>
+        )}
+
+        {cameraInfo && (
+          <p
+            data-testid="editor-camera-info"
+            className="absolute top-6 right-6 text-xs uppercase tracking-[0.2em] text-stone-500"
+          >
+            {cameraInfo}
           </p>
         )}
 

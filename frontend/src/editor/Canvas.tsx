@@ -4,8 +4,10 @@ import { useEditorStore } from "./store";
 import { Renderer, WebGLRendererError, loadImageFromFile } from "./webgl";
 
 export interface CanvasHandle {
-  /** Laedt eine Datei und rendert das Bild. */
+  /** Laedt JPEG/PNG via Browser-Decoder. */
   loadFile(file: File): Promise<void>;
+  /** Laedt ein bereits dekodiertes Bild (z.B. aus RAW). */
+  loadBitmap(bitmap: ImageBitmap, width: number, height: number): void;
   /** Erzwingt einen Re-Render mit aktuellem Store-State. */
   render(): void;
 }
@@ -60,6 +62,18 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         if (!r) throw new Error("Renderer nicht initialisiert");
         const { image, width, height } = await loadImageFromFile(file);
         r.loadImage(image, width, height);
+        r.render(useEditorStore.getState().adjustments, useEditorStore.getState().bypass);
+        onTick();
+      },
+      loadBitmap(bitmap, width, height) {
+        const r = rendererRef.current;
+        if (!r) throw new Error("Renderer nicht initialisiert");
+        // Skaliere Live-Vorschau auf max 1600px wie bei JPG/PNG
+        const maxW = 1600;
+        const scale = Math.min(1, maxW / width);
+        const w = Math.round(width * scale);
+        const h = Math.round(height * scale);
+        r.loadImage(bitmap, w, h);
         r.render(useEditorStore.getState().adjustments, useEditorStore.getState().bypass);
         onTick();
       },
