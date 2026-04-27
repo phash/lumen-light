@@ -13,17 +13,27 @@ export async function loginAsNewUser(page: Page): Promise<CreatedUser> {
 
   await page.goto("/");
 
-  // Wenn aus einem vorherigen Test eine Keycloak-Session uebrig ist
-  // (passiert trotz neuer Browser-Contexts gelegentlich), zuerst ausloggen.
+  // Warten bis IRGENDEIN Auth-Button sichtbar ist — auth.isLoading kann
+  // anfangs true sein und beide Buttons unterdruecken.
+  await Promise.race([
+    page
+      .getByTestId("auth-login-button")
+      .waitFor({ state: "visible", timeout: 15_000 }),
+    page
+      .getByRole("button", { name: "Logout" })
+      .waitFor({ state: "visible", timeout: 15_000 }),
+  ]);
+
+  // Wenn aus einem vorherigen Test eine Keycloak-Session uebrig ist,
+  // zuerst ausloggen.
   const loginVisible = await page
     .getByTestId("auth-login-button")
-    .isVisible()
-    .catch(() => false);
+    .isVisible();
   if (!loginVisible) {
-    await page.getByRole("button", { name: "Logout" }).click().catch(() => null);
+    await page.getByRole("button", { name: "Logout" }).click();
     await page
       .getByTestId("auth-login-button")
-      .waitFor({ state: "visible", timeout: 10_000 });
+      .waitFor({ state: "visible", timeout: 15_000 });
   }
 
   await page.getByTestId("auth-login-button").click();

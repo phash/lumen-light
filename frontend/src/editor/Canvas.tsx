@@ -31,6 +31,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   const bypass = useEditorStore((s) => s.bypass);
   const cropRect = useEditorStore((s) => s.cropRect);
   const straightenAngle = useEditorStore((s) => s.straightenAngle);
+  const lensCorrection = useEditorStore((s) => s.lensCorrection);
 
   const transform = useMemo(
     () => uvTransformMatrix(cropRect, straightenAngle),
@@ -51,9 +52,15 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   useEffect(() => {
     const r = rendererRef.current;
     if (!r || !r.hasImage()) return;
-    r.render(adjustments, bypass, transform);
+    r.render(
+      adjustments,
+      bypass,
+      transform,
+      lensCorrection.distortion,
+      lensCorrection.vignette,
+    );
     onTick();
-  }, [adjustments, bypass, transform, onTick]);
+  }, [adjustments, bypass, transform, lensCorrection, onTick]);
 
   useImperativeHandle(
     ref,
@@ -63,11 +70,13 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         if (!r) throw new Error("Renderer nicht initialisiert");
         const { image, width, height } = await loadImageFromFile(file);
         r.loadImage(image, width, height);
-        const state = useEditorStore.getState();
+        const s = useEditorStore.getState();
         r.render(
-          state.adjustments,
-          state.bypass,
-          uvTransformMatrix(state.cropRect, state.straightenAngle),
+          s.adjustments,
+          s.bypass,
+          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          s.lensCorrection.distortion,
+          s.lensCorrection.vignette,
         );
         onTick();
       },
@@ -79,22 +88,26 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         const w = Math.round(width * scale);
         const h = Math.round(height * scale);
         r.loadImage(bitmap, w, h);
-        const state = useEditorStore.getState();
+        const s = useEditorStore.getState();
         r.render(
-          state.adjustments,
-          state.bypass,
-          uvTransformMatrix(state.cropRect, state.straightenAngle),
+          s.adjustments,
+          s.bypass,
+          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          s.lensCorrection.distortion,
+          s.lensCorrection.vignette,
         );
         onTick();
       },
       render: () => {
         const r = rendererRef.current;
         if (!r || !r.hasImage()) return;
-        const state = useEditorStore.getState();
+        const s = useEditorStore.getState();
         r.render(
-          state.adjustments,
-          state.bypass,
-          uvTransformMatrix(state.cropRect, state.straightenAngle),
+          s.adjustments,
+          s.bypass,
+          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          s.lensCorrection.distortion,
+          s.lensCorrection.vignette,
         );
         onTick();
       },

@@ -90,6 +90,36 @@ test.describe("Editor", () => {
     }
   });
 
+  test("Lens-Sektion: Distortion + Vignette Slider bewegen", async ({ page }) => {
+    const user = await loginAsNewUser(page);
+    try {
+      await page.goto("/editor");
+      await page.setInputFiles('[data-testid="editor-file-input"]', JPG_PATH);
+      await expect(page.getByTestId("editor-bypass")).toBeVisible({ timeout: 5_000 });
+
+      const distSlider = page.getByTestId("lens-distortion-slider");
+      const vigSlider = page.getByTestId("lens-vignette-slider");
+      await expect(distSlider).toBeVisible();
+      await expect(vigSlider).toBeVisible();
+
+      // Range-Input direkt mit fill setzen
+      await distSlider.fill("0.4");
+      await vigSlider.fill("-0.3");
+
+      // Visuelle Labels aktualisieren
+      const lensSection = page.getByTestId("lens-section");
+      await expect(lensSection.getByText(/Verzeichnung \(40\)/)).toBeVisible();
+      await expect(lensSection.getByText(/Vignettierung \(-30\)/)).toBeVisible();
+
+      // Geometry-Reset setzt auch Lens zurueck
+      await page.getByTestId("editor-reset-geometry").click();
+      await expect(lensSection.getByText(/Verzeichnung \(0\)/)).toBeVisible();
+      await expect(lensSection.getByText(/Vignettierung \(0\)/)).toBeVisible();
+    } finally {
+      await cleanupUser(user);
+    }
+  });
+
   test("Tastenkuerzel: 0=Reset-All, R=Crop-Toggle", async ({ page }) => {
     const user = await loginAsNewUser(page);
     try {

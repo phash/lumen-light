@@ -29,7 +29,12 @@ uniform float u_tint;
 uniform float u_vibrance;
 uniform float u_saturation;
 uniform float u_bypass;
+uniform float u_lensDistortion;
+uniform float u_lensVignette;
 out vec4 outColor;
+
+const float DISTORTION_GAIN = 0.4;
+const float VIGNETTE_GAIN = 2.0;
 
 vec3 srgbToLinear(vec3 c) {
   return mix(c / 12.92, pow((c + 0.055) / 1.055, vec3(2.4)), step(vec3(0.04045), c));
@@ -77,7 +82,13 @@ vec3 hslToRgb(vec3 hsl) {
 }
 
 void main() {
-  vec4 src = texture(u_tex, v_uv);
+  // Distortion (Brown-Conrady 1-Term) — vor Texture-Fetch.
+  vec2 dc = v_uv - 0.5;
+  float dr2 = dot(dc, dc);
+  float k1 = u_lensDistortion * DISTORTION_GAIN;
+  vec2 src_uv = dc * (1.0 + k1 * dr2) + 0.5;
+
+  vec4 src = texture(u_tex, src_uv);
   if (u_bypass > 0.5) { outColor = src; return; }
 
   // 1. sRGB -> Linear
@@ -121,6 +132,11 @@ void main() {
   hsl.y = clamp(hsl.y + vibBoost, 0.0, 1.0);
   hsl.y = clamp(hsl.y * (1.0 + u_saturation), 0.0, 1.0);
   c = hslToRgb(hsl);
+
+  // 8. Vignette (radial, am Ende der Pipeline)
+  float vr2 = dot(dc, dc);
+  c *= 1.0 + u_lensVignette * VIGNETTE_GAIN * vr2;
+  c = clamp(c, 0.0, 1.0);
 
   outColor = vec4(c, src.a);
 }`;

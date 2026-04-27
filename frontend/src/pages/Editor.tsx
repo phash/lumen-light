@@ -49,6 +49,8 @@ export default function Editor() {
   const straightenAngle = useEditorStore((s) => s.straightenAngle);
   const setStraightenAngle = useEditorStore((s) => s.setStraightenAngle);
   const resetGeometry = useEditorStore((s) => s.resetGeometry);
+  const lensCorrection = useEditorStore((s) => s.lensCorrection);
+  const setLensCorrection = useEditorStore((s) => s.setLensCorrection);
 
   const imageAspect = imageDims ? imageDims.width / imageDims.height : 1;
 
@@ -392,6 +394,49 @@ export default function Editor() {
             >
               Geometrie zurücksetzen
             </button>
+          </div>
+
+          <div className="mb-5" data-testid="lens-section">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-stone-300 italic">Objektiv</span>
+              <div className="flex-1 h-px bg-stone-800" />
+            </div>
+            <label className="block py-1.5">
+              <span className="text-[11px] uppercase tracking-wider text-stone-400">
+                Verzeichnung ({Math.round(lensCorrection.distortion * 100)})
+              </span>
+              <input
+                type="range"
+                min={-1}
+                max={1}
+                step={0.01}
+                value={lensCorrection.distortion}
+                onChange={(e) =>
+                  setLensCorrection({ distortion: Number(e.target.value) })
+                }
+                onDoubleClick={() => setLensCorrection({ distortion: 0 })}
+                data-testid="lens-distortion-slider"
+                className="mt-1 w-full"
+              />
+            </label>
+            <label className="block py-1.5">
+              <span className="text-[11px] uppercase tracking-wider text-stone-400">
+                Vignettierung ({Math.round(lensCorrection.vignette * 100)})
+              </span>
+              <input
+                type="range"
+                min={-1}
+                max={1}
+                step={0.01}
+                value={lensCorrection.vignette}
+                onChange={(e) =>
+                  setLensCorrection({ vignette: Number(e.target.value) })
+                }
+                onDoubleClick={() => setLensCorrection({ vignette: 0 })}
+                data-testid="lens-vignette-slider"
+                className="mt-1 w-full"
+              />
+            </label>
           </div>
 
           {Array.from(groups.entries()).map(([group, items]) => (

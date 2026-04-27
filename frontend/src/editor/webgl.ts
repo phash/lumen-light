@@ -52,6 +52,8 @@ interface UniformMap {
   readonly tex: WebGLUniformLocation;
   readonly bypass: WebGLUniformLocation;
   readonly uvTransform: WebGLUniformLocation;
+  readonly lensDistortion: WebGLUniformLocation;
+  readonly lensVignette: WebGLUniformLocation;
   readonly adjustments: ReadonlyMap<string, WebGLUniformLocation>;
 }
 
@@ -111,12 +113,27 @@ export class Renderer {
     const tex = gl.getUniformLocation(this.program, "u_tex");
     const bypass = gl.getUniformLocation(this.program, "u_bypass");
     const uvTransform = gl.getUniformLocation(this.program, "u_uvTransform");
-    if (tex === null || bypass === null || uvTransform === null) {
+    const lensDistortion = gl.getUniformLocation(this.program, "u_lensDistortion");
+    const lensVignette = gl.getUniformLocation(this.program, "u_lensVignette");
+    if (
+      tex === null ||
+      bypass === null ||
+      uvTransform === null ||
+      lensDistortion === null ||
+      lensVignette === null
+    ) {
       throw new WebGLRendererError(
-        "Uniform u_tex / u_bypass / u_uvTransform nicht gefunden",
+        "Uniforms u_tex/u_bypass/u_uvTransform/u_lensDistortion/u_lensVignette nicht gefunden",
       );
     }
-    this.uniforms = { tex, bypass, uvTransform, adjustments: adjustmentLocs };
+    this.uniforms = {
+      tex,
+      bypass,
+      uvTransform,
+      lensDistortion,
+      lensVignette,
+      adjustments: adjustmentLocs,
+    };
     gl.useProgram(this.program);
   }
 
@@ -144,6 +161,8 @@ export class Renderer {
     adjustments: Adjustments,
     bypass: boolean,
     uvTransform: Float32Array = IDENTITY_UV_TRANSFORM,
+    lensDistortion = 0,
+    lensVignette = 0,
   ): void {
     if (!this.texture) return;
     const gl = this.gl;
@@ -153,6 +172,8 @@ export class Renderer {
     gl.uniform1i(this.uniforms.tex, 0);
     gl.uniform1f(this.uniforms.bypass, bypass ? 1.0 : 0.0);
     gl.uniformMatrix3fv(this.uniforms.uvTransform, false, uvTransform);
+    gl.uniform1f(this.uniforms.lensDistortion, lensDistortion);
+    gl.uniform1f(this.uniforms.lensVignette, lensVignette);
     for (const [key, loc] of this.uniforms.adjustments) {
       gl.uniform1f(loc, adjustments[key as keyof Adjustments]);
     }

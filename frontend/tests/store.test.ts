@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { defaultAdjustments } from "../src/editor/adjustments";
+import { defaultLensCorrection } from "../src/editor/lens";
 import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../src/editor/store";
 import { defaultCropRect } from "../src/editor/transform";
 
@@ -11,6 +12,7 @@ describe("useEditorStore", () => {
       bypass: false,
       cropRect: defaultCropRect(),
       straightenAngle: 0,
+      lensCorrection: defaultLensCorrection(),
     });
   });
 
@@ -86,12 +88,35 @@ describe("useEditorStore", () => {
     expect(useEditorStore.getState().straightenAngle).toBeCloseTo(0.05, 5);
   });
 
-  it("resetGeometry setzt cropRect und Angle zurueck", () => {
+  it("resetGeometry setzt cropRect, Angle UND lensCorrection zurueck", () => {
     useEditorStore.getState().setCropRect({ x0: 0.1, y0: 0.1, x1: 0.9, y1: 0.9 });
     useEditorStore.getState().setStraightenAngle(0.05);
+    useEditorStore.getState().setLensCorrection({ distortion: 0.5, vignette: -0.3 });
     useEditorStore.getState().resetGeometry();
     const s = useEditorStore.getState();
     expect(s.cropRect).toEqual(defaultCropRect());
     expect(s.straightenAngle).toBe(0);
+    expect(s.lensCorrection).toEqual(defaultLensCorrection());
+  });
+
+  it("setLensCorrection: Partial-Update lasst andere Felder unveraendert", () => {
+    useEditorStore.getState().setLensCorrection({ distortion: 0.5 });
+    expect(useEditorStore.getState().lensCorrection).toEqual({
+      distortion: 0.5,
+      vignette: 0,
+    });
+    useEditorStore.getState().setLensCorrection({ vignette: -0.4 });
+    expect(useEditorStore.getState().lensCorrection).toEqual({
+      distortion: 0.5,
+      vignette: -0.4,
+    });
+  });
+
+  it("setLensCorrection clampt auf [-1, 1]", () => {
+    useEditorStore.getState().setLensCorrection({ distortion: 99, vignette: -99 });
+    expect(useEditorStore.getState().lensCorrection).toEqual({
+      distortion: 1,
+      vignette: -1,
+    });
   });
 });

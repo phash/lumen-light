@@ -7,6 +7,11 @@ import {
   defaultAdjustments,
 } from "./adjustments";
 import {
+  type LensCorrection,
+  clampLens,
+  defaultLensCorrection,
+} from "./lens";
+import {
   type CropRect,
   clampCropRect,
   defaultCropRect,
@@ -19,12 +24,14 @@ export interface EditorState {
   bypass: boolean;
   cropRect: CropRect;
   straightenAngle: number;
+  lensCorrection: LensCorrection;
   setAdjustment: (key: AdjustmentKey, value: number) => void;
   resetAll: () => void;
   applyAdjustments: (adj: Partial<Adjustments>) => void;
   setBypass: (bypass: boolean) => void;
   setCropRect: (rect: CropRect) => void;
   setStraightenAngle: (angle: number) => void;
+  setLensCorrection: (next: Partial<LensCorrection>) => void;
   resetGeometry: () => void;
 }
 
@@ -33,6 +40,7 @@ export const useEditorStore = create<EditorState>((set) => ({
   bypass: false,
   cropRect: defaultCropRect(),
   straightenAngle: 0,
+  lensCorrection: defaultLensCorrection(),
   setAdjustment: (key, value) =>
     set((state) => ({
       adjustments: { ...state.adjustments, [key]: clampAdjustment(key, value) },
@@ -40,9 +48,6 @@ export const useEditorStore = create<EditorState>((set) => ({
   resetAll: () => set({ adjustments: defaultAdjustments() }),
   applyAdjustments: (incoming) =>
     set(() => {
-      // Komplett ersetzen, NICHT mergen — sonst bleiben alte Werte fuer
-      // nicht-spezifizierte Keys stehen. Default als Basis, dann
-      // incoming druebergelegt.
       const base = defaultAdjustments();
       const merged: Adjustments = { ...base };
       for (const [k, v] of Object.entries(incoming) as [AdjustmentKey, number][]) {
@@ -59,5 +64,14 @@ export const useEditorStore = create<EditorState>((set) => ({
         Math.min(MAX_STRAIGHTEN_RADIANS, angle),
       ),
     }),
-  resetGeometry: () => set({ cropRect: defaultCropRect(), straightenAngle: 0 }),
+  setLensCorrection: (next) =>
+    set((state) => ({
+      lensCorrection: clampLens({ ...state.lensCorrection, ...next }),
+    })),
+  resetGeometry: () =>
+    set({
+      cropRect: defaultCropRect(),
+      straightenAngle: 0,
+      lensCorrection: defaultLensCorrection(),
+    }),
 }));
