@@ -6,19 +6,33 @@ import {
   clampAdjustment,
   defaultAdjustments,
 } from "./adjustments";
+import {
+  type CropRect,
+  clampCropRect,
+  defaultCropRect,
+} from "./transform";
+
+export const MAX_STRAIGHTEN_RADIANS = (10 * Math.PI) / 180; // ±10°
 
 export interface EditorState {
   adjustments: Adjustments;
   bypass: boolean;
+  cropRect: CropRect;
+  straightenAngle: number;
   setAdjustment: (key: AdjustmentKey, value: number) => void;
   resetAll: () => void;
   applyAdjustments: (adj: Partial<Adjustments>) => void;
   setBypass: (bypass: boolean) => void;
+  setCropRect: (rect: CropRect) => void;
+  setStraightenAngle: (angle: number) => void;
+  resetGeometry: () => void;
 }
 
 export const useEditorStore = create<EditorState>((set) => ({
   adjustments: defaultAdjustments(),
   bypass: false,
+  cropRect: defaultCropRect(),
+  straightenAngle: 0,
   setAdjustment: (key, value) =>
     set((state) => ({
       adjustments: { ...state.adjustments, [key]: clampAdjustment(key, value) },
@@ -37,4 +51,13 @@ export const useEditorStore = create<EditorState>((set) => ({
       return { adjustments: merged };
     }),
   setBypass: (bypass) => set({ bypass }),
+  setCropRect: (rect) => set({ cropRect: clampCropRect(rect) }),
+  setStraightenAngle: (angle) =>
+    set({
+      straightenAngle: Math.max(
+        -MAX_STRAIGHTEN_RADIANS,
+        Math.min(MAX_STRAIGHTEN_RADIANS, angle),
+      ),
+    }),
+  resetGeometry: () => set({ cropRect: defaultCropRect(), straightenAngle: 0 }),
 }));

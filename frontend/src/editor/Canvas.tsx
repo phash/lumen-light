@@ -1,6 +1,7 @@
-import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 
 import { useEditorStore } from "./store";
+import { uvTransformMatrix } from "./transform";
 import { Renderer, WebGLRendererError, loadImageFromFile } from "./webgl";
 
 export interface CanvasHandle {
@@ -15,17 +16,10 @@ export interface CanvasHandle {
 interface Props {
   readonly onTick: () => void;
   readonly onError: (message: string) => void;
-  /** Wird beim Mount mit dem Canvas-Element aufgerufen — fuer das
-   *  Histogramm-Sampling, damit der Editor das Element nicht via
-   *  ref aus dem Render lesen muss. */
+  /** Wird beim Mount mit dem Canvas-Element aufgerufen. */
   readonly onCanvasMount?: (canvas: HTMLCanvasElement) => void;
 }
 
-/**
- * Canvas-Komponente, die einen WebGL2-Renderer kapselt. Nimmt File-Loads
- * entgegen und re-rendert bei Adjustments-Aenderung. Tick-Callback wird
- * nach jedem Render gefeuert (fuer Histogramm-Update).
- */
 const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   { onTick, onError, onCanvasMount },
   ref,
@@ -35,6 +29,13 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const bypass = useEditorStore((s) => s.bypass);
+  const cropRect = useEditorStore((s) => s.cropRect);
+  const straightenAngle = useEditorStore((s) => s.straightenAngle);
+
+  const transform = useMemo(
+    () => uvTransformMatrix(cropRect, straightenAngle),
+    [cropRect, straightenAngle],
+  );
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -50,9 +51,9 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   useEffect(() => {
     const r = rendererRef.current;
     if (!r || !r.hasImage()) return;
-    r.render(adjustments, bypass);
+    r.render(adjustments, bypass, transform);
     onTick();
-  }, [adjustments, bypass, onTick]);
+  }, [adjustments, bypass, transform, onTick]);
 
   useImperativeHandle(
     ref,
@@ -62,25 +63,39 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         if (!r) throw new Error("Renderer nicht initialisiert");
         const { image, width, height } = await loadImageFromFile(file);
         r.loadImage(image, width, height);
-        r.render(useEditorStore.getState().adjustments, useEditorStore.getState().bypass);
+        const state = useEditorStore.getState();
+        r.render(
+          state.adjustments,
+          state.bypass,
+          uvTransformMatrix(state.cropRect, state.straightenAngle),
+        );
         onTick();
       },
       loadBitmap(bitmap, width, height) {
         const r = rendererRef.current;
         if (!r) throw new Error("Renderer nicht initialisiert");
-        // Skaliere Live-Vorschau auf max 1600px wie bei JPG/PNG
         const maxW = 1600;
         const scale = Math.min(1, maxW / width);
         const w = Math.round(width * scale);
         const h = Math.round(height * scale);
         r.loadImage(bitmap, w, h);
-        r.render(useEditorStore.getState().adjustments, useEditorStore.getState().bypass);
+        const state = useEditorStore.getState();
+        r.render(
+          state.adjustments,
+          state.bypass,
+          uvTransformMatrix(state.cropRect, state.straightenAngle),
+        );
         onTick();
       },
       render: () => {
         const r = rendererRef.current;
         if (!r || !r.hasImage()) return;
-        r.render(useEditorStore.getState().adjustments, useEditorStore.getState().bypass);
+        const state = useEditorStore.getState();
+        r.render(
+          state.adjustments,
+          state.bypass,
+          uvTransformMatrix(state.cropRect, state.straightenAngle),
+        );
         onTick();
       },
     }),

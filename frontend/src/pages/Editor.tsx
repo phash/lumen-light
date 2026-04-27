@@ -6,6 +6,7 @@ import {
   adjustmentsByGroup,
 } from "../editor/adjustments";
 import Canvas, { type CanvasHandle } from "../editor/Canvas";
+import CropOverlay from "../editor/CropOverlay";
 import {
   type ExportFormat,
   downloadBlob,
@@ -15,7 +16,8 @@ import {
 import Histogram from "../editor/Histogram";
 import { decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import Slider from "../editor/Slider";
-import { useEditorStore } from "../editor/store";
+import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../editor/store";
+import { type AspectRatio } from "../editor/transform";
 import { useKeyboardShortcuts } from "../editor/useKeyboardShortcuts";
 
 export default function Editor() {
@@ -33,12 +35,22 @@ export default function Editor() {
   const [exporting, setExporting] = useState(false);
   const [decoding, setDecoding] = useState(false);
   const [cameraInfo, setCameraInfo] = useState<string | null>(null);
+  const [imageDims, setImageDims] = useState<{ width: number; height: number } | null>(null);
+  const [cropMode, setCropMode] = useState(false);
+  const [aspect, setAspect] = useState<AspectRatio>("free");
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const setAdjustment = useEditorStore((s) => s.setAdjustment);
   const resetAll = useEditorStore((s) => s.resetAll);
   const bypass = useEditorStore((s) => s.bypass);
   const setBypass = useEditorStore((s) => s.setBypass);
+  const cropRect = useEditorStore((s) => s.cropRect);
+  const setCropRect = useEditorStore((s) => s.setCropRect);
+  const straightenAngle = useEditorStore((s) => s.straightenAngle);
+  const setStraightenAngle = useEditorStore((s) => s.setStraightenAngle);
+  const resetGeometry = useEditorStore((s) => s.resetGeometry);
+
+  const imageAspect = imageDims ? imageDims.width / imageDims.height : 1;
 
   const groups = adjustmentsByGroup();
 
@@ -53,6 +65,8 @@ export default function Editor() {
     setError(null);
     setOriginalFilename(file.name);
     setCameraInfo(null);
+    setImageDims(null);
+    resetGeometry();
     try {
       const isRaw = await isRawFile(file);
       if (isRaw) {
@@ -60,6 +74,7 @@ export default function Editor() {
         const decoded = await decodeRaw(file);
         const bitmap = await rgbToImageBitmap(decoded.rgb, decoded.width, decoded.height);
         canvasHandleRef.current?.loadBitmap(bitmap, decoded.width, decoded.height);
+        setImageDims({ width: decoded.width, height: decoded.height });
         if (decoded.cameraMake || decoded.cameraModel) {
           setCameraInfo(
             [decoded.cameraMake, decoded.cameraModel].filter(Boolean).join(" "),
@@ -67,6 +82,9 @@ export default function Editor() {
         }
       } else {
         await canvasHandleRef.current?.loadFile(file);
+        // Dimensions aus dem Canvas-Element lesen — wurde von loadFile gesetzt
+        const c = canvasElement;
+        if (c) setImageDims({ width: c.width, height: c.height });
       }
       setHasImage(true);
     } catch (err) {
@@ -114,10 +132,15 @@ export default function Editor() {
     }
   };
 
+  const toggleCropMode = useCallback(() => {
+    if (hasImage) setCropMode((m) => !m);
+  }, [hasImage]);
+
   useKeyboardShortcuts({
     onResetAll: resetAll,
     onExport: triggerExport,
     onOpenFile: triggerFileDialog,
+    onToggleCrop: toggleCropMode,
     setBypass,
   });
 
@@ -128,12 +151,22 @@ export default function Editor() {
         onDrop={onDrop}
         onDragOver={(e) => e.preventDefault()}
       >
-        <Canvas
-          ref={canvasHandleRef}
-          onTick={onTick}
-          onError={onCanvasError}
-          onCanvasMount={onCanvasMount}
-        />
+        <div className="relative max-w-full max-h-full">
+          <Canvas
+            ref={canvasHandleRef}
+            onTick={onTick}
+            onError={onCanvasError}
+            onCanvasMount={onCanvasMount}
+          />
+          {hasImage && cropMode && (
+            <CropOverlay
+              cropRect={cropRect}
+              aspect={aspect}
+              imageAspect={imageAspect}
+              onChange={setCropRect}
+            />
+          )}
+        </div>
 
         <input
           ref={fileInputRef}
@@ -195,6 +228,18 @@ export default function Editor() {
               className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
             >
               {bypass ? "Original" : "Halten für Original"}
+            </button>
+            <button
+              type="button"
+              data-testid="editor-crop-toggle"
+              onClick={toggleCropMode}
+              className={`px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] backdrop-blur border ${
+                cropMode
+                  ? "bg-amber-200/20 border-amber-300 text-amber-200"
+                  : "bg-stone-900/80 border-stone-700 hover:border-amber-300/40 text-stone-300"
+              }`}
+            >
+              {cropMode ? "Crop fertig" : "Beschneiden"}
             </button>
             <button
               type="button"
@@ -301,6 +346,54 @@ export default function Editor() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
+          <div className="mb-5" data-testid="geometry-section">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-stone-300 italic">Geometrie</span>
+              <div className="flex-1 h-px bg-stone-800" />
+            </div>
+            <label className="block py-1.5">
+              <span className="text-[11px] uppercase tracking-wider text-stone-400">
+                Aspect-Ratio
+              </span>
+              <select
+                value={aspect}
+                onChange={(e) => setAspect(e.target.value as AspectRatio)}
+                data-testid="aspect-select"
+                className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
+              >
+                <option value="free">Frei</option>
+                <option value="1:1">1:1</option>
+                <option value="3:2">3:2</option>
+                <option value="4:3">4:3</option>
+                <option value="16:9">16:9</option>
+              </select>
+            </label>
+            <label className="block py-1.5">
+              <span className="text-[11px] uppercase tracking-wider text-stone-400">
+                Begradigen ({Math.round((straightenAngle * 180) / Math.PI * 10) / 10}°)
+              </span>
+              <input
+                type="range"
+                min={-MAX_STRAIGHTEN_RADIANS}
+                max={MAX_STRAIGHTEN_RADIANS}
+                step={0.001}
+                value={straightenAngle}
+                onChange={(e) => setStraightenAngle(Number(e.target.value))}
+                onDoubleClick={() => setStraightenAngle(0)}
+                data-testid="straighten-slider"
+                className="mt-1 w-full"
+              />
+            </label>
+            <button
+              type="button"
+              onClick={resetGeometry}
+              data-testid="editor-reset-geometry"
+              className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
+            >
+              Geometrie zurücksetzen
+            </button>
+          </div>
+
           {Array.from(groups.entries()).map(([group, items]) => (
             <div key={group} className="mb-5">
               <div className="flex items-center gap-2 mb-2">

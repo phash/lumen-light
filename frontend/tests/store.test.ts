@@ -1,13 +1,16 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { defaultAdjustments } from "../src/editor/adjustments";
-import { useEditorStore } from "../src/editor/store";
+import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../src/editor/store";
+import { defaultCropRect } from "../src/editor/transform";
 
 describe("useEditorStore", () => {
   beforeEach(() => {
     useEditorStore.setState({
       adjustments: defaultAdjustments(),
       bypass: false,
+      cropRect: defaultCropRect(),
+      straightenAngle: 0,
     });
   });
 
@@ -65,5 +68,30 @@ describe("useEditorStore", () => {
     expect(useEditorStore.getState().bypass).toBe(true);
     useEditorStore.getState().setBypass(false);
     expect(useEditorStore.getState().bypass).toBe(false);
+  });
+
+  it("setCropRect clampt", () => {
+    useEditorStore.getState().setCropRect({ x0: -0.5, y0: 0, x1: 1.5, y1: 1 });
+    const r = useEditorStore.getState().cropRect;
+    expect(r.x0).toBe(0);
+    expect(r.x1).toBe(1);
+  });
+
+  it("setStraightenAngle klemmt auf ±MAX_STRAIGHTEN_RADIANS", () => {
+    useEditorStore.getState().setStraightenAngle(99);
+    expect(useEditorStore.getState().straightenAngle).toBeCloseTo(MAX_STRAIGHTEN_RADIANS, 5);
+    useEditorStore.getState().setStraightenAngle(-99);
+    expect(useEditorStore.getState().straightenAngle).toBeCloseTo(-MAX_STRAIGHTEN_RADIANS, 5);
+    useEditorStore.getState().setStraightenAngle(0.05);
+    expect(useEditorStore.getState().straightenAngle).toBeCloseTo(0.05, 5);
+  });
+
+  it("resetGeometry setzt cropRect und Angle zurueck", () => {
+    useEditorStore.getState().setCropRect({ x0: 0.1, y0: 0.1, x1: 0.9, y1: 0.9 });
+    useEditorStore.getState().setStraightenAngle(0.05);
+    useEditorStore.getState().resetGeometry();
+    const s = useEditorStore.getState();
+    expect(s.cropRect).toEqual(defaultCropRect());
+    expect(s.straightenAngle).toBe(0);
   });
 });

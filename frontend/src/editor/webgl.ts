@@ -51,8 +51,11 @@ function linkProgram(
 interface UniformMap {
   readonly tex: WebGLUniformLocation;
   readonly bypass: WebGLUniformLocation;
+  readonly uvTransform: WebGLUniformLocation;
   readonly adjustments: ReadonlyMap<string, WebGLUniformLocation>;
 }
+
+const IDENTITY_UV_TRANSFORM = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
 export class Renderer {
   private readonly gl: WebGL2RenderingContext;
@@ -107,10 +110,13 @@ export class Renderer {
     }
     const tex = gl.getUniformLocation(this.program, "u_tex");
     const bypass = gl.getUniformLocation(this.program, "u_bypass");
-    if (tex === null || bypass === null) {
-      throw new WebGLRendererError("Uniform u_tex / u_bypass nicht gefunden");
+    const uvTransform = gl.getUniformLocation(this.program, "u_uvTransform");
+    if (tex === null || bypass === null || uvTransform === null) {
+      throw new WebGLRendererError(
+        "Uniform u_tex / u_bypass / u_uvTransform nicht gefunden",
+      );
     }
-    this.uniforms = { tex, bypass, adjustments: adjustmentLocs };
+    this.uniforms = { tex, bypass, uvTransform, adjustments: adjustmentLocs };
     gl.useProgram(this.program);
   }
 
@@ -134,7 +140,11 @@ export class Renderer {
     return this.texture !== null;
   }
 
-  render(adjustments: Adjustments, bypass: boolean): void {
+  render(
+    adjustments: Adjustments,
+    bypass: boolean,
+    uvTransform: Float32Array = IDENTITY_UV_TRANSFORM,
+  ): void {
     if (!this.texture) return;
     const gl = this.gl;
     gl.useProgram(this.program);
@@ -142,6 +152,7 @@ export class Renderer {
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
     gl.uniform1i(this.uniforms.tex, 0);
     gl.uniform1f(this.uniforms.bypass, bypass ? 1.0 : 0.0);
+    gl.uniformMatrix3fv(this.uniforms.uvTransform, false, uvTransform);
     for (const [key, loc] of this.uniforms.adjustments) {
       gl.uniform1f(loc, adjustments[key as keyof Adjustments]);
     }

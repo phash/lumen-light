@@ -6,9 +6,11 @@
 export const VERT_SRC = `#version 300 es
 in vec2 a_pos;
 in vec2 a_uv;
+uniform mat3 u_uvTransform;
 out vec2 v_uv;
 void main() {
-  v_uv = a_uv;
+  vec3 transformed = u_uvTransform * vec3(a_uv, 1.0);
+  v_uv = transformed.xy;
   gl_Position = vec4(a_pos, 0.0, 1.0);
 }`;
 
