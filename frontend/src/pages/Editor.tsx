@@ -27,6 +27,7 @@ import {
 } from "../editor/mask";
 import PresetDialog from "../editor/PresetDialog";
 import RadialMaskOverlay from "../editor/RadialMaskOverlay";
+import ShortcutCheatsheet from "../editor/ShortcutCheatsheet";
 import { analyze, computeAutoTone, computeAutoWb } from "../editor/autoAdjust";
 import { FILE_PICKER_ACCEPT, decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import Slider from "../editor/Slider";
@@ -78,6 +79,7 @@ export default function Editor() {
   const [aspect, setAspect] = useState<AspectRatio>("free");
   const [presetDialogOpen, setPresetDialogOpen] = useState(false);
   const [loadedPresetId, setLoadedPresetId] = useState<string | null>(null);
+  const [helpOpen, setHelpOpen] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -364,6 +366,7 @@ export default function Editor() {
     onOpenFile: triggerFileDialog,
     onToggleCrop: toggleCropMode,
     onTogglePresets: togglePresetDialog,
+    onShowHelp: () => setHelpOpen(true),
     onUndo: undo,
     onRedo: redo,
     setBypass,
@@ -636,6 +639,16 @@ export default function Editor() {
             <div className="flex gap-1 pointer-events-auto">
               <button
                 type="button"
+                data-testid="editor-help"
+                onClick={() => setHelpOpen(true)}
+                className="w-9 h-9 text-base bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
+                title="Tastenkuerzel anzeigen (?)"
+                aria-label="Hilfe / Tastenkuerzel"
+              >
+                ?
+              </button>
+              <button
+                type="button"
                 data-testid="editor-presets"
                 onClick={() => setPresetDialogOpen(true)}
                 className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
@@ -664,6 +677,8 @@ export default function Editor() {
             onLoadedPresetIdChange={setLoadedPresetId}
           />
         )}
+
+        <ShortcutCheatsheet open={helpOpen} onClose={() => setHelpOpen(false)} />
 
         {exportOpen && (
           <div

@@ -6,6 +6,7 @@ interface Shortcuts {
   readonly onOpenFile?: () => void;
   readonly onToggleCrop?: () => void;
   readonly onTogglePresets?: () => void;
+  readonly onShowHelp?: () => void;
   readonly onUndo?: () => void;
   readonly onRedo?: () => void;
   readonly setBypass?: (bypass: boolean) => void;
@@ -55,6 +56,9 @@ export function useKeyboardShortcuts(shortcuts: Shortcuts): void {
         // Win-zusaetzlich: Ctrl+Y = Redo.
         e.preventDefault();
         shortcuts.onRedo?.();
+      } else if (e.key === "?" && !e.metaKey && !e.ctrlKey) {
+        e.preventDefault();
+        shortcuts.onShowHelp?.();
       }
     };
 
