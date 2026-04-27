@@ -54,15 +54,16 @@ Siehe `diagramme/architektur.mmd` für die Mermaid-Variante.
 
 | Schicht | Technologie | Begründung |
 |---|---|---|
-| UI-Framework | React 18 | Bekannt, breite Ökosystem, du arbeitest schon damit |
-| Build-Tool | Vite | Schnellster DX, native ES-Module, perfekt für WebGL-Projekte |
-| Styling | Tailwind CSS | Du nutzt es bereits, passt zum Komponenten-Workflow |
-| State | Zustand | Schlank, keine Boilerplate, perfekt für Slider-State |
-| Routing | React Router | Nur 2–3 Routen nötig: /, /editor, /login |
+| UI-Framework | React 19 | Aktueller Stable-Major (Nov 2024), Concurrent-Features default |
+| Build-Tool | Vite 8 | Schnellster DX, native ES-Module, perfekt für WebGL-Projekte |
+| Styling | Tailwind CSS 4 | v4 ohne `tailwind.config.js`, `@theme`-Direktiven im CSS |
+| State | Zustand (ab Iteration 3) | Schlank, keine Boilerplate, perfekt für Slider-State |
+| Routing | React Router 7 (Library Mode) | Nur 5 Routen nötig: /, /login, /register, /editor, /account |
 | Image-Pipeline | WebGL2 (raw, kein three.js) | Voll Kontrolle über Shader, keine Overhead-Lib |
 | RAW-Decoding | libraw-wasm | Einzige reife WASM-Lösung, läuft offline |
 | HTTP-Client | fetch + leichte Wrapper | Kein axios nötig |
-| Test | Vitest + React Testing Library | Vite-nativ |
+| Test | Vitest 4 + React Testing Library | Vite-nativ |
+| Sprache | TypeScript 6 (strict, `noUncheckedIndexedAccess`) | Compile-Zeit-Sicherheit, kein `any` |
 
 ## Backend-Stack
 

@@ -55,12 +55,13 @@ export JWT_SECRET=dev-secret-bitte-ersetzen
 alembic upgrade head
 uvicorn app.main:app --reload
 
-# Frontend (im neuen Vite-Projekt)
-npm create vite@latest lumen-frontend -- --template react
-cd lumen-frontend
+# Frontend (Vite-Projekt im frontend/-Verzeichnis)
+cd frontend
 npm install
-# lightroom-light.jsx als App.jsx einsetzen, dann:
-npm run dev
+npm run dev      # http://localhost:5173
+npm run test     # Vitest
+npm run lint     # ESLint
+npm run build    # Production-Build nach dist/
 ```
 
 ## Schnellstart (Docker)
