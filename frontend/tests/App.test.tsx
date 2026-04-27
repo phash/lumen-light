@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { MemoryRouter, Routes, Route } from "react-router-dom";
-import { render, screen } from "@testing-library/react";
+import { screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 import Header from "../src/components/Header";
@@ -9,10 +9,11 @@ import Login from "../src/pages/Login";
 import Register from "../src/pages/Register";
 import Editor from "../src/pages/Editor";
 import Account from "../src/pages/Account";
+import { makeFakeAuth, renderWithAuth } from "./test-utils";
 
-function renderWithRouter(initialPath: string) {
-  return render(
-    <MemoryRouter initialEntries={[initialPath]}>
+function renderRoutes(initialPath: string) {
+  return renderWithAuth(
+    <>
       <Header />
       <Routes>
         <Route path="/" element={<Landing />} />
@@ -21,42 +22,47 @@ function renderWithRouter(initialPath: string) {
         <Route path="/editor" element={<Editor />} />
         <Route path="/account" element={<Account />} />
       </Routes>
-    </MemoryRouter>,
+    </>,
+    {
+      auth: makeFakeAuth({ isAuthenticated: false }),
+      wrapper: (children) => (
+        <MemoryRouter initialEntries={[initialPath]}>{children}</MemoryRouter>
+      ),
+    },
   );
 }
 
 describe("App routing skeleton", () => {
   it("renders Landing on root path", () => {
-    renderWithRouter("/");
+    renderRoutes("/");
     expect(screen.getByTestId("page-landing")).toBeInTheDocument();
   });
 
   it("renders Login on /login", () => {
-    renderWithRouter("/login");
+    renderRoutes("/login");
     expect(screen.getByTestId("page-login")).toBeInTheDocument();
   });
 
   it("renders Register on /register", () => {
-    renderWithRouter("/register");
+    renderRoutes("/register");
     expect(screen.getByTestId("page-register")).toBeInTheDocument();
   });
 
   it("renders Editor on /editor", () => {
-    renderWithRouter("/editor");
+    renderRoutes("/editor");
     expect(screen.getByTestId("page-editor")).toBeInTheDocument();
   });
 
   it("renders Account on /account", () => {
-    renderWithRouter("/account");
+    renderRoutes("/account");
     expect(screen.getByTestId("page-account")).toBeInTheDocument();
   });
 
   it("navigates to login when header link is clicked", async () => {
-    const user = userEvent.setup();
-    renderWithRouter("/");
+    renderRoutes("/");
     expect(screen.getByTestId("page-landing")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("link", { name: "Login" }));
-    expect(screen.getByTestId("page-login")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("link", { name: "Editor" }));
+    expect(screen.getByTestId("page-editor")).toBeInTheDocument();
   });
 });

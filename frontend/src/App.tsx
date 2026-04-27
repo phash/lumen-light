@@ -1,24 +1,46 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { AuthProvider } from "react-oidc-context";
+import { BrowserRouter, Route, Routes } from "react-router-dom";
+
+import { oidcConfig } from "./auth/config";
+import Callback from "./auth/Callback";
+import RequireAuth from "./auth/RequireAuth";
 import Header from "./components/Header";
+import Account from "./pages/Account";
+import Editor from "./pages/Editor";
 import Landing from "./pages/Landing";
 import Login from "./pages/Login";
 import Register from "./pages/Register";
-import Editor from "./pages/Editor";
-import Account from "./pages/Account";
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <Header />
-      <main>
-        <Routes>
-          <Route path="/" element={<Landing />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
-          <Route path="/editor" element={<Editor />} />
-          <Route path="/account" element={<Account />} />
-        </Routes>
-      </main>
-    </BrowserRouter>
+    <AuthProvider {...oidcConfig}>
+      <BrowserRouter>
+        <Header />
+        <main>
+          <Routes>
+            <Route path="/" element={<Landing />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
+            <Route path="/callback" element={<Callback />} />
+            <Route
+              path="/editor"
+              element={
+                <RequireAuth>
+                  <Editor />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/account"
+              element={
+                <RequireAuth>
+                  <Account />
+                </RequireAuth>
+              }
+            />
+          </Routes>
+        </main>
+      </BrowserRouter>
+    </AuthProvider>
   );
 }
