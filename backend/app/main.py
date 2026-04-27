@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.database import engine
-from app.routers import auth, presets
+from app.routers import auth, images, presets
 
 
 @asynccontextmanager
@@ -31,6 +31,7 @@ app.add_middleware(
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(presets.router, prefix="/api/v1/presets", tags=["presets"])
+app.include_router(images.router, prefix="/api/v1/images", tags=["images"])
 
 
 @app.get("/api/v1/health", tags=["meta"])

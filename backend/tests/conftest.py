@@ -27,6 +27,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from testcontainers.core.waiting_utils import wait_for_logs
 from testcontainers.keycloak import KeycloakContainer
+from testcontainers.minio import MinioContainer
 from testcontainers.postgres import PostgresContainer
 
 
@@ -144,18 +145,62 @@ def keycloak_oid(keycloak_url: str) -> KeycloakOpenID:
 
 # --- Settings-Override -------------------------------------------------------
 
+@pytest.fixture(scope="session")
+def minio_container() -> Iterator[MinioContainer]:
+    """MinIO als S3-API-kompatible Test-Storage. Production wird Garage,
+    aber das S3-Protokoll ist standardisiert."""
+    container = MinioContainer()
+    with container as c:
+        yield c
+
+
+@pytest.fixture(scope="session")
+def minio_endpoint(minio_container: MinioContainer) -> str:
+    host_ip = minio_container.get_container_host_ip()
+    port = minio_container.get_exposed_port(9000)
+    return f"http://{host_ip}:{port}"
+
+
 @pytest.fixture(scope="session", autouse=True)
-def _set_settings(database_url: str, keycloak_issuer: str) -> Iterator[None]:
+def _set_settings(
+    database_url: str,
+    keycloak_issuer: str,
+    minio_container: MinioContainer,
+    minio_endpoint: str,
+) -> Iterator[None]:
     """app.config.settings auf Test-Container umlenken, bevor app.* importiert wird."""
     from app import config
+    from app import storage as storage_module
 
-    original_db = config.settings.database_url
-    original_iss = config.settings.keycloak_issuer
+    original = (
+        config.settings.database_url,
+        config.settings.keycloak_issuer,
+        config.settings.garage_s3_endpoint,
+        config.settings.garage_s3_access_key_id,
+        config.settings.garage_s3_secret_access_key,
+        config.settings.garage_s3_bucket,
+    )
     config.settings.database_url = database_url
     config.settings.keycloak_issuer = keycloak_issuer
+    config.settings.garage_s3_endpoint = minio_endpoint
+    config.settings.garage_s3_access_key_id = minio_container.access_key
+    config.settings.garage_s3_secret_access_key = minio_container.secret_key
+    config.settings.garage_s3_bucket = "lumen-test-images"
+    storage_module.reset_storage_singleton()
+    # Bucket einmal anlegen
+    storage_module.get_storage().ensure_bucket()
+
     yield
-    config.settings.database_url = original_db
-    config.settings.keycloak_issuer = original_iss
+
+    (
+        config.settings.database_url,
+        config.settings.keycloak_issuer,
+        config.settings.garage_s3_endpoint,
+        config.settings.garage_s3_access_key_id,
+        config.settings.garage_s3_secret_access_key,
+        config.settings.garage_s3_bucket,
+    ) = original
+    storage_module.reset_storage_singleton()
 
 
 @pytest.fixture(autouse=True)

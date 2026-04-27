@@ -12,6 +12,16 @@ class Settings(BaseSettings):
     keycloak_audience: str = "lumen-api"
     jwk_cache_seconds: int = 600
 
+    # Garage S3 (siehe ADR-011) — Endpoints fuer Production via .env;
+    # in Tests werden diese durch eine MinIO-Container-Fixture ueberschrieben.
+    garage_s3_endpoint: str = "http://localhost:3900"
+    garage_s3_region: str = "garage"
+    garage_s3_bucket: str = "lumen-images"
+    garage_s3_access_key_id: str = ""
+    garage_s3_secret_access_key: str = ""
+    presigned_url_expires_in: int = 900
+    max_image_size_bytes: int = 200 * 1024 * 1024  # 200 MB
+
     cors_origin: str = "http://localhost:5173"
 
 
