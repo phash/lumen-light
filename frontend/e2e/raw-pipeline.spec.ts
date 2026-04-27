@@ -61,18 +61,14 @@ test.describe("RAW-Pipeline gegen echten Korpus", () => {
             .textContent();
           expect(value?.startsWith("+0.01")).toBeTruthy();
 
-          // Camera-Info ist Bonus — wird in eigenem Test geprueft
-          const cameraInfoCount = await page
-            .getByTestId("editor-camera-info")
-            .count();
-          // Nur dokumentieren, kein Fail:
-          test.info().annotations.push({
-            type: `camera-info-${sample.format}`,
-            description:
-              cameraInfoCount > 0
-                ? `present: ${(await page.getByTestId("editor-camera-info").textContent()) ?? ""}`
-                : "absent — libraw-wasm metadata in Make/Model-Feldern fehlt",
-          });
+          // Camera-Info — case-insensitive Substring-Match auf den
+          // erwarteten Hersteller-Namen.
+          const cameraInfo = page.getByTestId("editor-camera-info");
+          await expect(cameraInfo).toBeVisible({ timeout: 5_000 });
+          const text = (await cameraInfo.textContent()) ?? "";
+          expect(text.toLowerCase()).toContain(
+            sample.expectedMake.toLowerCase().split(" ")[0]!,
+          );
         } finally {
           await cleanupUser(user);
         }

@@ -99,7 +99,7 @@ export async function decodeRaw(file: File): Promise<DecodedRaw> {
       no_auto_bright: 1,
     });
 
-    const meta = await raw.metadata(false);
+    const meta = await raw.metadata(true);
     const result = await raw.imageData();
 
     let rgb: Uint8Array;
@@ -125,12 +125,40 @@ export async function decodeRaw(file: File): Promise<DecodedRaw> {
       width,
       height,
       rgb,
-      cameraMake: meta.make ?? null,
-      cameraModel: meta.model ?? null,
+      cameraMake: pickString(meta, "camera_make", "make"),
+      cameraModel: pickString(meta, "camera_model", "model"),
     };
   } catch (err) {
     throw err instanceof Error ? err : new Error(String(err));
   }
+}
+
+/**
+ * Liest einen String-Wert aus einem unbekannt-strukturierten Metadata-
+ * Objekt. Probiert mehrere Pfade (Top-Level-Keys oder verschachtelte
+ * Pfade als Array). Erster nicht-leerer String gewinnt; Whitespace wird
+ * gestrippt.
+ */
+function pickString(
+  source: unknown,
+  ...paths: ReadonlyArray<string | ReadonlyArray<string>>
+): string | null {
+  for (const path of paths) {
+    const keys = typeof path === "string" ? [path] : path;
+    let cursor: unknown = source;
+    for (const key of keys) {
+      if (cursor && typeof cursor === "object" && key in (cursor as Record<string, unknown>)) {
+        cursor = (cursor as Record<string, unknown>)[key];
+      } else {
+        cursor = undefined;
+        break;
+      }
+    }
+    if (typeof cursor === "string" && cursor.trim().length > 0) {
+      return cursor.trim();
+    }
+  }
+  return null;
 }
 
 /**
