@@ -74,6 +74,31 @@ docker compose up -d
 # OpenAPI-Docs auf http://localhost:8000/docs
 ```
 
+## Lokaler Dev-Stack
+
+```bash
+# Postgres + Keycloak (Realm 'lumen' importiert) + MinIO als Garage-Stand-In
+docker compose -f deployment/docker-compose.dev.yml up -d
+
+# Backend lokal (Migration + uvicorn)
+cd backend
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+cp ../deployment/.env.example .env  # editieren falls noetig
+alembic upgrade head
+uvicorn app.main:app --reload --port 8000
+
+# Frontend lokal
+cd ../frontend
+cp .env.example .env.local  # editieren falls noetig
+npm install
+npm run dev   # http://localhost:5173
+```
+
+Default-Admins (NUR lokal, NICHT Production):
+- Keycloak `admin / admin` auf http://localhost:18080
+- MinIO `minioadmin / minioadmin` auf http://localhost:9001 (Console)
+
 ## Tests
 
 Backend-Tests laufen gegen einen automatisch hochgefahrenen Postgres-Container (`testcontainers`). Voraussetzung: laufender Docker-Daemon.
