@@ -30,6 +30,8 @@ import RadialMaskOverlay from "../editor/RadialMaskOverlay";
 import ShortcutCheatsheet from "../editor/ShortcutCheatsheet";
 import { analyze, computeAutoTone, computeAutoWb } from "../editor/autoAdjust";
 import { FILE_PICKER_ACCEPT, decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
+import { type Genre, suggestGenre } from "../editor/suggestPreset";
+import { useApi } from "../api/use-api";
 import Slider from "../editor/Slider";
 import {
   MAX_STRAIGHTEN_RADIANS,
@@ -80,6 +82,9 @@ export default function Editor() {
   const [presetDialogOpen, setPresetDialogOpen] = useState(false);
   const [loadedPresetId, setLoadedPresetId] = useState<string | null>(null);
   const [helpOpen, setHelpOpen] = useState(false);
+  const [suggestedGenre, setSuggestedGenre] = useState<Genre | null>(null);
+  const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+  const api = useApi();
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
@@ -146,6 +151,8 @@ export default function Editor() {
     setZoom(1);
     setPan({ x: 0, y: 0 });
     setWbPickerActive(false);
+    setSuggestedGenre(null);
+    setSuggestionDismissed(false);
     try {
       const isRaw = await isRawFile(file);
       if (isRaw) {
@@ -171,6 +178,25 @@ export default function Editor() {
           setLensCorrection(profileToCorrection(lookup.profile), "auto");
           setLensProfile(lookup.profile.id);
         }
+
+        // Smart-Preset-Suggestion fuer RAW-Bilder: nutzt EXIF-Brennweite
+        // + Histogramm-Mittelwerte. Im Mainthread leichtgewichtig (40k Pixel
+        // Analyse) — wird einen Render-Tick spaeter ausgeloest.
+        const focal = decoded.focalLen;
+        setTimeout(() => {
+          const c = canvasElement;
+          if (!c) return;
+          const stats = analyze(c);
+          if (!stats) return;
+          const genre = suggestGenre({
+            focalLen: focal,
+            meanR: stats.meanR,
+            meanG: stats.meanG,
+            meanB: stats.meanB,
+            p500: stats.p500,
+          });
+          if (genre) setSuggestedGenre(genre);
+        }, 100);
       } else {
         await canvasHandleRef.current?.loadFile(file);
         // Dimensions aus dem Canvas-Element lesen — wurde von loadFile gesetzt
@@ -230,6 +256,20 @@ export default function Editor() {
   const togglePresetDialog = useCallback(() => {
     if (hasImage) setPresetDialogOpen((v) => !v);
   }, [hasImage]);
+
+  const onApplySuggestion = useCallback(async (genre: Genre) => {
+    setSuggestedGenre(null);
+    setSuggestionDismissed(true);
+    try {
+      const list = await api.listPresets();
+      const preset = list.find((p) => p.name === genre);
+      if (!preset) return;
+      useEditorStore.getState().applyAdjustments(preset.adjustments);
+      setLoadedPresetId(preset.id);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Preset-Vorschlag laden fehlgeschlagen");
+    }
+  }, [api]);
 
   const onAutoTone = useCallback(() => {
     if (!canvasElement) return;
@@ -498,6 +538,34 @@ export default function Editor() {
               onClick={() => setError(null)}
               aria-label="Fehler schliessen"
               className="text-red-400 hover:text-red-200"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        {suggestedGenre && !suggestionDismissed && (
+          <div
+            data-testid="preset-suggestion"
+            className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 bg-stone-900/90 border border-amber-300/50 backdrop-blur"
+          >
+            <span className="text-sm text-stone-200">
+              Sieht aus wie <span className="text-amber-200">{suggestedGenre}</span> — Preset anwenden?
+            </span>
+            <button
+              type="button"
+              data-testid="preset-suggestion-apply"
+              onClick={() => void onApplySuggestion(suggestedGenre)}
+              className="px-3 py-1 text-[10px] uppercase tracking-[0.18em] bg-amber-200/15 border border-amber-300 text-amber-200 hover:bg-amber-200/25"
+            >
+              Anwenden
+            </button>
+            <button
+              type="button"
+              data-testid="preset-suggestion-dismiss"
+              onClick={() => setSuggestionDismissed(true)}
+              className="text-stone-500 hover:text-stone-200"
+              aria-label="Vorschlag wegklicken"
             >
               ✕
             </button>
