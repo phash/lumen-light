@@ -1,57 +1,34 @@
 import { useCallback, useRef, useState } from "react";
 
-import {
-  ADJUSTMENTS,
-  type AdjustmentDefinition,
-  adjustmentsByGroup,
-} from "../editor/adjustments";
+import { useApi } from "../api/use-api";
 import Canvas, { type CanvasHandle } from "../editor/Canvas";
 import CropOverlay from "../editor/CropOverlay";
+import EditorSidebar from "../editor/EditorSidebar";
 import {
   type ExportFormat,
   downloadBlob,
   exportCanvas,
   suggestFilename,
 } from "../editor/export";
-import Histogram from "../editor/Histogram";
+import ExportDialog from "../editor/ExportDialog";
 import { findLensProfile, profileToCorrection } from "../editor/lensProfile";
 import LinearMaskOverlay from "../editor/LinearMaskOverlay";
 import {
-  LOCAL_ADJUSTMENT_LIMITS,
   type LinearMaskInstance,
-  type LocalAdjustments,
   MAX_LINEAR_MASKS,
   MAX_RADIAL_MASKS,
   type MaskInstance,
   type RadialMaskInstance,
 } from "../editor/mask";
-import CollapsibleSection from "../editor/CollapsibleSection";
 import PresetDialog from "../editor/PresetDialog";
 import RadialMaskOverlay from "../editor/RadialMaskOverlay";
 import ShortcutCheatsheet from "../editor/ShortcutCheatsheet";
 import { analyze, computeAutoTone, computeAutoWb } from "../editor/autoAdjust";
 import { FILE_PICKER_ACCEPT, decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import { type Genre, suggestGenre } from "../editor/suggestPreset";
-import { useApi } from "../api/use-api";
-import Slider from "../editor/Slider";
-import {
-  MAX_STRAIGHTEN_RADIANS,
-  selectedMask,
-  useEditorStore,
-} from "../editor/store";
+import { selectedMask, useEditorStore } from "../editor/store";
 import { type AspectRatio } from "../editor/transform";
 import { useKeyboardShortcuts } from "../editor/useKeyboardShortcuts";
-
-const LOCAL_ADJ_LABELS: Record<keyof LocalAdjustments, string> = {
-  exposure: "Belichtung",
-  contrast: "Kontrast",
-  saturation: "Sättigung",
-  temperature: "Temperatur",
-};
-
-function maskTypeLabel(type: "linear" | "radial"): string {
-  return type === "linear" ? "Verlauf" : "Radial";
-}
 
 function countByType(
   masks: ReadonlyArray<MaskInstance>,
@@ -133,8 +110,6 @@ export default function Editor() {
   const canAddRadial = radialCount < MAX_RADIAL_MASKS;
 
   const imageAspect = imageDims ? imageDims.width / imageDims.height : 1;
-
-  const groups = adjustmentsByGroup();
 
   const onTick = useCallback(() => setTick((t) => t + 1), []);
   const onCanvasError = useCallback((msg: string) => setError(msg), []);
@@ -773,415 +748,45 @@ export default function Editor() {
         <ShortcutCheatsheet open={helpOpen} onClose={() => setHelpOpen(false)} />
 
         {exportOpen && (
-          <div
-            data-testid="export-dialog"
-            className="absolute bottom-20 left-6 w-72 bg-stone-900/95 backdrop-blur border border-stone-700 p-4 text-sm space-y-3"
-          >
-            <h2 className="text-stone-200">Export</h2>
-
-            <label className="block">
-              <span className="text-stone-400 text-xs">Format</span>
-              <select
-                value={exportFormat}
-                onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-                data-testid="export-format"
-                className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200"
-              >
-                <option value="jpeg">JPEG</option>
-                <option value="png">PNG</option>
-                <option value="webp">WebP</option>
-              </select>
-            </label>
-
-            {exportFormat !== "png" && (
-              <label className="block">
-                <span className="text-stone-400 text-xs">
-                  Qualität: {Math.round(exportQuality * 100)}
-                </span>
-                <input
-                  type="range"
-                  min={0.5}
-                  max={1}
-                  step={0.01}
-                  value={exportQuality}
-                  onChange={(e) => setExportQuality(Number(e.target.value))}
-                  data-testid="export-quality"
-                  className="mt-1 w-full"
-                />
-              </label>
-            )}
-
-            <label className="block">
-              <span className="text-stone-400 text-xs">Breite</span>
-              <select
-                value={exportWidth === "native" ? "native" : String(exportWidth)}
-                onChange={(e) =>
-                  setExportWidth(
-                    e.target.value === "native" ? "native" : Number(e.target.value),
-                  )
-                }
-                data-testid="export-width"
-                className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200"
-              >
-                <option value="native">
-                  Original-Vorschau ({canvasElement?.width ?? 0}px)
-                </option>
-                <option value="2048">2048 px</option>
-                <option value="1024">1024 px</option>
-                <option value="512">512 px (Web)</option>
-              </select>
-            </label>
-
-            <div className="flex justify-end gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => setExportOpen(false)}
-                className="text-xs uppercase tracking-wider text-stone-500"
-              >
-                Abbrechen
-              </button>
-              <button
-                type="button"
-                onClick={() => void doExport()}
-                disabled={exporting}
-                data-testid="export-confirm"
-                className="text-xs uppercase tracking-wider text-amber-200 hover:text-amber-100 disabled:opacity-50"
-              >
-                {exporting ? "Exportiere…" : "Speichern"}
-              </button>
-            </div>
-          </div>
+          <ExportDialog
+            canvasWidth={canvasElement?.width ?? 0}
+            format={exportFormat}
+            onFormatChange={setExportFormat}
+            quality={exportQuality}
+            onQualityChange={setExportQuality}
+            width={exportWidth}
+            onWidthChange={setExportWidth}
+            exporting={exporting}
+            onConfirm={() => void doExport()}
+            onCancel={() => setExportOpen(false)}
+          />
         )}
       </main>
 
-      <aside
-        className="w-[320px] border-l border-stone-800/80 bg-stone-950/60 flex flex-col"
-        data-testid="editor-sidebar"
-      >
-        <div className="p-4 border-b border-stone-800/60">
-          <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 mb-2">
-            Histogramm
-          </div>
-          <Histogram canvas={canvasElement} tick={tick} />
-        </div>
-
-        <div className="flex-1 overflow-y-auto px-4 py-3">
-          <CollapsibleSection
-            id="geometry"
-            title="Geometrie"
-            defaultOpen={false}
-            testId="geometry-section"
-          >
-            <label className="block py-1.5">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                Aspect-Ratio
-              </span>
-              <select
-                value={aspect}
-                onChange={(e) => setAspect(e.target.value as AspectRatio)}
-                data-testid="aspect-select"
-                className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
-              >
-                <option value="free">Frei</option>
-                <option value="1:1">1:1</option>
-                <option value="3:2">3:2</option>
-                <option value="4:3">4:3</option>
-                <option value="16:9">16:9</option>
-              </select>
-            </label>
-            <label className="block py-1.5">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                Begradigen ({Math.round((straightenAngle * 180) / Math.PI * 10) / 10}°)
-              </span>
-              <input
-                type="range"
-                min={-MAX_STRAIGHTEN_RADIANS}
-                max={MAX_STRAIGHTEN_RADIANS}
-                step={0.001}
-                value={straightenAngle}
-                onChange={(e) => setStraightenAngle(Number(e.target.value))}
-                onDoubleClick={() => setStraightenAngle(0)}
-                data-testid="straighten-slider"
-                className="mt-1 w-full"
-              />
-            </label>
-            <button
-              type="button"
-              onClick={resetGeometry}
-              data-testid="editor-reset-geometry"
-              className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
-            >
-              Geometrie zurücksetzen
-            </button>
-          </CollapsibleSection>
-
-          {masks.length > 0 && (
-            <div className="mb-5" data-testid="mask-list">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-stone-300 italic">
-                  Masken ({masks.length})
-                </span>
-                <div className="flex-1 h-px bg-stone-800" />
-              </div>
-              {masks.map((m, i) => {
-                const isSelected = m.id === selectedMaskId;
-                const sameTypeIndex = masks
-                  .slice(0, i)
-                  .filter((x) => x.type === m.type).length + 1;
-                return (
-                  <div
-                    key={m.id}
-                    data-testid={`mask-list-item-${i}`}
-                    data-mask-type={m.type}
-                    data-mask-selected={isSelected ? "true" : "false"}
-                    className={`flex items-center gap-2 px-2 py-1.5 mb-1 cursor-pointer text-xs ${
-                      isSelected
-                        ? "bg-amber-200/15 border-l-2 border-amber-300 text-amber-200"
-                        : "border-l-2 border-stone-800 text-stone-400 hover:text-stone-200"
-                    }`}
-                    onClick={() => selectMask(m.id)}
-                  >
-                    <span className="flex-1">
-                      {maskTypeLabel(m.type)} {sameTypeIndex}
-                    </span>
-                    <button
-                      type="button"
-                      data-testid={`mask-list-delete-${i}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeMask(m.id);
-                      }}
-                      className="text-stone-500 hover:text-red-400 px-1"
-                      aria-label="Maske loeschen"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-
-          {selectedLinear && (
-            <div className="mb-5" data-testid="local-mask-section">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-stone-300 italic">Lokal · Verlauf</span>
-                <div className="flex-1 h-px bg-stone-800" />
-              </div>
-              {(["exposure", "contrast", "saturation", "temperature"] as const).map(
-                (key) => {
-                  const [min, max] = LOCAL_ADJUSTMENT_LIMITS[key];
-                  const value = selectedLinear.localAdj[key];
-                  return (
-                    <label key={key} className="block py-1.5">
-                      <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                        {LOCAL_ADJ_LABELS[key]} ({key === "exposure" ? value.toFixed(2) : Math.round(value * 100)})
-                      </span>
-                      <input
-                        type="range"
-                        min={min}
-                        max={max}
-                        step={key === "exposure" ? 0.05 : 0.01}
-                        value={value}
-                        onChange={(e) =>
-                          setMaskLocalAdjustment(
-                            selectedLinear.id,
-                            key,
-                            Number(e.target.value),
-                          )
-                        }
-                        onDoubleClick={() =>
-                          setMaskLocalAdjustment(selectedLinear.id, key, 0)
-                        }
-                        data-testid={`local-${key}-slider`}
-                        className="mt-1 w-full"
-                      />
-                    </label>
-                  );
-                },
-              )}
-              <label className="block py-1.5">
-                <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                  Übergang ({Math.round(selectedLinear.mask.feather * 100)})
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={selectedLinear.mask.feather}
-                  onChange={(e) =>
-                    setMaskFeather(selectedLinear.id, Number(e.target.value))
-                  }
-                  onDoubleClick={() => setMaskFeather(selectedLinear.id, 0)}
-                  data-testid="local-feather-slider"
-                  className="mt-1 w-full"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={removeSelectedMask}
-                data-testid="editor-reset-mask"
-                className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
-              >
-                Verlauf entfernen
-              </button>
-            </div>
-          )}
-
-          {selectedRadial && (
-            <div className="mb-5" data-testid="radial-mask-section">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-stone-300 italic">Lokal · Radial</span>
-                <div className="flex-1 h-px bg-stone-800" />
-              </div>
-              {(["exposure", "contrast", "saturation", "temperature"] as const).map(
-                (key) => {
-                  const [min, max] = LOCAL_ADJUSTMENT_LIMITS[key];
-                  const value = selectedRadial.localAdj[key];
-                  return (
-                    <label key={key} className="block py-1.5">
-                      <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                        {LOCAL_ADJ_LABELS[key]} ({key === "exposure" ? value.toFixed(2) : Math.round(value * 100)})
-                      </span>
-                      <input
-                        type="range"
-                        min={min}
-                        max={max}
-                        step={key === "exposure" ? 0.05 : 0.01}
-                        value={value}
-                        onChange={(e) =>
-                          setMaskLocalAdjustment(
-                            selectedRadial.id,
-                            key,
-                            Number(e.target.value),
-                          )
-                        }
-                        onDoubleClick={() =>
-                          setMaskLocalAdjustment(selectedRadial.id, key, 0)
-                        }
-                        data-testid={`radial-${key}-slider`}
-                        className="mt-1 w-full"
-                      />
-                    </label>
-                  );
-                },
-              )}
-              <label className="block py-1.5">
-                <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                  Übergang ({Math.round(selectedRadial.mask.feather * 100)})
-                </span>
-                <input
-                  type="range"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={selectedRadial.mask.feather}
-                  onChange={(e) =>
-                    setMaskFeather(selectedRadial.id, Number(e.target.value))
-                  }
-                  onDoubleClick={() => setMaskFeather(selectedRadial.id, 0)}
-                  data-testid="radial-feather-slider"
-                  className="mt-1 w-full"
-                />
-              </label>
-              <button
-                type="button"
-                onClick={removeSelectedMask}
-                data-testid="editor-reset-radial"
-                className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
-              >
-                Radial entfernen
-              </button>
-            </div>
-          )}
-
-          <CollapsibleSection
-            id="lens"
-            title="Objektiv"
-            defaultOpen={false}
-            testId="lens-section"
-          >
-            <div
-              className="text-[10px] uppercase tracking-[0.18em] text-stone-500 mb-2"
-              data-testid="lens-profile-status"
-            >
-              {lensProfileId == null
-                ? "Kein Profil"
-                : manualLensOverride
-                  ? `${lensProfileId} (manuell überschrieben)`
-                  : `${lensProfileId} (auto)`}
-            </div>
-            <label className="block py-1.5">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                Verzeichnung ({Math.round(lensCorrection.distortion * 100)})
-              </span>
-              <input
-                type="range"
-                min={-1}
-                max={1}
-                step={0.01}
-                value={lensCorrection.distortion}
-                onChange={(e) =>
-                  setLensCorrection({ distortion: Number(e.target.value) })
-                }
-                onDoubleClick={() => setLensCorrection({ distortion: 0 })}
-                data-testid="lens-distortion-slider"
-                className="mt-1 w-full"
-              />
-            </label>
-            <label className="block py-1.5">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                Vignettierung ({Math.round(lensCorrection.vignette * 100)})
-              </span>
-              <input
-                type="range"
-                min={-1}
-                max={1}
-                step={0.01}
-                value={lensCorrection.vignette}
-                onChange={(e) =>
-                  setLensCorrection({ vignette: Number(e.target.value) })
-                }
-                onDoubleClick={() => setLensCorrection({ vignette: 0 })}
-                data-testid="lens-vignette-slider"
-                className="mt-1 w-full"
-              />
-            </label>
-          </CollapsibleSection>
-
-          {Array.from(groups.entries()).map(([group, items]) => (
-            <div key={group} className="mb-5">
-              <div className="flex items-center gap-2 mb-2">
-                <span className="text-stone-300 italic">{group}</span>
-                <div className="flex-1 h-px bg-stone-800" />
-              </div>
-              {items.map((a: AdjustmentDefinition) => (
-                <Slider
-                  key={a.key}
-                  adjustmentKey={a.key}
-                  label={a.label}
-                  value={adjustments[a.key]}
-                  defaultValue={a.default}
-                  min={a.min}
-                  max={a.max}
-                  step={a.step}
-                  onChange={(v) => setAdjustment(a.key, v)}
-                />
-              ))}
-            </div>
-          ))}
-
-          <button
-            type="button"
-            onClick={resetAll}
-            data-testid="editor-reset-all"
-            className="w-full mt-2 py-2 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40 transition-colors"
-          >
-            Alles zurücksetzen ({ADJUSTMENTS.length} Slider)
-          </button>
-        </div>
-      </aside>
+      <EditorSidebar
+        canvasElement={canvasElement}
+        tick={tick}
+        aspect={aspect}
+        onAspectChange={setAspect}
+        straightenAngle={straightenAngle}
+        onStraightenChange={setStraightenAngle}
+        onResetGeometry={resetGeometry}
+        masks={masks}
+        selectedMaskId={selectedMaskId}
+        selected={selected}
+        onSelectMask={selectMask}
+        onRemoveMask={removeMask}
+        onLocalAdjust={setMaskLocalAdjustment}
+        onMaskFeather={setMaskFeather}
+        onRemoveSelectedMask={removeSelectedMask}
+        lensCorrection={lensCorrection}
+        lensProfileId={lensProfileId}
+        manualLensOverride={manualLensOverride}
+        onLensCorrectionChange={setLensCorrection}
+        adjustments={adjustments}
+        onAdjustment={setAdjustment}
+        onResetAll={resetAll}
+      />
     </section>
   );
 }
