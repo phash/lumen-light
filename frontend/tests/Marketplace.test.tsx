@@ -38,7 +38,7 @@ function makeFakeApi(): FakeApi {
     deleteImage: vi.fn(),
     listMarketplacePresets: vi.fn().mockResolvedValue({
       items: [],
-      next_cursor: null,
+      nextCursor: null,
     } satisfies MarketplaceList),
     getMarketplacePreset: vi.fn(),
     applyMarketplacePreset: vi.fn(),
@@ -56,10 +56,10 @@ function makeItem(overrides: Partial<MarketplaceListItem> = {}): MarketplaceList
     name: "Warmer Look",
     genre: "portrait",
     description: "Hauttoene waermen",
-    creator_handle: "anna",
-    apply_count: 12,
-    published_at: "2026-04-28T00:00:00Z",
-    preview_url: null,
+    creatorHandle: "anna",
+    applyCount: 12,
+    publishedAt: "2026-04-28T00:00:00Z",
+    previewUrl: null,
     ...overrides,
   };
 }
@@ -67,7 +67,7 @@ function makeItem(overrides: Partial<MarketplaceListItem> = {}): MarketplaceList
 function makeDetail(overrides: Partial<MarketplaceDetail> = {}): MarketplaceDetail {
   return {
     ...makeItem(),
-    creator_bio: null,
+    creatorBio: null,
     ...overrides,
   };
 }
@@ -95,7 +95,7 @@ describe("Marketplace", () => {
         makeItem({ id: "p-a", name: "Look A" }),
         makeItem({ id: "p-b", name: "Look B" }),
       ],
-      next_cursor: null,
+      nextCursor: null,
     });
     render(api);
     await waitFor(() => {
@@ -121,7 +121,7 @@ describe("Marketplace", () => {
     const api = makeFakeApi();
     api.listMarketplacePresets.mockResolvedValue({
       items: [makeItem({ id: "p-x" })],
-      next_cursor: null,
+      nextCursor: null,
     });
     api.getMarketplacePreset.mockResolvedValue(makeDetail({ id: "p-x" }));
     render(api);
@@ -136,7 +136,7 @@ describe("Marketplace", () => {
     const api = makeFakeApi();
     api.listMarketplacePresets.mockResolvedValue({
       items: [makeItem({ id: "p-x" })],
-      next_cursor: null,
+      nextCursor: null,
     });
     api.getMarketplacePreset.mockResolvedValue(makeDetail({ id: "p-x" }));
     api.applyMarketplacePreset.mockResolvedValue({
@@ -155,7 +155,7 @@ describe("Marketplace", () => {
     const api = makeFakeApi();
     api.listMarketplacePresets.mockResolvedValue({
       items: [makeItem({ id: "p-x" })],
-      next_cursor: null,
+      nextCursor: null,
     });
     api.getMarketplacePreset.mockResolvedValue(makeDetail({ id: "p-x" }));
     api.forkMarketplacePreset.mockResolvedValue({});
@@ -172,7 +172,7 @@ describe("Marketplace", () => {
     const api = makeFakeApi();
     api.listMarketplacePresets.mockResolvedValue({
       items: [makeItem({ id: "p-x" })],
-      next_cursor: null,
+      nextCursor: null,
     });
     api.getMarketplacePreset.mockResolvedValue(makeDetail({ id: "p-x" }));
     api.reportMarketplacePreset.mockResolvedValue(undefined);
@@ -193,11 +193,11 @@ describe("Marketplace", () => {
     api.listMarketplacePresets
       .mockResolvedValueOnce({
         items: [makeItem({ id: "p-1" })],
-        next_cursor: "MTAw",
+        nextCursor: "MTAw",
       })
       .mockResolvedValueOnce({
         items: [makeItem({ id: "p-2" })],
-        next_cursor: null,
+        nextCursor: null,
       });
     render(api);
     await screen.findByTestId("marketplace-card-p-1");

@@ -74,7 +74,7 @@ export default function Marketplace() {
       .then((res) => {
         if (reqId !== reqIdRef.current) return;
         setItems(res.items);
-        setCursor(res.next_cursor);
+        setCursor(res.nextCursor);
       })
       .catch((err: unknown) => {
         if (reqId !== reqIdRef.current) return;
@@ -99,7 +99,7 @@ export default function Marketplace() {
       .then((res) => {
         if (reqId !== reqIdRef.current) return;
         setItems((prev) => [...prev, ...res.items]);
-        setCursor(res.next_cursor);
+        setCursor(res.nextCursor);
       })
       .catch((err: unknown) => {
         if (reqId !== reqIdRef.current) return;
@@ -292,9 +292,9 @@ export default function Marketplace() {
           className="bg-stone-950 border border-stone-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
           onClick={(e) => e.stopPropagation()}
         >
-          {detail.preview_url ? (
+          {detail.previewUrl ? (
             <img
-              src={detail.preview_url}
+              src={detail.previewUrl}
               alt={detail.name}
               className="w-full h-64 object-cover"
             />
@@ -306,19 +306,19 @@ export default function Marketplace() {
               <div>
                 <h2 className="text-xl text-stone-100">{detail.name}</h2>
                 <p className="text-sm text-stone-500">
-                  {detail.creator_handle ? `@${detail.creator_handle}` : "Anonym"}
+                  {detail.creatorHandle ? `@${detail.creatorHandle}` : "Anonym"}
                   {detail.genre ? ` · ${GENRE_LABEL[detail.genre]}` : ""}
                 </p>
               </div>
               <span className="text-xs text-stone-500 tabular-nums">
-                {detail.apply_count} Anwendungen
+                {detail.applyCount} Anwendungen
               </span>
             </div>
             {detail.description && (
               <p className="text-sm whitespace-pre-wrap">{detail.description}</p>
             )}
-            {detail.creator_bio && (
-              <p className="text-xs text-stone-500 italic">{detail.creator_bio}</p>
+            {detail.creatorBio && (
+              <p className="text-xs text-stone-500 italic">{detail.creatorBio}</p>
             )}
 
             {feedback && (
@@ -407,9 +407,9 @@ function MarketplaceCard({
       data-testid={`marketplace-card-${item.id}`}
       className="text-left bg-stone-900/70 border border-stone-800 hover:border-amber-300/40 transition-colors overflow-hidden"
     >
-      {item.preview_url ? (
+      {item.previewUrl ? (
         <img
-          src={item.preview_url}
+          src={item.previewUrl}
           alt={item.name}
           className="w-full aspect-square object-cover"
           loading="lazy"
@@ -422,8 +422,8 @@ function MarketplaceCard({
           {item.name}
         </div>
         <div className="flex items-center justify-between text-[11px] text-stone-500">
-          <span>{item.creator_handle ? `@${item.creator_handle}` : "Anonym"}</span>
-          <span className="tabular-nums">{item.apply_count}×</span>
+          <span>{item.creatorHandle ? `@${item.creatorHandle}` : "Anonym"}</span>
+          <span className="tabular-nums">{item.applyCount}×</span>
         </div>
       </div>
     </button>

@@ -60,21 +60,21 @@ describe("Library", () => {
     const api = makeFakeApi([
       {
         id: "i-1",
-        original_filename: "first.jpg",
-        content_type: "image/jpeg",
-        size_bytes: 4096,
-        upload_state: "ready",
-        created_at: "x",
-        confirmed_at: "x",
+        originalFilename: "first.jpg",
+        contentType: "image/jpeg",
+        sizeBytes: 4096,
+        uploadState: "ready",
+        createdAt: "x",
+        confirmedAt: "x",
       },
       {
         id: "i-2",
-        original_filename: "second.png",
-        content_type: "image/png",
-        size_bytes: 1500000,
-        upload_state: "ready",
-        created_at: "x",
-        confirmed_at: "x",
+        originalFilename: "second.png",
+        contentType: "image/png",
+        sizeBytes: 1500000,
+        uploadState: "ready",
+        createdAt: "x",
+        confirmedAt: "x",
       },
     ]);
     renderLibrary(api);
@@ -90,12 +90,12 @@ describe("Library", () => {
     const api = makeFakeApi([
       {
         id: "i-99",
-        original_filename: "delete-me.jpg",
-        content_type: "image/jpeg",
-        size_bytes: 100,
-        upload_state: "ready",
-        created_at: "x",
-        confirmed_at: "x",
+        originalFilename: "delete-me.jpg",
+        contentType: "image/jpeg",
+        sizeBytes: 100,
+        uploadState: "ready",
+        createdAt: "x",
+        confirmedAt: "x",
       },
     ]);
     renderLibrary(api);

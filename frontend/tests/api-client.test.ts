@@ -33,7 +33,7 @@ describe("createApiClient", () => {
     const { fetchImpl, calls } = makeFetchMock(200, {
       id: "u",
       email: "a@b",
-      created_at: "x",
+      createdAt: "x",
     });
     const client = createApiClient({
       baseUrl: "http://api.test/api/v1",

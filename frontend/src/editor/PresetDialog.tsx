@@ -167,7 +167,7 @@ export default function PresetDialog({
               visibility: "public" as const,
               genre: publish.genre as PresetGenre,
               description: publish.description.trim(),
-              preview_image_id: publish.previewImageId,
+              previewImageId: publish.previewImageId,
             }
           : {}),
       });
@@ -373,7 +373,7 @@ export default function PresetDialog({
                 </option>
                 {images.map((img) => (
                   <option key={img.id} value={img.id}>
-                    {img.original_filename}
+                    {img.originalFilename}
                   </option>
                 ))}
               </select>

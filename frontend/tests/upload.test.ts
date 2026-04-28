@@ -42,17 +42,17 @@ describe("uploadImage", () => {
     const api = makeFakeApi();
     const init: ImageInit = {
       id: "img-1",
-      upload_url: "https://garage.local/bucket/key",
-      expires_in: 900,
+      uploadUrl: "https://garage.local/bucket/key",
+      expiresIn: 900,
     };
     const confirmed: Image = {
       id: "img-1",
-      original_filename: "photo.jpg",
-      content_type: "image/jpeg",
-      size_bytes: 4,
-      upload_state: "ready",
-      created_at: "now",
-      confirmed_at: "now",
+      originalFilename: "photo.jpg",
+      contentType: "image/jpeg",
+      sizeBytes: 4,
+      uploadState: "ready",
+      createdAt: "now",
+      confirmedAt: "now",
     };
     api.initUpload.mockResolvedValue(init);
     api.confirmUpload.mockResolvedValue(confirmed);
@@ -78,8 +78,8 @@ describe("uploadImage", () => {
     const api = makeFakeApi();
     api.initUpload.mockResolvedValue({
       id: "img-1",
-      upload_url: "u",
-      expires_in: 900,
+      uploadUrl: "u",
+      expiresIn: 900,
     } satisfies ImageInit);
     const fetchMock = vi.fn(() =>
       Promise.resolve(new Response(null, { status: 403, statusText: "Forbidden" })),
@@ -93,12 +93,12 @@ describe("uploadImage", () => {
 
   it("propagiert init-Fehler vom Backend", async () => {
     const api = makeFakeApi();
-    api.initUpload.mockRejectedValue(new Error("size_bytes ueber Maximum"));
+    api.initUpload.mockRejectedValue(new Error("sizeBytes ueber Maximum"));
     const fetchMock = vi.fn();
 
     await expect(
       uploadImage(api, fakeFile, { fetch: fetchMock as unknown as typeof fetch }),
-    ).rejects.toThrow("size_bytes ueber Maximum");
+    ).rejects.toThrow("sizeBytes ueber Maximum");
     expect(fetchMock).not.toHaveBeenCalled();
   });
 });

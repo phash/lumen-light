@@ -225,7 +225,7 @@ export default function Account() {
                   <div className="min-w-0">
                     <div className="text-stone-200 truncate">{p.name}</div>
                     <div className="text-[10px] uppercase tracking-wider text-stone-500">
-                      {p.genre ?? "–"} · {p.apply_count} Anwendungen
+                      {p.genre ?? "–"} · {p.applyCount} Anwendungen
                     </div>
                   </div>
                   <button

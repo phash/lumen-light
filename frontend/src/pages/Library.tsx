@@ -135,9 +135,9 @@ export default function Library() {
             className="flex items-center justify-between py-3"
           >
             <div>
-              <div className="text-stone-200">{img.original_filename}</div>
+              <div className="text-stone-200">{img.originalFilename}</div>
               <div className="text-xs text-stone-500">
-                {formatSize(img.size_bytes)} · {img.content_type}
+                {formatSize(img.sizeBytes)} · {img.contentType}
               </div>
             </div>
             <button

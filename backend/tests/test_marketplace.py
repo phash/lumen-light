@@ -25,13 +25,13 @@ async def _upload_image(client, headers, filename="cover.jpg") -> str:
         headers=headers,
         json={
             "filename": filename,
-            "content_type": "image/jpeg",
-            "size_bytes": len(payload),
+            "contentType": "image/jpeg",
+            "sizeBytes": len(payload),
         },
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    _put_to_url(body["upload_url"], payload, "image/jpeg")
+    _put_to_url(body["uploadUrl"], payload, "image/jpeg")
     confirm = await client.post(
         f"/api/v1/images/{body['id']}/confirm", headers=headers
     )
@@ -58,7 +58,7 @@ async def _create_public_preset(
             "visibility": "public",
             "genre": genre,
             "description": description,
-            "preview_image_id": image_id,
+            "previewImageId": image_id,
         },
     )
     assert r.status_code == 201, r.text
@@ -81,7 +81,7 @@ async def test_public_preset_requires_genre_description_preview(client, user_a):
     body = str(r.json())
     assert "genre" in body
     assert "description" in body
-    assert "preview_image_id" in body
+    assert "previewImageId" in body
 
 
 async def test_public_preset_with_foreign_image_returns_400(client, user_a, user_b):
@@ -95,7 +95,7 @@ async def test_public_preset_with_foreign_image_returns_400(client, user_a, user
             "visibility": "public",
             "genre": "portrait",
             "description": "geht nicht, fremdes Bild als Cover.",
-            "preview_image_id": foreign_image,
+            "previewImageId": foreign_image,
         },
     )
     assert r.status_code == 400
@@ -104,7 +104,7 @@ async def test_public_preset_with_foreign_image_returns_400(client, user_a, user
 async def test_public_preset_creation_sets_published_at(client, user_a):
     body = await _create_public_preset(client, user_a["headers"], name="warm")
     assert body["visibility"] == "public"
-    assert body["published_at"] is not None
+    assert body["publishedAt"] is not None
 
 
 # ---------- Listing ----------
@@ -172,7 +172,7 @@ async def test_marketplace_apply_returns_adjustments_and_increments_count(
     detail = await client.get(
         f"/api/v1/marketplace/presets/{pid}", headers=user_b["headers"]
     )
-    assert detail.json()["apply_count"] == 1
+    assert detail.json()["applyCount"] == 1
 
 
 async def test_marketplace_apply_404_for_private_preset(client, user_a, user_b):
@@ -199,7 +199,7 @@ async def test_marketplace_fork_creates_private_copy(client, user_a, user_b):
     fork = r.json()
     assert fork["visibility"] == "private"
     assert fork["name"] == "forkable (Kopie)"
-    assert fork["preview_image_id"] is None
+    assert fork["previewImageId"] is None
 
 
 async def test_marketplace_fork_handles_name_collision(client, user_a, user_b):

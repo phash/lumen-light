@@ -15,7 +15,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import current_user
 from app.database import get_db
 from app.models import Image, Preset, User
-from app.schemas import PresetOut, ProfileIn, ProfileOut, UserOut
+from app.schemas import (
+    CAMEL_BASE_CONFIG,
+    CAMEL_OUT_CONFIG,
+    PresetOut,
+    ProfileIn,
+    ProfileOut,
+    UserOut,
+)
 from app.storage import StorageService, get_storage
 
 
@@ -101,6 +108,7 @@ async def delete_me(
 # ----- DSGVO Art. 15 + 20 (Auskunft + Datenuebertragbarkeit) -----
 
 class ImageExport(BaseModel):
+    model_config = CAMEL_OUT_CONFIG
     id: UUID
     original_filename: str
     content_type: str
@@ -110,20 +118,20 @@ class ImageExport(BaseModel):
     confirmed_at: datetime | None
     download_url: str
     download_url_expires_in: int
-    model_config = ConfigDict(from_attributes=True)
 
 
 class PresetExport(BaseModel):
+    model_config = CAMEL_OUT_CONFIG
     id: UUID
     name: str
     adjustments: dict
     masks: list
     created_at: datetime
     updated_at: datetime
-    model_config = ConfigDict(from_attributes=True)
 
 
 class MeExport(BaseModel):
+    model_config = CAMEL_BASE_CONFIG
     id: UUID
     email: EmailStr
     created_at: datetime

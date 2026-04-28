@@ -63,12 +63,12 @@ function makePreset(overrides: Partial<Preset> = {}): Preset {
     visibility: "private",
     genre: null,
     description: null,
-    preview_image_id: null,
-    published_at: null,
-    apply_count: 0,
-    report_count: 0,
-    created_at: "x",
-    updated_at: "x",
+    previewImageId: null,
+    publishedAt: null,
+    applyCount: 0,
+    reportCount: 0,
+    createdAt: "x",
+    updatedAt: "x",
     ...overrides,
   };
 }
@@ -347,12 +347,12 @@ describe("PresetDialog", () => {
     api.listImages = vi.fn().mockResolvedValue([
       {
         id: "img-1",
-        original_filename: "cover.jpg",
-        content_type: "image/jpeg",
-        size_bytes: 100,
-        upload_state: "ready" as const,
-        created_at: "x",
-        confirmed_at: "x",
+        originalFilename: "cover.jpg",
+        contentType: "image/jpeg",
+        sizeBytes: 100,
+        uploadState: "ready" as const,
+        createdAt: "x",
+        confirmedAt: "x",
       },
     ]);
     api.createPreset = vi.fn().mockResolvedValue(
@@ -385,6 +385,6 @@ describe("PresetDialog", () => {
     expect(payload.visibility).toBe("public");
     expect(payload.genre).toBe("portrait");
     expect(payload.description).toContain("Hauttoene");
-    expect(payload.preview_image_id).toBe("img-1");
+    expect(payload.previewImageId).toBe("img-1");
   });
 });

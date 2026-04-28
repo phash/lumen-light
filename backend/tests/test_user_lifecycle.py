@@ -17,12 +17,12 @@ async def _upload_image(client, headers, payload=b"x" * 1024) -> str:
         headers=headers,
         json={
             "filename": "lifecycle.jpg",
-            "content_type": "image/jpeg",
-            "size_bytes": len(payload),
+            "contentType": "image/jpeg",
+            "sizeBytes": len(payload),
         },
     )
     init_body = init.json()
-    _put_to_url(init_body["upload_url"], payload, "image/jpeg")
+    _put_to_url(init_body["uploadUrl"], payload, "image/jpeg")
     confirm = await client.post(
         f"/api/v1/images/{init_body['id']}/confirm", headers=headers
     )
@@ -100,5 +100,5 @@ async def test_export_me_returns_user_presets_images(client, user_a):
     image_ids = [i["id"] for i in body["images"]]
     assert image_id in image_ids
     img = next(i for i in body["images"] if i["id"] == image_id)
-    assert img["download_url"].startswith("http")
-    assert img["download_url_expires_in"] > 0
+    assert img["downloadUrl"].startswith("http")
+    assert img["downloadUrlExpiresIn"] > 0

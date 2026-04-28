@@ -1,9 +1,35 @@
-"""Pydantic-Schemas für Request/Response-Validierung."""
+"""Pydantic-Schemas für Request/Response-Validierung.
+
+Wireformat (D4): JSON-Keys sind camelCase. Pydantic-Attribute bleiben
+snake_case (Python-Konvention), `alias_generator=to_camel` mappt sie
+beim Serialisieren. `populate_by_name=True` erlaubt sowohl
+Snake- als auch CamelCase im Eingang — Backwards-Compat fuer alte
+Clients und Test-Fixtures.
+
+Routen muessen `response_model_by_alias=True` setzen (App-weit per
+APIRouter-Default in app/main.py), damit FastAPI die Aliases auch
+in der Response benutzt.
+"""
 from datetime import datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic.alias_generators import to_camel
+
+
+CAMEL_BASE_CONFIG = ConfigDict(
+    alias_generator=to_camel,
+    populate_by_name=True,
+    serialize_by_alias=True,
+    extra="forbid",
+)
+CAMEL_OUT_CONFIG = ConfigDict(
+    alias_generator=to_camel,
+    populate_by_name=True,
+    serialize_by_alias=True,
+    from_attributes=True,
+)
 
 
 # ----- Adjustments -----
@@ -19,7 +45,7 @@ HSL_CHANNEL_NAMES: tuple[str, ...] = (
 
 class HslAxis(BaseModel):
     """Pro Achse (hue/saturation/luminance) ein Wert pro Farbtonbereich."""
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     red: float = Field(default=0, ge=-1, le=1)
     orange: float = Field(default=0, ge=-1, le=1)
     yellow: float = Field(default=0, ge=-1, le=1)
@@ -32,7 +58,7 @@ class HslAxis(BaseModel):
 
 class HslAdjustments(BaseModel):
     """8 Farbtonbereiche x 3 Achsen — Lightroom-aequivalenter HSL-Mischer."""
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     hue: HslAxis = Field(default_factory=HslAxis)
     saturation: HslAxis = Field(default_factory=HslAxis)
     luminance: HslAxis = Field(default_factory=HslAxis)
@@ -40,14 +66,14 @@ class HslAdjustments(BaseModel):
 
 class ToneCurvePoint(BaseModel):
     """Stuetzpunkt einer Tonwertkurve."""
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     x: float = Field(ge=0, le=1)
     y: float = Field(ge=0, le=1)
 
 
 class ToneCurve(BaseModel):
     """Punktbasierte Tonwertkurve, 2..8 nach x sortierte Stuetzpunkte."""
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     points: list[ToneCurvePoint] = Field(min_length=2, max_length=8)
 
     @model_validator(mode="after")
@@ -61,7 +87,7 @@ class ToneCurve(BaseModel):
 class Adjustments(BaseModel):
     """Single Source of Truth für die Slider-Werte. Pendant zum Frontend."""
 
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
 
     exposure: float = Field(default=0, ge=-5, le=5)
     contrast: float = Field(default=0, ge=-1, le=1)
@@ -91,7 +117,7 @@ class UserOut(BaseModel):
     id: UUID
     email: EmailStr
     created_at: datetime
-    model_config = ConfigDict(from_attributes=True)
+    model_config = CAMEL_OUT_CONFIG
 
 
 # ----- Masken -----
@@ -103,13 +129,13 @@ MAX_RADIAL_MASKS = 4
 
 
 class PointUv(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     u: float = Field(ge=0, le=1)
     v: float = Field(ge=0, le=1)
 
 
 class MaskLocalAdjustments(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     exposure: float = Field(default=0, ge=-3, le=3)
     contrast: float = Field(default=0, ge=-1, le=1)
     saturation: float = Field(default=0, ge=-1, le=1)
@@ -117,14 +143,14 @@ class MaskLocalAdjustments(BaseModel):
 
 
 class LinearMaskGeometry(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     p1: PointUv
     p2: PointUv
     feather: float = Field(ge=0, le=1)
 
 
 class RadialMaskGeometry(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     center: PointUv
     rx: float = Field(ge=0.02, le=1)
     ry: float = Field(ge=0.02, le=1)
@@ -134,14 +160,14 @@ class RadialMaskGeometry(BaseModel):
 class LinearMaskData(BaseModel):
     # camelCase-Felder bewusst — symmetrisch zum TS-Wireformat,
     # spart die Alias-Indirektion in FastAPI-Responses.
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     type: Literal["linear"]
     mask: LinearMaskGeometry
     localAdj: MaskLocalAdjustments  # noqa: N815
 
 
 class RadialMaskData(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     type: Literal["radial"]
     mask: RadialMaskGeometry
     localAdj: MaskLocalAdjustments  # noqa: N815
@@ -169,7 +195,7 @@ PresetGenre = Literal[
 
 
 class PresetIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     name: str = Field(min_length=1, max_length=80)
     adjustments: Adjustments
     masks: list[MaskData] = Field(default_factory=list)
@@ -201,7 +227,7 @@ class PresetIn(BaseModel):
             if self.description is None or len(self.description.strip()) < 10:
                 missing.append("description (>=10 Zeichen)")
             if self.preview_image_id is None:
-                missing.append("preview_image_id")
+                missing.append("previewImageId")
             if missing:
                 raise ValueError(
                     "Public Preset benoetigt: " + ", ".join(missing)
@@ -223,7 +249,7 @@ class PresetOut(BaseModel):
     report_count: int
     created_at: datetime
     updated_at: datetime
-    model_config = ConfigDict(from_attributes=True)
+    model_config = CAMEL_OUT_CONFIG
 
 
 # ----- Marketplace -----
@@ -237,15 +263,17 @@ class MarketplaceListItem(BaseModel):
     apply_count: int
     published_at: datetime
     preview_url: str | None
-    model_config = ConfigDict(from_attributes=False)
+    model_config = CAMEL_BASE_CONFIG
 
 
 class MarketplaceListOut(BaseModel):
+    model_config = CAMEL_BASE_CONFIG
     items: list[MarketplaceListItem]
     next_cursor: str | None = None
 
 
 class MarketplaceDetailOut(MarketplaceListItem):
+    model_config = CAMEL_BASE_CONFIG
     creator_bio: str | None
     # Adjustments und Masken werden NICHT im Detail mitgeschickt — kommen
     # erst ueber den Apply-Endpoint, damit der Apply-Counter sauber
@@ -253,17 +281,18 @@ class MarketplaceDetailOut(MarketplaceListItem):
 
 
 class MarketplaceApplyOut(BaseModel):
+    model_config = CAMEL_BASE_CONFIG
     adjustments: Adjustments
     masks: list[MaskData] = Field(default_factory=list)
 
 
 class PresetReportIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     reason: str = Field(min_length=1, max_length=500)
 
 
 class ProfileIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     handle: str | None = Field(default=None, min_length=3, max_length=40, pattern=r"^[a-z0-9-]+$")
     bio: str | None = Field(default=None, max_length=280)
 
@@ -272,7 +301,7 @@ class ProfileOut(BaseModel):
     id: UUID
     handle: str | None
     bio: str | None
-    model_config = ConfigDict(from_attributes=True)
+    model_config = CAMEL_OUT_CONFIG
 
 
 # ----- Images -----
@@ -291,13 +320,14 @@ ALLOWED_IMAGE_CONTENT_TYPES = (
 
 
 class ImageInitIn(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    model_config = CAMEL_BASE_CONFIG
     filename: str = Field(min_length=1, max_length=255)
     content_type: str
     size_bytes: int = Field(gt=0)
 
 
 class ImageInitOut(BaseModel):
+    model_config = CAMEL_BASE_CONFIG
     id: UUID
     upload_url: str
     expires_in: int
@@ -311,10 +341,11 @@ class ImageOut(BaseModel):
     upload_state: Literal["pending", "ready", "failed"]
     created_at: datetime
     confirmed_at: datetime | None
-    model_config = ConfigDict(from_attributes=True)
+    model_config = CAMEL_OUT_CONFIG
 
 
 class ImageUrlOut(BaseModel):
+    model_config = CAMEL_BASE_CONFIG
     url: str
     expires_in: int
 
@@ -322,5 +353,6 @@ class ImageUrlOut(BaseModel):
 # ----- Fehler -----
 
 class ErrorResponse(BaseModel):
+    model_config = CAMEL_BASE_CONFIG
     detail: str
     code: str | None = None

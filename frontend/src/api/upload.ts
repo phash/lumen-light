@@ -35,7 +35,7 @@ export async function uploadImage(
     toUpload.size,
   );
 
-  const putRes = await fetchImpl(init.upload_url, {
+  const putRes = await fetchImpl(init.uploadUrl, {
     method: "PUT",
     body: toUpload,
     headers: { "Content-Type": toUpload.type || "application/octet-stream" },

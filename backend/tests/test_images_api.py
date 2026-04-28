@@ -16,7 +16,7 @@ async def _init(client, headers, filename="test.jpg",
     r = await client.post(
         "/api/v1/images",
         headers=headers,
-        json={"filename": filename, "content_type": content_type, "size_bytes": size},
+        json={"filename": filename, "contentType": content_type, "sizeBytes": size},
     )
     assert r.status_code == 201, r.text
     return r.json()
@@ -28,7 +28,7 @@ async def _full_upload(client, headers, payload=b"fake-image-bytes",
         client, headers, filename="up.jpg",
         content_type=content_type, size=len(payload),
     )
-    _put_to_url(init["upload_url"], payload, content_type)
+    _put_to_url(init["uploadUrl"], payload, content_type)
     confirm = await client.post(
         f"/api/v1/images/{init['id']}/confirm", headers=headers
     )
@@ -39,8 +39,8 @@ async def _full_upload(client, headers, payload=b"fake-image-bytes",
 async def test_init_returns_url_and_id(client, user_a):
     body = await _init(client, user_a["headers"])
     assert "id" in body
-    assert body["upload_url"].startswith("http")
-    assert body["expires_in"] > 0
+    assert body["uploadUrl"].startswith("http")
+    assert body["expiresIn"] > 0
 
 
 async def test_init_too_large_returns_413(client, user_a):
@@ -49,8 +49,8 @@ async def test_init_too_large_returns_413(client, user_a):
         headers=user_a["headers"],
         json={
             "filename": "huge.cr2",
-            "content_type": "image/x-canon-cr2",
-            "size_bytes": 300 * 1024 * 1024,
+            "contentType": "image/x-canon-cr2",
+            "sizeBytes": 300 * 1024 * 1024,
         },
     )
     assert r.status_code == 413
@@ -62,8 +62,8 @@ async def test_init_unsupported_type_returns_415(client, user_a):
         headers=user_a["headers"],
         json={
             "filename": "audio.mp3",
-            "content_type": "audio/mpeg",
-            "size_bytes": 1024,
+            "contentType": "audio/mpeg",
+            "sizeBytes": 1024,
         },
     )
     assert r.status_code == 415
@@ -103,7 +103,7 @@ async def test_confirm_413_if_actual_object_exceeds_limit(
         content_type="image/jpeg", size=50,  # Browser-behauptet
     )
     # Echtes Object: 200 Bytes — ueber dem Limit.
-    _put_to_url(init["upload_url"], b"x" * 200, "image/jpeg")
+    _put_to_url(init["uploadUrl"], b"x" * 200, "image/jpeg")
 
     confirm = await client.post(
         f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
@@ -149,7 +149,7 @@ async def test_get_url_returns_signed(client, user_a):
     assert r.status_code == 200
     body = r.json()
     assert body["url"].startswith("http")
-    assert body["expires_in"] > 0
+    assert body["expiresIn"] > 0
 
     # URL liefert tatsaechlich den Inhalt
     with urllib.request.urlopen(body["url"], timeout=5) as resp:
@@ -210,6 +210,6 @@ async def test_bucket_key_uses_user_prefix(client, user_a, db_session):
 async def test_unauthorized_init_returns_401(client):
     r = await client.post(
         "/api/v1/images",
-        json={"filename": "x.jpg", "content_type": "image/jpeg", "size_bytes": 1},
+        json={"filename": "x.jpg", "contentType": "image/jpeg", "sizeBytes": 1},
     )
     assert r.status_code == 401

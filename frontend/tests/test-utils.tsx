@@ -51,7 +51,7 @@ export function makeFakeUser(overrides: Partial<User> = {}): User {
     scope: "openid profile email",
     session_state: null,
     expired: false,
-    expires_in: 600,
+    expiresIn: 600,
     scopes: ["openid", "profile", "email"],
     toStorageString: () => "{}",
     ...overrides,

@@ -14,7 +14,7 @@ export class ApiError extends Error {
 export interface User {
   id: string;
   email: string;
-  created_at: string;
+  createdAt: string;
 }
 
 export interface HslAxisWire {
@@ -109,12 +109,12 @@ export interface Preset {
   visibility: PresetVisibility;
   genre: PresetGenre | null;
   description: string | null;
-  preview_image_id: string | null;
-  published_at: string | null;
-  apply_count: number;
-  report_count: number;
-  created_at: string;
-  updated_at: string;
+  previewImageId: string | null;
+  publishedAt: string | null;
+  applyCount: number;
+  reportCount: number;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface PresetWritePayload {
@@ -124,30 +124,30 @@ export interface PresetWritePayload {
   visibility?: PresetVisibility;
   genre?: PresetGenre | null;
   description?: string | null;
-  preview_image_id?: string | null;
+  previewImageId?: string | null;
 }
 
 export type UploadState = "pending" | "ready" | "failed";
 
 export interface Image {
   id: string;
-  original_filename: string;
-  content_type: string;
-  size_bytes: number | null;
-  upload_state: UploadState;
-  created_at: string;
-  confirmed_at: string | null;
+  originalFilename: string;
+  contentType: string;
+  sizeBytes: number | null;
+  uploadState: UploadState;
+  createdAt: string;
+  confirmedAt: string | null;
 }
 
 export interface ImageInit {
   id: string;
-  upload_url: string;
-  expires_in: number;
+  uploadUrl: string;
+  expiresIn: number;
 }
 
 export interface ImageUrl {
   url: string;
-  expires_in: number;
+  expiresIn: number;
 }
 
 export type GetUserFn = () => OidcUser | null | undefined;
@@ -157,9 +157,9 @@ export type ImageStateFilter = "ready" | "pending" | "all";
 export interface MeExport {
   id: string;
   email: string;
-  created_at: string;
+  createdAt: string;
   presets: Preset[];
-  images: Array<Image & { download_url: string; download_url_expires_in: number }>;
+  images: Array<Image & { downloadUrl: string; downloadUrlExpiresIn: number }>;
 }
 
 export interface MarketplaceListItem {
@@ -167,19 +167,19 @@ export interface MarketplaceListItem {
   name: string;
   genre: PresetGenre | null;
   description: string | null;
-  creator_handle: string | null;
-  apply_count: number;
-  published_at: string;
-  preview_url: string | null;
+  creatorHandle: string | null;
+  applyCount: number;
+  publishedAt: string;
+  previewUrl: string | null;
 }
 
 export interface MarketplaceList {
   items: MarketplaceListItem[];
-  next_cursor: string | null;
+  nextCursor: string | null;
 }
 
 export interface MarketplaceDetail extends MarketplaceListItem {
-  creator_bio: string | null;
+  creatorBio: string | null;
 }
 
 export interface MarketplaceApply {
@@ -289,11 +289,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     initUpload: (filename, contentType, sizeBytes) =>
       request<ImageInit>("/images", {
         method: "POST",
-        body: JSON.stringify({
-          filename,
-          content_type: contentType,
-          size_bytes: sizeBytes,
-        }),
+        body: JSON.stringify({ filename, contentType, sizeBytes }),
       }),
     confirmUpload: (id) =>
       request<Image>(`/images/${id}/confirm`, { method: "POST" }),

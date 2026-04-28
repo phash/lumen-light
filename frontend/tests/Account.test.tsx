@@ -27,7 +27,7 @@ function makeFakeApi(): FakeApi {
     me: vi.fn().mockResolvedValue({
       id: "u-1",
       email: "manuel@example.com",
-      created_at: "x",
+      createdAt: "x",
     }),
     deleteMe: vi.fn(),
     exportMe: vi.fn(),
@@ -64,12 +64,12 @@ function makePreset(overrides: Partial<Preset> = {}): Preset {
     visibility: "public",
     genre: "portrait",
     description: "x",
-    preview_image_id: "img-1",
-    published_at: "2026-04-28T00:00:00Z",
-    apply_count: 5,
-    report_count: 0,
-    created_at: "x",
-    updated_at: "x",
+    previewImageId: "img-1",
+    publishedAt: "2026-04-28T00:00:00Z",
+    applyCount: 5,
+    reportCount: 0,
+    createdAt: "x",
+    updatedAt: "x",
     ...overrides,
   };
 }
@@ -160,11 +160,11 @@ describe("Account", () => {
     ).toBeInTheDocument();
   });
 
-  it("Listet veroeffentlichte Presets mit apply_count", async () => {
+  it("Listet veroeffentlichte Presets mit applyCount", async () => {
     const api = makeFakeApi();
     api.listPublishedPresets.mockResolvedValue([
-      makePreset({ id: "a", name: "Look A", apply_count: 12 }),
-      makePreset({ id: "b", name: "Look B", apply_count: 0 }),
+      makePreset({ id: "a", name: "Look A", applyCount: 12 }),
+      makePreset({ id: "b", name: "Look B", applyCount: 0 }),
     ]);
     render(api);
     expect(await screen.findByText("Look A")).toBeInTheDocument();

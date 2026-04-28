@@ -107,9 +107,12 @@ gesetzt — pytest läuft sonst gegen 429er.
 
 ## Wireformat
 
-- **Adjustments + Image/Preset-Top-Level**: snake_case (`created_at`, `size_bytes`).
-- **Masken-Body**: camelCase (`localAdj`) — Wireformat 1:1 zur TS-Seite. Pydantic-Felder bewusst camelCase, `# noqa: N815`.
-- Inkonsistenz dokumentiert; Vereinheitlichung steht in Phase D4 als Backlog.
+- **Komplett camelCase** (D4 erledigt). Pydantic-Attribute bleiben
+  snake_case, `alias_generator=to_camel` + `serialize_by_alias=True`
+  in `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mappen sie. Eingang
+  akzeptiert via `populate_by_name=True` weiterhin Snake-Case
+  (Backwards-Compat fuer alte Clients).
+- Frontend-Typen in `src/api/client.ts` sind 1:1 camelCase.
 
 ## Gotchas
 
