@@ -35,6 +35,7 @@ interface Props {
   readonly onAspectChange: (a: AspectRatio) => void;
   readonly straightenAngle: number;
   readonly onStraightenChange: (a: number) => void;
+  readonly onAutoStraighten: () => void;
   readonly onResetGeometry: () => void;
 
   // Masken
@@ -82,6 +83,7 @@ export default function EditorSidebar({
   onAspectChange,
   straightenAngle,
   onStraightenChange,
+  onAutoStraighten,
   onResetGeometry,
   masks,
   selectedMaskId,
@@ -144,9 +146,19 @@ export default function EditorSidebar({
             </select>
           </label>
           <label className="block py-1.5">
-            <span className="text-[11px] uppercase tracking-wider text-stone-400">
-              Begradigen ({Math.round((straightenAngle * 180) / Math.PI * 10) / 10}°)
-            </span>
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] uppercase tracking-wider text-stone-400">
+                Begradigen ({Math.round((straightenAngle * 180) / Math.PI * 10) / 10}°)
+              </span>
+              <button
+                type="button"
+                onClick={onAutoStraighten}
+                data-testid="auto-straighten"
+                className="px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] border border-stone-700 text-stone-400 hover:border-amber-300/40 hover:text-amber-200"
+              >
+                Auto
+              </button>
+            </div>
             <input
               type="range"
               min={-MAX_STRAIGHTEN_RADIANS}

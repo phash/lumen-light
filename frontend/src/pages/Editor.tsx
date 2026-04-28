@@ -25,6 +25,7 @@ import PresetDialog from "../editor/PresetDialog";
 import RadialMaskOverlay from "../editor/RadialMaskOverlay";
 import ShortcutCheatsheet from "../editor/ShortcutCheatsheet";
 import { analyze, computeAutoTone, computeAutoWb } from "../editor/autoAdjust";
+import { analyzeCanvasStraightenAngle } from "../editor/autoStraighten";
 import { FILE_PICKER_ACCEPT, decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import { type Genre, suggestGenre } from "../editor/suggestPreset";
 import { selectedMask, useEditorStore } from "../editor/store";
@@ -286,6 +287,15 @@ export default function Editor() {
     const delta = computeAutoWb(stats, cur);
     useEditorStore.getState().applyAdjustments({ ...cur, ...delta });
   }, [canvasElement]);
+
+  const onAutoStraighten = useCallback(() => {
+    if (!canvasElement) return;
+    const result = analyzeCanvasStraightenAngle(canvasElement);
+    if (!result) return;
+    // Confidence-Schwelle vermeidet Noise-Snaps bei abstrakten Bildern.
+    if (result.confidence < 0.15) return;
+    setStraightenAngle(result.angleRad);
+  }, [canvasElement, setStraightenAngle]);
 
   const resetView = useCallback(() => {
     setZoom(1);
@@ -810,6 +820,7 @@ export default function Editor() {
         onAspectChange={setAspect}
         straightenAngle={straightenAngle}
         onStraightenChange={setStraightenAngle}
+        onAutoStraighten={onAutoStraighten}
         onResetGeometry={resetGeometry}
         masks={masks}
         selectedMaskId={selectedMaskId}
