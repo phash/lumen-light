@@ -58,6 +58,9 @@ export interface CanvasHandle {
   loadBitmap(bitmap: ImageBitmap, width: number, height: number): void;
   /** Erzwingt einen Re-Render mit aktuellem Store-State. */
   render(): void;
+  /** Rendert das Bild kurz mit bypass=true, liefert es als DataURL,
+   *  rendert direkt wieder normal. Fuer Vorher/Nachher-Snapshots. */
+  takeBypassSnapshot(): string | null;
 }
 
 interface Props {
@@ -167,6 +170,33 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           masksFromState(s),
         );
         onTick();
+      },
+      takeBypassSnapshot: () => {
+        const r = rendererRef.current;
+        const c = canvasRef.current;
+        if (!r || !c || !r.hasImage()) return null;
+        const s = useEditorStore.getState();
+        // 1. Render Pass mit bypass=true -> die Canvas zeigt das Original.
+        r.render(
+          s.adjustments,
+          true,
+          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          s.lensCorrection.distortion,
+          s.lensCorrection.vignette,
+          masksFromState(s),
+        );
+        const url = c.toDataURL("image/png");
+        // 2. Sofort wieder mit aktuellen bypass-Wert rendern, damit der
+        //    User keinen Flash sieht.
+        r.render(
+          s.adjustments,
+          s.bypass,
+          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          s.lensCorrection.distortion,
+          s.lensCorrection.vignette,
+          masksFromState(s),
+        );
+        return url;
       },
     }),
     [onTick],

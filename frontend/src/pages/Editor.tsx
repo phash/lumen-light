@@ -2,6 +2,7 @@ import { useCallback, useRef, useState } from "react";
 
 import { useApi } from "../api/use-api";
 import Canvas, { type CanvasHandle } from "../editor/Canvas";
+import CompareSplitOverlay from "../editor/CompareSplitOverlay";
 import CropOverlay from "../editor/CropOverlay";
 import EditorSidebar from "../editor/EditorSidebar";
 import {
@@ -62,6 +63,8 @@ export default function Editor() {
   const [helpOpen, setHelpOpen] = useState(false);
   const [suggestedGenre, setSuggestedGenre] = useState<Genre | null>(null);
   const [suggestionDismissed, setSuggestionDismissed] = useState(false);
+  const [compareSnapshot, setCompareSnapshot] = useState<string | null>(null);
+  const [splitX, setSplitX] = useState(0.5);
   const api = useApi();
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -129,6 +132,7 @@ export default function Editor() {
     setWbPickerActive(false);
     setSuggestedGenre(null);
     setSuggestionDismissed(false);
+    setCompareSnapshot(null);
     try {
       const isRaw = await isRawFile(file);
       if (isRaw) {
@@ -246,6 +250,18 @@ export default function Editor() {
       setError(err instanceof Error ? err.message : "Preset-Vorschlag laden fehlgeschlagen");
     }
   }, [api]);
+
+  const onToggleCompare = useCallback(() => {
+    if (compareSnapshot) {
+      setCompareSnapshot(null);
+      return;
+    }
+    const url = canvasHandleRef.current?.takeBypassSnapshot?.();
+    if (url) {
+      setCompareSnapshot(url);
+      setSplitX(0.5);
+    }
+  }, [compareSnapshot]);
 
   const onAutoTone = useCallback(() => {
     if (!canvasElement) return;
@@ -455,6 +471,13 @@ export default function Editor() {
               }
             />
           )}
+          {hasImage && compareSnapshot && (
+            <CompareSplitOverlay
+              snapshotUrl={compareSnapshot}
+              splitX={splitX}
+              onSplitChange={setSplitX}
+            />
+          )}
         </div>
 
         <input
@@ -629,6 +652,17 @@ export default function Editor() {
                 title="Auto-Weissabgleich (Gray-World)"
               >
                 Auto-WB
+              </button>
+              <button
+                type="button"
+                data-testid="editor-compare-toggle"
+                onClick={onToggleCompare}
+                className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
+                  compareSnapshot ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
+                }`}
+                title="Vorher/Nachher-Split-Compare ein/aus"
+              >
+                Vorher/Nachher
               </button>
               <button
                 type="button"
