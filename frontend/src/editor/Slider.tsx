@@ -14,6 +14,7 @@ interface Props {
   readonly min: number;
   readonly max: number;
   readonly step: number;
+  readonly tooltip?: string;
   readonly onChange: (next: number) => void;
 }
 
@@ -25,6 +26,7 @@ export default function Slider({
   min,
   max,
   step,
+  tooltip,
   onChange,
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
@@ -84,6 +86,7 @@ export default function Slider({
     <div
       className="select-none py-1.5"
       data-testid={`slider-${adjustmentKey}`}
+      title={tooltip}
     >
       <div className="flex items-baseline justify-between mb-1">
         <span className="text-[11px] uppercase tracking-wider text-stone-400">

@@ -82,21 +82,36 @@ export interface AdjustmentDefinition {
   readonly max: number;
   readonly step: number;
   readonly default: number;
+  /** Erklaerender Tooltip — wird im Slider als title-Attribut gesetzt
+   *  und beim Hover gezeigt. Hilft Hobby-Fotografen mit Fachbegriffen. */
+  readonly tooltip: string;
 }
 
 export const ADJUSTMENTS: ReadonlyArray<AdjustmentDefinition> = [
-  { key: "exposure",    label: "Belichtung", group: "Licht", min: -5, max: 5, step: 0.01, default: 0 },
-  { key: "contrast",    label: "Kontrast",   group: "Licht", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "highlights",  label: "Lichter",    group: "Licht", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "shadows",     label: "Tiefen",     group: "Licht", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "whites",      label: "Weiß",       group: "Licht", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "blacks",      label: "Schwarz",    group: "Licht", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "temperature", label: "Temperatur", group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "tint",        label: "Tönung",     group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "vibrance",    label: "Dynamik",    group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "saturation",  label: "Sättigung",  group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
-  { key: "sharpness",      label: "Schärfen",   group: "Detail", min: 0, max: 1, step: 0.01, default: 0 },
-  { key: "noiseReduction", label: "Rauschen",   group: "Detail", min: 0, max: 1, step: 0.01, default: 0 },
+  { key: "exposure",    label: "Belichtung", group: "Licht", min: -5, max: 5, step: 0.01, default: 0,
+    tooltip: "Globale Helligkeit in Blendenstufen. +1 = doppelt so hell." },
+  { key: "contrast",    label: "Kontrast",   group: "Licht", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Spreizt Hell-Dunkel-Unterschiede um die Mitte. Negativ = flacher." },
+  { key: "highlights",  label: "Lichter",    group: "Licht", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Korrigiert nur die hellen Bildbereiche. Negativ rettet ueberbelichtete Wolken/Haut." },
+  { key: "shadows",     label: "Tiefen",     group: "Licht", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Korrigiert nur die dunklen Bildbereiche. Positiv hellt Schatten auf, ohne das Bild flach zu machen." },
+  { key: "whites",      label: "Weiß",       group: "Licht", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Setzt den hellsten Punkt. Negativ verhindert Clip in den Lichtern." },
+  { key: "blacks",      label: "Schwarz",    group: "Licht", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Setzt den dunkelsten Punkt. Negativ verstaerkt tiefes Schwarz." },
+  { key: "temperature", label: "Temperatur", group: "Farbe", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Weissabgleich blau↔gelb. Positiv = waermer." },
+  { key: "tint",        label: "Tönung",     group: "Farbe", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Weissabgleich gruen↔magenta. Korrigiert Farbstich bei Mischlicht." },
+  { key: "vibrance",    label: "Dynamik",    group: "Farbe", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Saettigung, die schon-bunte Bereiche und Hauttoene schont. Sicherer als Saettigung." },
+  { key: "saturation",  label: "Sättigung",  group: "Farbe", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Globale Farbintensitaet. Schnell uebertrieben — mit Dynamik kombinieren." },
+  { key: "sharpness",      label: "Schärfen",   group: "Detail", min: 0, max: 1, step: 0.01, default: 0,
+    tooltip: "Unsharp-Mask. Hebt Kanten an. Mit Bedacht — Halos bei zu viel." },
+  { key: "noiseReduction", label: "Rauschen",   group: "Detail", min: 0, max: 1, step: 0.01, default: 0,
+    tooltip: "Bilateral-Filter glaettet Rauschen, schont Kanten. Gut fuer ISO-hohe Aufnahmen." },
 ] as const;
 
 const ADJUSTMENT_BY_KEY: ReadonlyMap<AdjustmentKey, AdjustmentDefinition> = new Map(

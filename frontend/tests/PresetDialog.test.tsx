@@ -372,10 +372,13 @@ describe("PresetDialog", () => {
       screen.getByTestId("preset-publish-description"),
       "Hauttoene wirken weicher und etwas waermer.",
     );
-    await userEvent.selectOptions(
-      screen.getByTestId("preset-publish-preview"),
-      "img-1",
+    // Preview-Picker ist ein Thumbnail-Grid mit Buttons pro Bild.
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("preset-publish-preview-img-1"),
+      ).toBeInTheDocument(),
     );
+    await userEvent.click(screen.getByTestId("preset-publish-preview-img-1"));
     await userEvent.type(screen.getByTestId("preset-save-name"), "Public Look");
     await userEvent.click(screen.getByTestId("preset-save-confirm"));
 

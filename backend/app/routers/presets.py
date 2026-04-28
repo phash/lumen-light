@@ -11,6 +11,7 @@ from app.auth import current_user
 from app.database import get_db
 from app.models import Image, Preset, User
 from app.rate_limit import limiter
+from app.routers.marketplace import REPORT_AUTOHIDE_THRESHOLD
 from app.schemas import PresetIn, PresetOut
 
 
@@ -119,6 +120,22 @@ async def update_preset(
     # sonst beibehalten. Bei privat: zuruecksetzen, damit Public-Listen
     # konsistent bleiben.
     was_public = p.visibility == "public"
+    # Auto-Hide-Block: ein Preset, das schon ueber dem Schwellenwert
+    # gemeldet wurde, kann nicht einfach wieder live geschaltet werden,
+    # ohne dass die Reports vorher inhaltlich abgearbeitet werden. 409
+    # statt stilles Erlauben, damit der Creator weiss, was los ist.
+    if (
+        payload.visibility == "public"
+        and not was_public
+        and p.report_count >= REPORT_AUTOHIDE_THRESHOLD
+    ):
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "Preset wurde wegen Meldungen zurueckgezogen — bitte den"
+                " Selfhost-Betreiber kontaktieren."
+            ),
+        )
     p.visibility = payload.visibility
     p.genre = payload.genre
     p.description = payload.description

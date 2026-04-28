@@ -53,6 +53,9 @@ export default function PresetDialog({
   const [busy, setBusy] = useState(false);
   const [publish, setPublish] = useState<PublishState>(emptyPublishState());
   const [images, setImages] = useState<Image[]>([]);
+  // Pre-Signed-Download-URLs pro Bild — N+1 calls, akzeptabel fuer
+  // <50 Bilder pro User. Empty-Map bis lazy-loaded.
+  const [imageThumbs, setImageThumbs] = useState<Record<string, string>>({});
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const masks = useEditorStore((s) => s.masks);
@@ -94,14 +97,28 @@ export default function PresetDialog({
 
   // Bilder lazy laden — erst wenn der User Veroeffentlichen aktiviert,
   // damit der Listing-Endpoint nicht jedes Mal beim Open getroffen wird.
+  // Anschliessend pro Bild eine Preview-URL holen (5-min TTL).
   useEffect(() => {
     if (!publish.enabled) return;
     if (images.length > 0) return;
     let cancelled = false;
     void api
       .listImages("ready")
-      .then((list) => {
-        if (!cancelled && mountedRef.current) setImages(list);
+      .then(async (list) => {
+        if (cancelled || !mountedRef.current) return;
+        setImages(list);
+        const thumbs: Record<string, string> = {};
+        await Promise.all(
+          list.map(async (img) => {
+            try {
+              const u = await api.getImageUrl(img.id);
+              thumbs[img.id] = u.url;
+            } catch {
+              /* Skip — Bild ohne Thumb wird im Grid als grauer Block gerendert. */
+            }
+          }),
+        );
+        if (!cancelled && mountedRef.current) setImageThumbs(thumbs);
       })
       .catch(() => {
         /* Liste leer lassen — Picker zeigt dann „keine Bilder". */
@@ -375,26 +392,55 @@ export default function PresetDialog({
                   {publish.description.length < 10 && " (min 10)"}
                 </div>
               </div>
-              <select
-                value={publish.previewImageId}
-                onChange={(e) =>
-                  setPublish((s) => ({ ...s, previewImageId: e.target.value }))
-                }
-                data-testid="preset-publish-preview"
-                className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
-                disabled={images.length === 0}
-              >
-                <option value="">
-                  {images.length === 0
-                    ? "Erst ein Bild in der Bibliothek hochladen"
-                    : "Vorschaubild wählen…"}
-                </option>
-                {images.map((img) => (
-                  <option key={img.id} value={img.id}>
-                    {img.originalFilename}
-                  </option>
-                ))}
-              </select>
+              <div data-testid="preset-publish-preview">
+                {images.length === 0 ? (
+                  <p className="text-[11px] text-stone-500">
+                    Erst ein Bild in der Bibliothek hochladen.
+                  </p>
+                ) : (
+                  <>
+                    <p className="text-[10px] text-stone-500 mb-1">
+                      Vorschaubild wählen ({images.length} verfügbar)
+                    </p>
+                    <div className="grid grid-cols-4 gap-1.5 max-h-32 overflow-y-auto">
+                      {images.map((img) => {
+                        const isSelected = publish.previewImageId === img.id;
+                        const thumb = imageThumbs[img.id];
+                        return (
+                          <button
+                            key={img.id}
+                            type="button"
+                            onClick={() =>
+                              setPublish((s) => ({
+                                ...s,
+                                previewImageId: img.id,
+                              }))
+                            }
+                            data-testid={`preset-publish-preview-${img.id}`}
+                            title={img.originalFilename}
+                            className={`aspect-square overflow-hidden border-2 ${
+                              isSelected
+                                ? "border-amber-300"
+                                : "border-stone-800 hover:border-amber-300/40"
+                            }`}
+                          >
+                            {thumb ? (
+                              <img
+                                src={thumb}
+                                alt={img.originalFilename}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-full h-full bg-stone-900" />
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </>
+                )}
+              </div>
             </div>
           )}
 

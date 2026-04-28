@@ -189,6 +189,23 @@ export default function Marketplace() {
             onClick={() => void openDetail(item.id)}
           />
         ))}
+        {items.length === 0 && loading && (
+          <>
+            {Array.from({ length: 8 }).map((_, i) => (
+              <div
+                key={i}
+                data-testid="marketplace-skeleton"
+                className="bg-stone-900/70 border border-stone-800 overflow-hidden animate-pulse"
+              >
+                <div className="w-full aspect-square bg-stone-800/60" />
+                <div className="p-3 space-y-2">
+                  <div className="h-3 bg-stone-800 rounded w-3/4" />
+                  <div className="h-2 bg-stone-800/60 rounded w-1/2" />
+                </div>
+              </div>
+            ))}
+          </>
+        )}
         {items.length === 0 && !loading && (
           <div
             className="col-span-full text-stone-500 text-sm py-12 text-center"

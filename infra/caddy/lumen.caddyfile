@@ -8,10 +8,19 @@
 lumen.mr-development.de {
     encode gzip zstd
 
-    # API-Pfade gehen ans Backend (FastAPI)
-    @api path /api/* /docs /openapi.json /redoc
+    # API-Pfade gehen ans Backend (FastAPI). /docs|/openapi.json|/redoc
+    # werden vom Backend in Production via LUMEN_ENV=production
+    # ausgeblendet — wir matchen sie hier trotzdem, falls der Toggle
+    # nicht greift (Defense-in-Depth).
+    @api path /api/*
     handle @api {
         reverse_proxy lumen-api:4100
+    }
+
+    # Schema-Disclosure-Pfade in Production hart blocken.
+    @docs path /docs /docs/* /openapi.json /redoc /redoc/*
+    handle @docs {
+        respond "Not found" 404
     }
 
     # Alles andere: statisches Frontend (nginx)
@@ -19,11 +28,25 @@ lumen.mr-development.de {
         reverse_proxy lumen-web:80
     }
 
-    # Sicherheits-Header
+    # Sicherheits-Header (Defense-in-Depth zur React-Default-Escape).
+    #
+    # CSP-Quellen:
+    #   - default 'self': alles vom selben Origin
+    #   - img-src zusaetzlich blob: + data: (Editor/Export-Dialog erzeugt
+    #     Blob-URLs via createObjectURL fuer Preview/Compare/Export)
+    #   - connect-src auth.mr-development.de (Keycloak), tfhub.dev +
+    #     storage.googleapis.com (TF.js-Modell-Weights, opt-in via
+    #     Smart-Suggestion-Toggle), und der Backend-API-Pfad
+    #   - script-src nur 'self' — kein eval, keine inline scripts
+    #   - style-src 'unsafe-inline' fuer Tailwind-Dynamic + React style={}
+    #   - frame-ancestors 'none' — kein Embedding via iframe
     header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
         X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
         Referrer-Policy "strict-origin-when-cross-origin"
+        Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
+        Content-Security-Policy "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://auth.mr-development.de https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
     }
 
     # Rate-Limit fuer /api/v1/images (POST init) — siehe API-Spec

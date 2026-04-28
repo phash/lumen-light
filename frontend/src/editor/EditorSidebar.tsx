@@ -122,6 +122,123 @@ export default function EditorSidebar({
       </div>
 
       <div className="flex-1 overflow-y-auto px-4 py-3">
+        {/*
+          Sektions-Reihenfolge folgt dem Wert-pro-Klick-Prinzip:
+            1. Licht/Farbe/Detail (Adjustment-Groups) — Erstkontakt-
+               Slider, Licht ist open-by-default.
+            2. Masken — wenn vorhanden, sichtbar nahe an den Slidern.
+            3. HSL + Tonkurve — Power-Tools, collapsed.
+            4. Geometrie + Objektiv — eher Pro-Funktionen, collapsed
+               und unten.
+        */}
+        {Array.from(groups.entries()).map(([group, items]) => (
+          <CollapsibleSection
+            key={group}
+            id={`adjustments-${group}`}
+            title={group}
+            defaultOpen={group === "Licht"}
+            testId={`editor-section-${group.toLowerCase()}`}
+          >
+            {items.map((a: AdjustmentDefinition) => (
+              <Slider
+                key={a.key}
+                adjustmentKey={a.key}
+                label={a.label}
+                value={adjustments[a.key]}
+                defaultValue={a.default}
+                min={a.min}
+                max={a.max}
+                step={a.step}
+                tooltip={a.tooltip}
+                onChange={(v) => onAdjustment(a.key, v)}
+              />
+            ))}
+          </CollapsibleSection>
+        ))}
+
+        {masks.length > 0 && (
+          <div className="mb-5" data-testid="mask-list">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-stone-300 italic">
+                Masken ({masks.length})
+              </span>
+              <div className="flex-1 h-px bg-stone-800" />
+            </div>
+            {masks.map((m, i) => {
+              const isSelected = m.id === selectedMaskId;
+              const sameTypeIndex =
+                masks.slice(0, i).filter((x) => x.type === m.type).length + 1;
+              return (
+                <div
+                  key={m.id}
+                  data-testid={`mask-list-item-${i}`}
+                  data-mask-type={m.type}
+                  data-mask-selected={isSelected ? "true" : "false"}
+                  className={`flex items-center gap-2 px-2 py-1.5 mb-1 cursor-pointer text-xs ${
+                    isSelected
+                      ? "bg-amber-200/15 border-l-2 border-amber-300 text-amber-200"
+                      : "border-l-2 border-stone-800 text-stone-400 hover:text-stone-200"
+                  }`}
+                  onClick={() => onSelectMask(m.id)}
+                >
+                  <span className="flex-1">
+                    {maskTypeLabel(m.type)} {sameTypeIndex}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid={`mask-list-delete-${i}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onRemoveMask(m.id);
+                    }}
+                    className="text-stone-500 hover:text-red-400 px-1"
+                    aria-label="Maske loeschen"
+                  >
+                    ✕
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {selected && (
+          <LocalMaskPanel
+            mask={selected}
+            onLocalAdjust={(key, value) => onLocalAdjust(selected.id, key, value)}
+            onFeather={(f) => onMaskFeather(selected.id, f)}
+            onRemove={onRemoveSelectedMask}
+          />
+        )}
+
+        <CollapsibleSection
+          id="hsl"
+          title="Farben (HSL)"
+          defaultOpen={false}
+          testId="editor-section-hsl"
+        >
+          <HslPanel
+            hsl={adjustments.hsl}
+            onChange={onHslChange}
+            onReset={onHslReset}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          id="tone-curve"
+          title="Tonkurve"
+          defaultOpen={false}
+          testId="editor-section-tone-curve"
+        >
+          <ToneCurvePanel
+            curve={adjustments.toneCurve}
+            onSetPoint={onToneCurveSetPoint}
+            onAddPoint={onToneCurveAddPoint}
+            onRemovePoint={onToneCurveRemovePoint}
+            onReset={onToneCurveReset}
+          />
+        </CollapsibleSection>
+
         <CollapsibleSection
           id="geometry"
           title="Geometrie"
@@ -181,61 +298,6 @@ export default function EditorSidebar({
           </button>
         </CollapsibleSection>
 
-        {masks.length > 0 && (
-          <div className="mb-5" data-testid="mask-list">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-stone-300 italic">
-                Masken ({masks.length})
-              </span>
-              <div className="flex-1 h-px bg-stone-800" />
-            </div>
-            {masks.map((m, i) => {
-              const isSelected = m.id === selectedMaskId;
-              const sameTypeIndex =
-                masks.slice(0, i).filter((x) => x.type === m.type).length + 1;
-              return (
-                <div
-                  key={m.id}
-                  data-testid={`mask-list-item-${i}`}
-                  data-mask-type={m.type}
-                  data-mask-selected={isSelected ? "true" : "false"}
-                  className={`flex items-center gap-2 px-2 py-1.5 mb-1 cursor-pointer text-xs ${
-                    isSelected
-                      ? "bg-amber-200/15 border-l-2 border-amber-300 text-amber-200"
-                      : "border-l-2 border-stone-800 text-stone-400 hover:text-stone-200"
-                  }`}
-                  onClick={() => onSelectMask(m.id)}
-                >
-                  <span className="flex-1">
-                    {maskTypeLabel(m.type)} {sameTypeIndex}
-                  </span>
-                  <button
-                    type="button"
-                    data-testid={`mask-list-delete-${i}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemoveMask(m.id);
-                    }}
-                    className="text-stone-500 hover:text-red-400 px-1"
-                    aria-label="Maske loeschen"
-                  >
-                    ✕
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {selected && (
-          <LocalMaskPanel
-            mask={selected}
-            onLocalAdjust={(key, value) => onLocalAdjust(selected.id, key, value)}
-            onFeather={(f) => onMaskFeather(selected.id, f)}
-            onRemove={onRemoveSelectedMask}
-          />
-        )}
-
         <CollapsibleSection
           id="lens"
           title="Objektiv"
@@ -288,61 +350,6 @@ export default function EditorSidebar({
               className="mt-1 w-full"
             />
           </label>
-        </CollapsibleSection>
-
-        {Array.from(groups.entries()).map(([group, items]) => (
-          <CollapsibleSection
-            key={group}
-            id={`adjustments-${group}`}
-            title={group}
-            // Licht ist die Erstkontakt-Sektion fuer den Hobby-Fotografen
-            // — Belichtung/Kontrast/Lichter sind „die" Slider. Farbe und
-            // Detail sind weniger universell.
-            defaultOpen={group === "Licht"}
-            testId={`editor-section-${group.toLowerCase()}`}
-          >
-            {items.map((a: AdjustmentDefinition) => (
-              <Slider
-                key={a.key}
-                adjustmentKey={a.key}
-                label={a.label}
-                value={adjustments[a.key]}
-                defaultValue={a.default}
-                min={a.min}
-                max={a.max}
-                step={a.step}
-                onChange={(v) => onAdjustment(a.key, v)}
-              />
-            ))}
-          </CollapsibleSection>
-        ))}
-
-        <CollapsibleSection
-          id="hsl"
-          title="Farben (HSL)"
-          defaultOpen={false}
-          testId="editor-section-hsl"
-        >
-          <HslPanel
-            hsl={adjustments.hsl}
-            onChange={onHslChange}
-            onReset={onHslReset}
-          />
-        </CollapsibleSection>
-
-        <CollapsibleSection
-          id="tone-curve"
-          title="Tonkurve"
-          defaultOpen={false}
-          testId="editor-section-tone-curve"
-        >
-          <ToneCurvePanel
-            curve={adjustments.toneCurve}
-            onSetPoint={onToneCurveSetPoint}
-            onAddPoint={onToneCurveAddPoint}
-            onRemovePoint={onToneCurveRemovePoint}
-            onReset={onToneCurveReset}
-          />
         </CollapsibleSection>
 
         <button
