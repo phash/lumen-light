@@ -8,13 +8,19 @@ Limit-Strategie:
 - Tests setzen LUMEN_RATELIMIT_DISABLED=1, damit die Suite kein
   429 sieht.
 
-Sicherheits-Hinweis (Security-Review): Python's `hash()` wird per
-PYTHONHASHSEED randomisiert; bei Multi-Worker-Setup haette jeder
-Worker eine eigene Hash-Reihenfolge und das Limit waere effektiv
-mit der Worker-Anzahl multipliziert. Wir nutzen daher einen stabilen
-SHA-256-Hash. Fuer echte Multi-Worker-Skalierung muss `storage_uri`
-gesetzt werden (Redis-Backend), sonst sind die Counter pro Worker
-isoliert.
+Stable-Hash: Python's `hash()` wird per PYTHONHASHSEED randomisiert;
+bei Multi-Worker-Setup haette jeder Worker eine eigene Hash-Reihenfolge
+und das Limit waere effektiv mit der Worker-Anzahl multipliziert. Wir
+nutzen einen SHA-256-Hash, sodass dieselbe User-ID auf jedem Worker
+denselben Bucket trifft.
+
+Storage-Backend:
+- `LUMEN_RATELIMIT_STORAGE` env (default `memory://`) — in-memory haelt
+  Counter pro Worker isoliert, was bei `--workers > 1` heisst, dass das
+  effektive Limit mit der Worker-Anzahl multipliziert wird.
+- `redis://host:port/db` — gemeinsam ueber alle Worker, wird in der
+  Production-Compose vom mitgelieferten lumen-redis-Service gefuettert.
+- Tests laufen single-process, in-memory ist OK.
 """
 from __future__ import annotations
 
@@ -34,7 +40,13 @@ def _key_func(request) -> str:
     return f"ip:{get_remote_address(request)}"
 
 
+_storage_uri = os.environ.get("LUMEN_RATELIMIT_STORAGE", "memory://")
+
 limiter = Limiter(
     key_func=_key_func,
     enabled=os.environ.get("LUMEN_RATELIMIT_DISABLED") != "1",
+    storage_uri=_storage_uri,
+    # Bei Redis-Outage Fallback auf in-memory statt Hard-Fail. Single-
+    # User koennten dann zwar das Limit knacken, aber die App bleibt up.
+    in_memory_fallback_enabled=True,
 )

@@ -33,6 +33,31 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Geteilter Rate-Limit-Counter-Store fuer slowapi. Notwendig sobald
+  # lumen-api mit `--workers > 1` laeuft, sonst sind die Counter pro
+  # Worker isoliert und das Limit effektiv multipliziert.
+  # Volume ist persistent, aber bei Restart toleriert die App leere
+  # Counter (Re-Filling per regulaerem Traffic).
+  lumen-redis:
+    image: redis:7-alpine
+    container_name: lumen-redis
+    restart: unless-stopped
+    command: ["redis-server", "--save", "60", "1000", "--appendonly", "no"]
+    volumes:
+      - lumen-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - lumen-internal
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   lumen-api:
     build:
       context: ../backend
@@ -52,8 +77,13 @@ services:
       PRESIGNED_URL_EXPIRES_IN: ${PRESIGNED_URL_EXPIRES_IN:-900}
       MAX_IMAGE_SIZE_BYTES: ${MAX_IMAGE_SIZE_BYTES:-209715200}
       CORS_ORIGIN: ${CORS_ORIGIN}
+      LUMEN_ENV: production
+      # Multi-Worker: gemeinsamer Redis-Store fuer slowapi-Counter.
+      LUMEN_RATELIMIT_STORAGE: "redis://lumen-redis:6379/0"
     depends_on:
       lumen-db:
+        condition: service_healthy
+      lumen-redis:
         condition: service_healthy
     networks:
       - lumen-internal
@@ -89,3 +119,4 @@ networks:
 
 volumes:
   lumen-db-data:
+  lumen-redis-data:

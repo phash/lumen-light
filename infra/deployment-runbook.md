@@ -76,6 +76,11 @@ GARAGE_S3_SECRET_ACCESS_KEY=<aus Schritt 3>
 CORS_ORIGIN=https://lumen.mr-development.de
 ```
 
+> Optional fuer Multi-Worker-API: `LUMEN_RATELIMIT_STORAGE=redis://lumen-redis:6379/0`
+> ist im prod-compose schon als Default gesetzt. Wenn die `lumen-api`
+> mit `--workers 1` laeuft (Default), ist Redis nicht zwingend
+> noetig — der Counter bleibt dann pro Prozess in-memory.
+
 ## 5. Frontend Run-Time-Config schreiben
 
 ```bash

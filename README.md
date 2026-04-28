@@ -17,7 +17,7 @@ Browser-basierter, selbst-gehosteter RAW-Foto-Editor — Lightroom-Light fuer Ho
 
 ## Stack
 
-- **Backend**: FastAPI · async SQLAlchemy 2 + asyncpg · Alembic · Pydantic 2 · slowapi · boto3
+- **Backend**: FastAPI · async SQLAlchemy 2 + asyncpg · Alembic · Pydantic 2 · slowapi (Redis-Backend in Production) · boto3
 - **Frontend**: React 19 · Vite 8 · TypeScript strict · Tailwind 4 · Zustand 5 · WebGL2 (Single-Pass-Fragment-Shader mit Uniform-Arrays fuer Multi-Mask)
 - **Auth**: Keycloak (OIDC, Realm `lumen`, JWT RS256-Whitelist)
 - **Storage**: Postgres 16 · Garage S3 (Pre-Signed-URLs, Pixel laufen NICHT durch FastAPI)
