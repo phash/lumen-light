@@ -45,3 +45,6 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Random Screenshots im Repo-Root (versehentlich abgelegt)
+/Bildschirmfoto_*.png
