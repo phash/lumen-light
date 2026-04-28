@@ -21,6 +21,7 @@ interface FakeApi extends ApiClient {
   createPreset: Mock;
   updatePreset: Mock;
   deletePreset: Mock;
+  listImages: Mock;
 }
 
 function makeFakeApi(presets: Preset[] = []): FakeApi {
@@ -32,7 +33,7 @@ function makeFakeApi(presets: Preset[] = []): FakeApi {
     createPreset: vi.fn(),
     updatePreset: vi.fn(),
     deletePreset: vi.fn().mockResolvedValue(undefined),
-    listImages: vi.fn(),
+    listImages: vi.fn().mockResolvedValue([]),
     initUpload: vi.fn(),
     confirmUpload: vi.fn(),
     getImageUrl: vi.fn(),
@@ -306,5 +307,84 @@ describe("PresetDialog", () => {
     renderDialog(api);
     await waitFor(() => screen.getByTestId("preset-item-y"));
     expect(screen.getByText("1 Maske")).toBeInTheDocument();
+  });
+
+  // ---------- Publish-Flow (F1) ----------
+
+  it("Publish-Toggle aus = listImages wird NICHT aufgerufen", async () => {
+    const api = makeFakeApi([]);
+    renderDialog(api);
+    await waitFor(() => expect(api.listPresets).toHaveBeenCalled());
+    expect(api.listImages).not.toHaveBeenCalled();
+  });
+
+  it("Publish-Toggle an = listImages wird aufgerufen", async () => {
+    const api = makeFakeApi([]);
+    api.listImages = vi.fn().mockResolvedValue([]);
+    renderDialog(api);
+    await waitFor(() => expect(api.listPresets).toHaveBeenCalled());
+    await userEvent.click(screen.getByTestId("preset-publish-toggle"));
+    await waitFor(() => expect(api.listImages).toHaveBeenCalledWith("ready"));
+  });
+
+  it("Publish ohne Genre/Description/Preview zeigt Validierungsfehler", async () => {
+    const api = makeFakeApi([]);
+    api.listImages = vi.fn().mockResolvedValue([]);
+    api.createPreset = vi.fn();
+    renderDialog(api);
+    await waitFor(() => expect(api.listPresets).toHaveBeenCalled());
+    await userEvent.click(screen.getByTestId("preset-publish-toggle"));
+    await userEvent.type(screen.getByTestId("preset-save-name"), "Pub");
+    await userEvent.click(screen.getByTestId("preset-save-confirm"));
+    await waitFor(() =>
+      expect(screen.getByTestId("preset-error").textContent).toContain("Genre"),
+    );
+    expect(api.createPreset).not.toHaveBeenCalled();
+  });
+
+  it("Publish mit allen Pflichtfeldern sendet visibility=public + Felder", async () => {
+    const api = makeFakeApi([]);
+    api.listImages = vi.fn().mockResolvedValue([
+      {
+        id: "img-1",
+        original_filename: "cover.jpg",
+        content_type: "image/jpeg",
+        size_bytes: 100,
+        upload_state: "ready" as const,
+        created_at: "x",
+        confirmed_at: "x",
+      },
+    ]);
+    api.createPreset = vi.fn().mockResolvedValue(
+      makePreset({ id: "new", name: "Public Look" }),
+    );
+    renderDialog(api);
+    await waitFor(() => expect(api.listPresets).toHaveBeenCalled());
+
+    await userEvent.click(screen.getByTestId("preset-publish-toggle"));
+    await waitFor(() => expect(api.listImages).toHaveBeenCalled());
+
+    await userEvent.selectOptions(
+      screen.getByTestId("preset-publish-genre"),
+      "portrait",
+    );
+    await userEvent.type(
+      screen.getByTestId("preset-publish-description"),
+      "Hauttoene wirken weicher und etwas waermer.",
+    );
+    await userEvent.selectOptions(
+      screen.getByTestId("preset-publish-preview"),
+      "img-1",
+    );
+    await userEvent.type(screen.getByTestId("preset-save-name"), "Public Look");
+    await userEvent.click(screen.getByTestId("preset-save-confirm"));
+
+    await waitFor(() => expect(api.createPreset).toHaveBeenCalledTimes(1));
+    const calls = api.createPreset.mock.calls as Array<[PresetWritePayload]>;
+    const payload = calls[0]![0];
+    expect(payload.visibility).toBe("public");
+    expect(payload.genre).toBe("portrait");
+    expect(payload.description).toContain("Hauttoene");
+    expect(payload.preview_image_id).toBe("img-1");
   });
 });
