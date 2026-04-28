@@ -110,7 +110,8 @@ Priorisiert nach erwartetem Impact, nicht nach Aufwand. Reihenfolge nach Beta-Fe
 - KI-Masken: Motiv-, Himmel-, Personen-Selektion (Segment-Anything-WebGPU oder MobileSAM)
 - Spot-Removal (Inpainting)
 - Stapel-Verarbeitung (Preset auf 100 Bilder anwenden, Output als ZIP)
-- Geteilte Presets (Public-URL-Sharing oder Org-Accounts)
+- Preset-Marketplace (Phase F1, Spec: `superpowers/specs/2026-04-28-preset-marketplace-design.md`) — public/private-Toggle, Genre-Filter, Apply, Fork, Reporting
+- Credits-System (Phase F2, deferred) — Creator-Earnings, Stripe-Kauf, Rechtsform-Voraussetzung
 - Kollaborative Bearbeitung (CRDT auf Adjustment-State, sehr nice-to-have)
 
 ## Meilensteine & Demo-Punkte
