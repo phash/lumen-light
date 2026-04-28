@@ -71,6 +71,21 @@ export default function Editor() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const panDragRef = useRef<{ startX: number; startY: number; panX: number; panY: number } | null>(null);
+  // Multi-Touch: aktive Pointer mit aktueller Position. Sobald Map.size==2,
+  // wechselt Pan in Pinch-Zoom-Modus. pinchRef speichert Start-Distanz +
+  // Anker, sodass das Bild „unter den Fingern" bleibt.
+  const pointersRef = useRef<Map<number, { x: number; y: number }>>(new Map());
+  const pinchRef = useRef<
+    | {
+        baseDistance: number;
+        baseZoom: number;
+        anchorX: number; // Mittelpunkt der zwei Touches in Viewport-zentrierten Koordinaten
+        anchorY: number;
+        basePanX: number;
+        basePanY: number;
+      }
+    | null
+  >(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [wbPickerActive, setWbPickerActive] = useState(false);
 
@@ -349,6 +364,35 @@ export default function Editor() {
       // weiterlaufen). Mask-Handles haben bereits stopPropagation.
       const target = e.target as HTMLElement | null;
       if (target?.closest("button, input, select, textarea, label, a")) return;
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      try {
+        e.currentTarget.setPointerCapture?.(e.pointerId);
+      } catch {
+        /* jsdom */
+      }
+      // Bei zwei Pointern: Pinch-Modus. Pan abbrechen.
+      if (pointersRef.current.size === 2) {
+        const [a, b] = Array.from(pointersRef.current.values());
+        if (!a || !b) return;
+        const rect = viewportRef.current?.getBoundingClientRect();
+        if (!rect) return;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const cx = (a.x + b.x) / 2 - rect.left - rect.width / 2;
+        const cy = (a.y + b.y) / 2 - rect.top - rect.height / 2;
+        pinchRef.current = {
+          baseDistance: Math.max(1, Math.hypot(dx, dy)),
+          baseZoom: zoom,
+          anchorX: cx,
+          anchorY: cy,
+          basePanX: pan.x,
+          basePanY: pan.y,
+        };
+        panDragRef.current = null;
+        setIsPanning(false);
+        return;
+      }
+      // Erster Pointer: Pan starten.
       panDragRef.current = {
         startX: e.clientX,
         startY: e.clientY,
@@ -356,17 +400,35 @@ export default function Editor() {
         panY: pan.y,
       };
       setIsPanning(true);
-      try {
-        e.currentTarget.setPointerCapture?.(e.pointerId);
-      } catch {
-        /* jsdom */
-      }
     },
-    [hasImage, cropMode, wbPickerActive, pan],
+    [hasImage, cropMode, wbPickerActive, pan, zoom],
   );
 
   const onViewportPointerMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      // Pointer-Position in der Map updaten (auch wenn nicht im Capture).
+      if (pointersRef.current.has(e.pointerId)) {
+        pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      }
+      const pinch = pinchRef.current;
+      if (pinch && pointersRef.current.size >= 2) {
+        const [a, b] = Array.from(pointersRef.current.values());
+        if (!a || !b) return;
+        const dx = b.x - a.x;
+        const dy = b.y - a.y;
+        const dist = Math.max(1, Math.hypot(dx, dy));
+        const ratio = dist / pinch.baseDistance;
+        const next = Math.max(0.1, Math.min(10, pinch.baseZoom * ratio));
+        const r = next / pinch.baseZoom;
+        // Anker-Logik analog zum Wheel-Zoom: der Punkt unter dem
+        // Pinch-Mittelpunkt soll an seiner Stelle bleiben.
+        setPan({
+          x: pinch.anchorX - (pinch.anchorX - pinch.basePanX) * r,
+          y: pinch.anchorY - (pinch.anchorY - pinch.basePanY) * r,
+        });
+        setZoom(next);
+        return;
+      }
       const drag = panDragRef.current;
       if (!drag) return;
       setPan({
@@ -377,10 +439,34 @@ export default function Editor() {
     [],
   );
 
-  const onViewportPointerUp = useCallback(() => {
-    panDragRef.current = null;
-    setIsPanning(false);
-  }, []);
+  const onViewportPointerUp = useCallback(
+    (e: React.PointerEvent<HTMLDivElement>) => {
+      pointersRef.current.delete(e.pointerId);
+      // Wenn Pinch-Modus laeuft und jetzt < 2 Pointer: Pinch beenden.
+      if (pinchRef.current && pointersRef.current.size < 2) {
+        pinchRef.current = null;
+      }
+      // Wenn jetzt noch genau 1 Pointer aktiv ist: Pan-Drag wieder
+      // aufgreifen (User loest einen von zwei Fingern).
+      if (pointersRef.current.size === 1 && !panDragRef.current) {
+        const [remaining] = Array.from(pointersRef.current.values());
+        if (remaining) {
+          panDragRef.current = {
+            startX: remaining.x,
+            startY: remaining.y,
+            panX: pan.x,
+            panY: pan.y,
+          };
+          setIsPanning(true);
+        }
+      }
+      if (pointersRef.current.size === 0) {
+        panDragRef.current = null;
+        setIsPanning(false);
+      }
+    },
+    [pan],
+  );
 
   const onCanvasClickForWb = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
@@ -461,6 +547,9 @@ export default function Editor() {
               : hasImage && !cropMode
                 ? "grab"
                 : "default",
+          // Browser-Default-Touch-Gesten (Scroll, Pinch-zoom-Page) aus —
+          // wir uebernehmen Pinch + Pan selbst via Pointer-Events.
+          touchAction: hasImage ? "none" : "auto",
         }}
       >
         <EditorOverlayCanvas

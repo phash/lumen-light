@@ -1,0 +1,21 @@
+{
+  "name": "Lumen · light",
+  "short_name": "Lumen",
+  "description": "Browser-basierter RAW-Foto-Editor — selbst-gehostete Lightroom-Light-Alternative.",
+  "lang": "de",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c0a09",
+  "theme_color": "#1c1917",
+  "categories": ["photo", "graphics", "productivity"],
+  "icons": [
+    {
+      "src": "/lumen-icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

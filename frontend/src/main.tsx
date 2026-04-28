@@ -13,3 +13,20 @@ createRoot(rootElement).render(
     <App />
   </StrictMode>,
 );
+
+// PWA: Service-Worker fuer Offline-Cache. Failt graceful, weil Lumen
+// auch ohne SW vollstaendig funktioniert. In dev-Mode (vite serve) kein
+// SW-Registrieren — sonst kaeme die alte Cache-Version trotz Hot-Reload.
+if (
+  typeof window !== "undefined" &&
+  "serviceWorker" in navigator &&
+  import.meta.env.PROD
+) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("/sw.js")
+      .catch(() => {
+        /* SW-Registration optional — ignorieren */
+      });
+  });
+}
