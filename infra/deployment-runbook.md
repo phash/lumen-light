@@ -23,14 +23,18 @@ cd /opt/lumen
 
 ## 2. Keycloak-Realm `lumen` importieren
 
-Cluster-Keycloak ist geteilt. Realm einmalig einspielen (überschreibt nichts, weil Realm-Name `lumen` neu ist):
+Cluster-Keycloak ist geteilt. Realm einmalig einspielen (überschreibt nichts, weil Realm-Name `lumen` neu ist).
+
+**Production nutzt `lumen-realm.prod.json`** (nicht das dev-File!): `directAccessGrantsEnabled=false` (kein ROPC-Flow, schliesst Phishing/Credential-Stuffing-Vektoren), `verifyEmail=true` (Schutz gegen Sock-Puppet-Reports im Marketplace), nur die Production-Origin in den Redirect-/Web-Origins.
 
 ```bash
-docker cp infra/keycloak/lumen-realm.json keycloak:/tmp/lumen-realm.json
+docker cp infra/keycloak/lumen-realm.prod.json keycloak:/tmp/lumen-realm.json
 docker exec keycloak /opt/keycloak/bin/kc.sh import \
     --file /tmp/lumen-realm.json --override true
 docker restart keycloak
 ```
+
+> Die dev-Variante (`lumen-realm.json`) hat ROPC + verifyEmail=false aktiv, weil die Backend-Tests via Direct-Access-Grant-Flow Test-Tokens beziehen. **Dev-File niemals in Production importieren.**
 
 **Verifizieren:**
 ```bash

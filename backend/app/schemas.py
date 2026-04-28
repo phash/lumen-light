@@ -6,9 +6,11 @@ beim Serialisieren. `populate_by_name=True` erlaubt sowohl
 Snake- als auch CamelCase im Eingang — Backwards-Compat fuer alte
 Clients und Test-Fixtures.
 
-Routen muessen `response_model_by_alias=True` setzen (App-weit per
-APIRouter-Default in app/main.py), damit FastAPI die Aliases auch
-in der Response benutzt.
+Aliases werden in der Response automatisch genutzt, weil
+`serialize_by_alias=True` (Pydantic >= 2.11) im ConfigDict gesetzt
+ist. FastAPI's `response_model`-Pipeline ruft `model_dump()` ohne
+explizites `by_alias` auf — der Default ist dank des Configs jetzt
+`True`. Kein zusaetzliches Per-Route-Flag noetig.
 """
 from datetime import datetime
 from typing import Annotated, Literal, Self

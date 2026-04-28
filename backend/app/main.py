@@ -18,11 +18,17 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+_is_production = settings.env.lower() == "production"
+
 app = FastAPI(
     title="Lumen · light API",
     version="0.1.0",
     description="Backend für den browser-basierten RAW-Entwickler.",
     lifespan=lifespan,
+    # Production: keine Schema-Disclosure via /docs, /redoc, /openapi.json.
+    docs_url=None if _is_production else "/docs",
+    redoc_url=None if _is_production else "/redoc",
+    openapi_url=None if _is_production else "/openapi.json",
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
@@ -31,8 +37,10 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[settings.cors_origin],
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    # Eingeschraenkt statt "*" — vermeidet, dass kuenftige Methoden
+    # (z.B. CONNECT) ungewollt erlaubt sind.
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
 )
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])

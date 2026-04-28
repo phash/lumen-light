@@ -144,10 +144,13 @@ class PresetReport(Base):
         ForeignKey("presets.id", ondelete="CASCADE"),
         nullable=False,
     )
-    reporter_user_id: Mapped[UUID] = mapped_column(
+    # Nullable + ON DELETE SET NULL: laesst Reports nach User-Loeschung
+    # bestehen, aber anonymisiert (DSGVO Art. 17 + Erhalt der
+    # Moderationshistorie fuer den gemeldeten Creator).
+    reporter_user_id: Mapped[UUID | None] = mapped_column(
         PG_UUID(as_uuid=True),
-        ForeignKey("users.id", ondelete="CASCADE"),
-        nullable=False,
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
     )
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(

@@ -24,5 +24,11 @@ class Settings(BaseSettings):
 
     cors_origin: str = "http://localhost:5173"
 
+    # Production-Hardening: in dev-/Test-Mode bleiben /docs + /openapi.json
+    # erreichbar fuer Schema-Inspektion und Test-Tools. In production wird
+    # `LUMEN_ENV=production` gesetzt — dann blendet main.py die FastAPI-
+    # Default-Docs aus, damit kein Schema-Disclosure passiert.
+    env: str = "development"
+
 
 settings = Settings()

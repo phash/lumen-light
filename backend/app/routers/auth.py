@@ -6,7 +6,7 @@ DELETE/Export sind DSGVO Art. 17 + 20.
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, ConfigDict, EmailStr
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
@@ -14,7 +14,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
 from app.database import get_db
-from app.models import Image, Preset, User
+from app.models import Image, Preset, PresetReport, User
+from app.rate_limit import limiter
 from app.schemas import (
     CAMEL_BASE_CONFIG,
     CAMEL_OUT_CONFIG,
@@ -121,33 +122,60 @@ class ImageExport(BaseModel):
 
 
 class PresetExport(BaseModel):
+    """Vollstaendiger Preset-Snapshot inkl. Marketplace-Metadaten —
+    DSGVO Art. 20 Datenuebertragbarkeit."""
     model_config = CAMEL_OUT_CONFIG
     id: UUID
     name: str
     adjustments: dict
     masks: list
+    visibility: str
+    genre: str | None
+    description: str | None
+    preview_image_id: UUID | None
+    published_at: datetime | None
+    apply_count: int
+    report_count: int
     created_at: datetime
     updated_at: datetime
+
+
+class ReportExport(BaseModel):
+    """Eine vom User abgegebene Marketplace-Meldung. Selbst abgegebene
+    Reports sind Auskunfts-pflichtig (Art. 15) — der Reason-Text ist
+    User-Inhalt."""
+    model_config = CAMEL_OUT_CONFIG
+    id: UUID
+    preset_id: UUID
+    reason: str
+    created_at: datetime
 
 
 class MeExport(BaseModel):
     model_config = CAMEL_BASE_CONFIG
     id: UUID
     email: EmailStr
+    handle: str | None
+    bio: str | None
     created_at: datetime
     presets: list[PresetExport]
     images: list[ImageExport]
+    submitted_reports: list[ReportExport]
 
 
 @router.get("/me/export", response_model=MeExport)
+@limiter.limit("10/minute")
 async def export_me(
+    request: Request,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
     storage: StorageService = Depends(get_storage),
 ) -> MeExport:
     """Komplett-Export aller User-Daten in einem JSON. Fuer jedes Bild
     wird ein frischer Pre-Signed-Download-URL beigelegt (gueltig laut
-    settings.presigned_url_expires_in)."""
+    settings.presigned_url_expires_in). Inklusive Marketplace-Metadaten
+    auf Preset-Ebene und der vom User selbst abgegebenen Meldungen
+    (DSGVO Art. 15 + 20)."""
     presets_result = await db.execute(
         select(Preset).where(Preset.user_id == user.id).order_by(Preset.name)
     )
@@ -171,10 +199,20 @@ async def export_me(
             download_url_expires_in=expires,
         ))
 
+    reports_result = await db.execute(
+        select(PresetReport)
+        .where(PresetReport.reporter_user_id == user.id)
+        .order_by(PresetReport.created_at)
+    )
+    reports = [ReportExport.model_validate(r) for r in reports_result.scalars().all()]
+
     return MeExport(
         id=user.id,
         email=user.email,
+        handle=user.handle,
+        bio=user.bio,
         created_at=user.created_at,
         presets=presets,
         images=images,
+        submitted_reports=reports,
     )

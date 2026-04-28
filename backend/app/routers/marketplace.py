@@ -13,7 +13,7 @@ import logging
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
-from sqlalchemy import desc, func, select
+from sqlalchemy import desc, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -41,6 +41,9 @@ router = APIRouter()
 REPORT_AUTOHIDE_THRESHOLD = 3
 PAGE_LIMIT_DEFAULT = 24
 PAGE_LIMIT_MAX = 60
+# Deep-Pagination-Schutz: bei riesigem `cursor` wuerde Postgres linear
+# scannen. Bei unrealistisch hohem Offset einfach 422.
+MAX_CURSOR_OFFSET = 10_000
 
 
 def _encode_cursor(offset: int) -> str:
@@ -49,9 +52,12 @@ def _encode_cursor(offset: int) -> str:
 
 def _decode_cursor(cursor: str) -> int:
     try:
-        return int(base64.urlsafe_b64decode(cursor).decode())
+        offset = int(base64.urlsafe_b64decode(cursor).decode())
     except (binascii.Error, ValueError, UnicodeDecodeError):
         raise HTTPException(status_code=422, detail="Ungueltiger Cursor.")
+    if offset < 0 or offset > MAX_CURSOR_OFFSET:
+        raise HTTPException(status_code=422, detail="Cursor-Offset ausserhalb des erlaubten Bereichs.")
+    return offset
 
 
 def _preview_url(
@@ -66,7 +72,9 @@ def _preview_url(
 
 
 @router.get("/presets", response_model=MarketplaceListOut)
+@limiter.limit("120/minute")
 async def list_marketplace_presets(
+    request: Request,
     genre: PresetGenre | None = Query(default=None),
     q: str | None = Query(default=None, max_length=80),
     sort: str = Query(default="new", pattern=r"^(new|popular)$"),
@@ -176,8 +184,14 @@ async def apply_marketplace_preset(
     db: AsyncSession = Depends(get_db),
 ) -> MarketplaceApplyOut:
     preset, _creator = await _load_public_preset(db, preset_id)
-    # Apply-Count ist Counter-Cache; Drift unkritisch fuer den UI-Sort.
-    preset.apply_count += 1
+    # Atomic-Increment statt Read-Modify-Write — bei parallelem Apply
+    # geht sonst ein Increment verloren. Counter ist Cache, aber lieber
+    # genau als drift-faellig.
+    await db.execute(
+        update(Preset)
+        .where(Preset.id == preset.id)
+        .values(apply_count=Preset.apply_count + 1)
+    )
     await db.commit()
     return MarketplaceApplyOut(
         adjustments=Adjustments.model_validate(preset.adjustments),
