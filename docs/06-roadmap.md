@@ -54,9 +54,9 @@ Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Anna
 |---|---|---|
 | 6 | Image-Storage (Garage, /images/*-Endpoints, Library-UI) | ✓ |
 | 7 | Production-Deployment (compose.prod, Caddyfile mit CSP/HSTS, Realm-Hardening, Redis für Multi-Worker-Rate-Limit) | ✓ |
-| 8 | UI-Polish, Tastatur-Shortcuts vollständig, Touch-Optimierung, Mobile-Hamburger im Header | ⏳ teilweise (Tooltips + Sektions-Reihenfolge + Mobile-Burger drin; Touch-Gesten im Editor-Viewport noch nicht) |
-| 9 | PWA-Manifest, Service Worker (offline-fähiger Editor) | ⏳ offen |
-| 10 | Beta-Test mit 5–10 echten Usern, Bug-Backlog, Release-Notes, Selfhosting-Anleitung | ⏳ offen (Selfhosting ist im README + Runbook drin, Rest fehlt) |
+| 8 | UI-Polish, Tastatur-Shortcuts vollständig, Touch-Optimierung, Mobile-Hamburger im Header | ✓ (Tooltips, Sektions-Reihenfolge, Mobile-Burger, Pinch-Zoom + Touch-Pan im Editor-Viewport) |
+| 9 | PWA-Manifest, Service Worker (offline-fähiger Editor) | ✓ (Stale-While-Revalidate-SW, manifest.webmanifest, theme-color, installierbar) |
+| 10 | Beta-Test mit 5–10 echten Usern, Bug-Backlog, Release-Notes, Selfhosting-Anleitung | ⏳ offen (Selfhosting ist im README + Runbook drin, Beta-User + Release-Notes fehlen) |
 
 ## Phase E · Power-Tools ✓ (alle 5 Items)
 
@@ -72,10 +72,11 @@ E1 HSL · E2 Tonkurve · E3 Sharpen+Noise · E4 Face-Detection (opt-in DSGVO) ·
 ## Aktuell offen (Stand 2026-04-28)
 
 **Pre-Beta-Polish:**
-- PWA-Manifest + Service Worker (Offline-fähiger Editor) — kleines Stück, wahrscheinlich 0.5 Tag.
-- Touch-Optimierung im Editor-Viewport (Pinch-Zoom, Pan-Touch) — Editor läuft heute mit Pointer-Events, Touch sollte schon halbwegs funktionieren, aber kein dedizierter Test.
+- ~~PWA-Manifest + Service Worker~~ ✓ erledigt — installierbar, offline-fähig (Stale-While-Revalidate).
+- ~~Touch-Optimierung im Editor-Viewport~~ ✓ erledigt — Pinch-Zoom mit Anker-Mitte, Two-Finger→One-Finger nahtlos zu Pan zurueck.
 - Release-Notes-Pflege + CHANGELOG (heute keiner).
 - Beta-User-Onboarding-Doku (kurze Anleitung „so legst du dir einen Account an", Selfhosting-Block ist im README).
+- Real-Browser-Smoke-Tests fuer die Touch-Logik (jsdom kann keine echten Pointer-Events).
 
 **Sicherheit/DSGVO (vor Multi-Tenant-Live):**
 - Pre-Signed-POST mit Content-Length-Range — heute heuristischer Schutz via HEAD+Cleanup. Pflicht-Folge-Schritt: kleiner Janitor-Cron, der `images.upload_state='pending' AND created_at < now()-15min` plus zugehörige S3-Objekte löscht.
