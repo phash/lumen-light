@@ -118,6 +118,8 @@ Volle Anleitung: `infra/deployment-runbook.md`.
 
 ## Dokumentation
 
+- `docs/beta-onboarding.md` — Quickstart fuer End-User (Account, erstes Bild, Auto-Funktionen, Presets, Marketplace, Datenschutz)
+- `CHANGELOG.md` — pro Release zusammengefasste Aenderungen
 - `docs/01-konzept.md` … `docs/08-risiken-offene-fragen.md` — Konzept, Architektur, Datenmodell, API, Frontend, Roadmap, ADRs, Risiken
 - `docs/06-roadmap.md` — Iterations-Stand
 - `docs/superpowers/specs/` — Pro Iteration eine Spec (HSL, Tonkurve, Sharpen+Noise, Auto-Straighten, Face-Detection, Marketplace …)

@@ -74,9 +74,9 @@ E1 HSL · E2 Tonkurve · E3 Sharpen+Noise · E4 Face-Detection (opt-in DSGVO) ·
 **Pre-Beta-Polish:**
 - ~~PWA-Manifest + Service Worker~~ ✓ erledigt — installierbar, offline-fähig (Stale-While-Revalidate).
 - ~~Touch-Optimierung im Editor-Viewport~~ ✓ erledigt — Pinch-Zoom mit Anker-Mitte, Two-Finger→One-Finger nahtlos zu Pan zurueck.
-- Release-Notes-Pflege + CHANGELOG (heute keiner).
-- Beta-User-Onboarding-Doku (kurze Anleitung „so legst du dir einen Account an", Selfhosting-Block ist im README).
-- Real-Browser-Smoke-Tests fuer die Touch-Logik (jsdom kann keine echten Pointer-Events).
+- ~~Release-Notes-Pflege + CHANGELOG~~ ✓ erledigt — `CHANGELOG.md` mit Unreleased-Pre-Beta-Block.
+- ~~Beta-User-Onboarding-Doku~~ ✓ erledigt — `docs/beta-onboarding.md` (13 Kapitel von „Account anlegen" bis „PWA installieren").
+- Real-Browser-Smoke-Tests fuer die Touch-Logik (jsdom kann keine echten Pointer-Events) — Playwright-Setup steht aus.
 
 **Sicherheit/DSGVO (vor Multi-Tenant-Live):**
 - Pre-Signed-POST mit Content-Length-Range — heute heuristischer Schutz via HEAD+Cleanup. Pflicht-Folge-Schritt: kleiner Janitor-Cron, der `images.upload_state='pending' AND created_at < now()-15min` plus zugehörige S3-Objekte löscht.
