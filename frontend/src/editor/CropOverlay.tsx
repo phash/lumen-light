@@ -47,14 +47,19 @@ export default function CropOverlay({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{
-    handle: CropHandle;
+    /** "move" verschiebt das ganze Rechteck, alle anderen Werte sind
+     *  die Resize-Handles. */
+    handle: CropHandle | "move";
     startX: number;
     startY: number;
     rectAtStart: CropRect;
     rectAtMove: CropRect;
   } | null>(null);
 
-  const beginDrag = (handle: CropHandle, event: React.PointerEvent<HTMLDivElement>) => {
+  const beginDrag = (
+    handle: CropHandle | "move",
+    event: React.PointerEvent<HTMLDivElement>,
+  ) => {
     event.stopPropagation();
     event.preventDefault();
     try {
@@ -79,14 +84,25 @@ export default function CropOverlay({
       const rect = container.getBoundingClientRect();
       const dx = (event.clientX - drag.startX) / rect.width;
       const dy = (event.clientY - drag.startY) / rect.height;
-      const next = updateCropOnDrag({
-        current: drag.rectAtStart,
-        handle: drag.handle,
-        dx,
-        dy,
-        aspect,
-        imageAspect,
-      });
+      let next: CropRect;
+      if (drag.handle === "move") {
+        // Translation: Rechteck als Ganzes verschieben, an Bildraendern
+        // klemmen statt Aspect-Verhaeltnis kaputt zu rechnen.
+        const w = drag.rectAtStart.x1 - drag.rectAtStart.x0;
+        const h = drag.rectAtStart.y1 - drag.rectAtStart.y0;
+        const x0 = Math.max(0, Math.min(1 - w, drag.rectAtStart.x0 + dx));
+        const y0 = Math.max(0, Math.min(1 - h, drag.rectAtStart.y0 + dy));
+        next = { x0, y0, x1: x0 + w, y1: y0 + h };
+      } else {
+        next = updateCropOnDrag({
+          current: drag.rectAtStart,
+          handle: drag.handle,
+          dx,
+          dy,
+          aspect,
+          imageAspect,
+        });
+      }
       drag.rectAtMove = next;
       onChange(next);
     },
@@ -120,24 +136,34 @@ export default function CropOverlay({
       {/* Halbtransparenter Maske um den Crop herum */}
       <div className="absolute inset-0 bg-black/50" style={{ clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 ${cropRect.y0 * 100}%, ${cropRect.x0 * 100}% ${cropRect.y0 * 100}%, ${cropRect.x0 * 100}% ${cropRect.y1 * 100}%, ${cropRect.x1 * 100}% ${cropRect.y1 * 100}%, ${cropRect.x1 * 100}% ${cropRect.y0 * 100}%, 0 ${cropRect.y0 * 100}%)` }} />
 
-      {/* Crop-Rect mit Drittel-Raster + Drag-Handles */}
+      {/* Crop-Rect mit Drittel-Raster + Drag-Handles. Inneres Feld
+          fungiert als Move-Drag-Surface (cursor=grab). */}
       <div
         className="absolute pointer-events-auto"
         style={{ left, top, width, height }}
       >
-        <div className="absolute inset-0 border border-amber-200/80" />
-        {/* Drittel-Raster */}
+        <div
+          data-testid="crop-move"
+          onPointerDown={(e) => beginDrag("move", e)}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          className="absolute inset-0 border border-amber-200/80"
+          style={{ cursor: "grab", touchAction: "none" }}
+        />
+        {/* Drittel-Raster — pointer-events-none, damit Click in der
+            Mitte zur Move-Surface darunter durchreicht. */}
         {[1, 2].map((i) => (
           <div
             key={`v${i}`}
-            className="absolute top-0 bottom-0 border-l border-amber-200/30"
+            className="absolute top-0 bottom-0 border-l border-amber-200/30 pointer-events-none"
             style={{ left: `${(i / 3) * 100}%` }}
           />
         ))}
         {[1, 2].map((i) => (
           <div
             key={`h${i}`}
-            className="absolute left-0 right-0 border-t border-amber-200/30"
+            className="absolute left-0 right-0 border-t border-amber-200/30 pointer-events-none"
             style={{ top: `${(i / 3) * 100}%` }}
           />
         ))}

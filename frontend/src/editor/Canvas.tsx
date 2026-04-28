@@ -2,7 +2,13 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "rea
 
 import type { MaskInstance } from "./mask";
 import { useEditorStore, type EditorState } from "./store";
-import { type CropRect, uvTransformMatrix } from "./transform";
+import {
+  type CropRect,
+  defaultCropRect,
+  uvTransformMatrix,
+} from "./transform";
+
+const IDENTITY_CROP: CropRect = defaultCropRect();
 import {
   type LinearMaskParams,
   type MasksUniforms,
@@ -83,10 +89,14 @@ interface Props {
   readonly onError: (message: string) => void;
   /** Wird beim Mount mit dem Canvas-Element aufgerufen. */
   readonly onCanvasMount?: (canvas: HTMLCanvasElement) => void;
+  /** Wenn aktiv, wird das volle Bild angezeigt — der Crop-Overlay
+   *  visualisiert das Rechteck nur, das eigentliche Beschneiden findet
+   *  erst nach Verlassen des Crop-Modus statt. */
+  readonly cropMode: boolean;
 }
 
 const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
-  { onTick, onError, onCanvasMount },
+  { onTick, onError, onCanvasMount, cropMode },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -94,10 +104,15 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const bypass = useEditorStore((s) => s.bypass);
-  const cropRect = useEditorStore((s) => s.cropRect);
+  const storeCropRect = useEditorStore((s) => s.cropRect);
   const straightenAngle = useEditorStore((s) => s.straightenAngle);
   const lensCorrection = useEditorStore((s) => s.lensCorrection);
   const masks = useEditorStore((s) => s.masks);
+
+  // Im Crop-Modus zeigt das Canvas das volle Bild — Crop-Rechteck wird
+  // als Overlay visualisiert, nicht als Renderer-Output. Erst nach
+  // Verlassen des Crop-Modus wird der Output verkleinert.
+  const cropRect = cropMode ? IDENTITY_CROP : storeCropRect;
 
   const transform = useMemo(
     () => uvTransformMatrix(cropRect, straightenAngle),
@@ -144,14 +159,15 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         const { image, width, height } = await loadImageFromFile(file);
         r.loadImage(image, width, height);
         const s = useEditorStore.getState();
+        const effCrop = cropMode ? IDENTITY_CROP : s.cropRect;
         r.render(
           s.adjustments,
           s.bypass,
-          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          uvTransformMatrix(effCrop, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
-          outputSizeFor(r, s.cropRect),
+          outputSizeFor(r, effCrop),
         );
         onTick();
       },
@@ -164,14 +180,15 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         const h = Math.round(height * scale);
         r.loadImage(bitmap, w, h);
         const s = useEditorStore.getState();
+        const effCrop = cropMode ? IDENTITY_CROP : s.cropRect;
         r.render(
           s.adjustments,
           s.bypass,
-          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          uvTransformMatrix(effCrop, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
-          outputSizeFor(r, s.cropRect),
+          outputSizeFor(r, effCrop),
         );
         onTick();
       },
@@ -179,14 +196,15 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         const r = rendererRef.current;
         if (!r || !r.hasImage()) return;
         const s = useEditorStore.getState();
+        const effCrop = cropMode ? IDENTITY_CROP : s.cropRect;
         r.render(
           s.adjustments,
           s.bypass,
-          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          uvTransformMatrix(effCrop, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
-          outputSizeFor(r, s.cropRect),
+          outputSizeFor(r, effCrop),
         );
         onTick();
       },
@@ -195,15 +213,16 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         const c = canvasRef.current;
         if (!r || !c || !r.hasImage()) return null;
         const s = useEditorStore.getState();
+        const effCrop = cropMode ? IDENTITY_CROP : s.cropRect;
         // 1. Render Pass mit bypass=true -> die Canvas zeigt das Original.
         r.render(
           s.adjustments,
           true,
-          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          uvTransformMatrix(effCrop, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
-          outputSizeFor(r, s.cropRect),
+          outputSizeFor(r, effCrop),
         );
         const url = c.toDataURL("image/png");
         // 2. Sofort wieder mit aktuellen bypass-Wert rendern, damit der
@@ -211,16 +230,16 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         r.render(
           s.adjustments,
           s.bypass,
-          uvTransformMatrix(s.cropRect, s.straightenAngle),
+          uvTransformMatrix(effCrop, s.straightenAngle),
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
-          outputSizeFor(r, s.cropRect),
+          outputSizeFor(r, effCrop),
         );
         return url;
       },
     }),
-    [onTick],
+    [onTick, cropMode],
   );
 
   return (

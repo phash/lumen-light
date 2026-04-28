@@ -19,9 +19,12 @@ import RadialMaskOverlay from "./RadialMaskOverlay";
 import {
   type AspectRatio,
   type CropRect,
+  defaultCropRect,
   invertUvTransform,
   uvTransformMatrix,
 } from "./transform";
+
+const IDENTITY_CROP: CropRect = defaultCropRect();
 
 interface Props {
   readonly canvasHandleRef: Ref<CanvasHandle>;
@@ -88,9 +91,11 @@ export default function EditorOverlayCanvas({
   // Inverse = Source-UV → Output-UV. Beide werden an die Mask-Overlays
   // gereicht, damit der User auf dem gecropten Output-Canvas dragged
   // und die Maske trotzdem im Source-Coordinate-System landet.
+  // Im Crop-Modus zeigt das Canvas das volle Bild — Identity-Transform.
+  const effCropForOverlay = cropMode ? IDENTITY_CROP : cropRect;
   const forwardUvTransform = useMemo(
-    () => uvTransformMatrix(cropRect, straightenAngle),
-    [cropRect, straightenAngle],
+    () => uvTransformMatrix(effCropForOverlay, straightenAngle),
+    [effCropForOverlay, straightenAngle],
   );
   const inverseUvTransform = useMemo(
     () => invertUvTransform(forwardUvTransform),
@@ -111,6 +116,7 @@ export default function EditorOverlayCanvas({
         onTick={onTick}
         onError={onError}
         onCanvasMount={onCanvasMount}
+        cropMode={cropMode}
       />
       {hasImage && cropMode && (
         <CropOverlay
