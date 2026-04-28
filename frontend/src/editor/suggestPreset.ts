@@ -1,15 +1,18 @@
 /**
- * Heuristik fuer Smart-Preset-Suggestion: leitet aus Brennweite und
- * groben Histogramm-Statistiken einen Genre-Tipp ab. Der User entscheidet
- * weiterhin selbst — Vorschlag ist ein Banner, das man wegklicken kann.
+ * Heuristik fuer Smart-Preset-Suggestion: leitet aus Brennweite,
+ * Histogramm-Statistiken und (E4) Face-Detection-Ergebnis einen Genre-
+ * Tipp ab. Der User entscheidet weiterhin selbst — Vorschlag ist ein
+ * Banner, das man wegklicken kann.
  *
- * Mapping (bewusst grob, keine Wissenschaft):
+ * Reihenfolge (frueher Treffer gewinnt):
  *
- * - Brennweite < 35mm + viel Mittel/Hochton + Sat balanciert -> "Landschaft"
- * - Brennweite > 200mm                                       -> "Sport" (Fokus auf Bewegung)
- * - Brennweite 50-135mm + Median im Hauttoebereich           -> "Portrait"
- * - sehr hoher Mean(G), niedriger Mean(B)                    -> "Natur" (gruendominiert)
- * - sehr blau/cyan-dominant + niedrige Saettigung            -> "Stadt" (Beton/Glas)
+ * - faceCount >= 1                          -> "Portrait" (E4)
+ * - Brennweite < 35mm + balanced Sat        -> "Landschaft"
+ * - Brennweite > 200mm                      -> "Sport" / "Tiere" je
+ *                                              nach Histogramm
+ * - Brennweite 50-135mm + Hauttoebereich    -> "Portrait" (Heuristik)
+ * - sehr hoher Mean(G), niedriger Mean(B)   -> "Natur"
+ * - sehr blau/cyan-dominant + niedrige Sat  -> "Stadt"
  * - sonst kein Vorschlag (null)
  *
  * Keine Garantie, dass das gut trifft — nur ein erster Anker. Smart-
@@ -25,11 +28,16 @@ export interface SuggestionInput {
   readonly meanG: number;
   readonly meanB: number;
   readonly p500: number;
+  readonly faceCount?: number;
 }
 
 export function suggestGenre(input: SuggestionInput): Genre | null {
-  const { focalLen, meanR, meanG, meanB, p500 } = input;
+  const { focalLen, meanR, meanG, meanB, p500, faceCount = 0 } = input;
   const sat = Math.max(meanR, meanG, meanB) - Math.min(meanR, meanG, meanB);
+
+  // Face-Detection schlaegt alle Heuristik-Pfade — wenn jemand auf dem
+  // Bild ist, ist „Portrait" der robusteste Anker.
+  if (faceCount >= 1) return "Portrait";
 
   // Sehr lange Tele-Brennweite: Sport oder Tiere — Histogramm als Tiebreaker.
   if (focalLen !== null && focalLen >= 200) {

@@ -27,6 +27,7 @@ import RadialMaskOverlay from "../editor/RadialMaskOverlay";
 import ShortcutCheatsheet from "../editor/ShortcutCheatsheet";
 import { analyze, computeAutoTone, computeAutoWb } from "../editor/autoAdjust";
 import { analyzeCanvasStraightenAngle } from "../editor/autoStraighten";
+import { detectFacesSafe } from "../editor/faceDetector";
 import { FILE_PICKER_ACCEPT, decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import { type Genre, suggestGenre } from "../editor/suggestPreset";
 import { selectedMask, useEditorStore } from "../editor/store";
@@ -129,6 +130,27 @@ export default function Editor() {
     [],
   );
 
+  const runSuggestion = async (focal: number | null): Promise<void> => {
+    const c = canvasElement;
+    if (!c) return;
+    const stats = analyze(c);
+    if (!stats) return;
+    // Face-Detection laeuft async und langsamer (lazy-load + Inference)
+    // — schicken wir parallel los und warten kurz, bevor wir die
+    // Heuristik kombinieren. Bei jedem Fehler liefert detectFacesSafe
+    // eine leere Liste, sodass die Suggestion nicht blockiert.
+    const faces = await detectFacesSafe(c);
+    const genre = suggestGenre({
+      focalLen: focal,
+      meanR: stats.meanR,
+      meanG: stats.meanG,
+      meanB: stats.meanB,
+      p500: stats.p500,
+      faceCount: faces.length,
+    });
+    if (genre) setSuggestedGenre(genre);
+  };
+
   const onFile = async (file: File) => {
     setError(null);
     setOriginalFilename(file.name);
@@ -172,24 +194,18 @@ export default function Editor() {
         // Analyse) — wird einen Render-Tick spaeter ausgeloest.
         const focal = decoded.focalLen;
         setTimeout(() => {
-          const c = canvasElement;
-          if (!c) return;
-          const stats = analyze(c);
-          if (!stats) return;
-          const genre = suggestGenre({
-            focalLen: focal,
-            meanR: stats.meanR,
-            meanG: stats.meanG,
-            meanB: stats.meanB,
-            p500: stats.p500,
-          });
-          if (genre) setSuggestedGenre(genre);
+          void runSuggestion(focal);
         }, 100);
       } else {
         await canvasHandleRef.current?.loadFile(file);
         // Dimensions aus dem Canvas-Element lesen — wurde von loadFile gesetzt
         const c = canvasElement;
         if (c) setImageDims({ width: c.width, height: c.height });
+        // JPEG/PNG-Pfad: keine EXIF-Brennweite, aber Face-Detection kann
+        // Portraits trotzdem erkennen. Gleicher Render-Tick-Delay.
+        setTimeout(() => {
+          void runSuggestion(null);
+        }, 100);
       }
       setHasImage(true);
     } catch (err) {
