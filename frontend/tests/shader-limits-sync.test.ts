@@ -6,7 +6,12 @@
  */
 import { describe, expect, it } from "vitest";
 
-import { HSL_CHANNELS } from "../src/editor/adjustments";
+import {
+  HSL_CHANNELS,
+  HSL_HUE_GAIN,
+  HSL_LUM_GAIN,
+  HSL_SIGMA,
+} from "../src/editor/adjustments";
 import { DISTORTION_GAIN, VIGNETTE_GAIN } from "../src/editor/lens";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "../src/editor/mask";
 import { FRAG_SRC } from "../src/editor/shaders";
@@ -40,5 +45,23 @@ describe("Shader-Limits-Sync", () => {
     const m = FRAG_SRC.match(/const int HSL_CHANNELS = (\d+)/);
     expect(m, "FRAG_SRC sollte HSL_CHANNELS deklarieren").not.toBeNull();
     expect(Number(m![1])).toBe(HSL_CHANNELS.length);
+  });
+
+  it("HSL_SIGMA in FRAG_SRC matched adjustments.ts", () => {
+    const m = FRAG_SRC.match(/const float HSL_SIGMA = ([\d.]+)/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeCloseTo(HSL_SIGMA, 5);
+  });
+
+  it("HSL_HUE_GAIN in FRAG_SRC matched adjustments.ts", () => {
+    const m = FRAG_SRC.match(/const float HSL_HUE_GAIN = ([\d.]+)/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeCloseTo(HSL_HUE_GAIN, 5);
+  });
+
+  it("HSL_LUM_GAIN in FRAG_SRC matched adjustments.ts", () => {
+    const m = FRAG_SRC.match(/const float HSL_LUM_GAIN = ([\d.]+)/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeCloseTo(HSL_LUM_GAIN, 5);
   });
 });

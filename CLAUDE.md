@@ -97,7 +97,17 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `frontend/src/editor/mask.ts` | Linear-/Radial-Typen, Limits-Konstanten — Single Source |
 | `frontend/src/editor/Canvas.tsx` | Renderer-Mount, `takeBypassSnapshot()` für Compare-Split |
 | `frontend/src/editor/lensProfile.ts` | 18 Lens-Profile aus `infra/lensfun/profiles.json` |
-| `frontend/src/pages/Editor.tsx` | Orchestrator, ~790 Zeilen. Sidebar in `EditorSidebar.tsx` extrahiert |
+| `frontend/src/editor/EditorToolbar.tsx` | Untere Action-Bar (Bypass/Crop/Auto-Tone/Auto-WB/Compare/WB-Picker/Zoom/Undo/Redo + Mask + Help/Presets/Marketplace/Export) |
+| `frontend/src/editor/EditorBanners.tsx` | 4 absolute Banners: Fehler, Decoding, Smart-Suggestion, Camera-Info |
+| `frontend/src/editor/EditorOverlayCanvas.tsx` | Canvas + Pan/Zoom-Transform + 4 Overlays (Crop/Linear/Radial/Compare-Split) |
+| `frontend/src/editor/HslPanel.tsx` | E1: 3 Achsen-Tabs (Hue/Sat/Lum) × 8 Farbkanal-Slider |
+| `frontend/src/editor/ToneCurvePanel.tsx` | E2: SVG-200x200 Spline-Editor mit Drag-Punkten |
+| `frontend/src/editor/toneCurve.ts` | Monotone Cubic Hermite + 256-Eintrag-LUT, Tangenten-Cache via WeakMap |
+| `frontend/src/editor/autoStraighten.ts` | E5: Sobel + Hough-Voting fuer Tilt-Korrektur |
+| `frontend/src/editor/faceDetector.ts` | E4: Lazy-loadende TF.js Face-Detection mit Consent-Gate |
+| `frontend/src/editor/consent.ts` | DSGVO Consent-Toggles (Modul-Cache + localStorage) |
+| `frontend/src/pages/Marketplace.tsx` | F1: Public-Preset-Browser mit Filter/Sort/Pagination + Detail-Modal |
+| `frontend/src/pages/Editor.tsx` | Orchestrator, ~640 Zeilen. Sidebar/Toolbar/Banners/OverlayCanvas extrahiert |
 
 ## Code-Style
 

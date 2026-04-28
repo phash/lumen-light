@@ -53,6 +53,23 @@ function tangents(points: ReadonlyArray<ToneCurvePoint>): Float64Array {
   return m;
 }
 
+// WeakMap-Cache: Tangenten pro Curve-Objekt einmal berechnen.
+// Hot-Path-Perf — `evaluateToneCurve` wird im UI z.B. 50x pro Render
+// aufgerufen (Sample-Polyline im SVG), `tangents(pts)` ist O(n) mit
+// Float-Arithmetik. Cache wird automatisch GC'd, sobald die Kurve
+// keine Referenz mehr hat (Store baut bei jeder Aenderung neue
+// Curve-Objekte).
+const tangentCache = new WeakMap<ToneCurve, Float64Array>();
+
+function tangentsCached(curve: ToneCurve): Float64Array {
+  let m = tangentCache.get(curve);
+  if (!m) {
+    m = tangents(curve.points);
+    tangentCache.set(curve, m);
+  }
+  return m;
+}
+
 /**
  * Wertet die Kurve an Stelle x ∈ [0,1] aus. Vor dem ersten und nach dem
  * letzten Punkt wird auf den jeweiligen Endpunkt geklemmt.
@@ -71,7 +88,7 @@ export function evaluateToneCurve(curve: ToneCurve, x: number): number {
   const h = p1.x - p0.x;
   if (h < 1e-9) return clamp01(p0.y);
 
-  const m = tangents(pts);
+  const m = tangentsCached(curve);
   const t = (x - p0.x) / h;
   const t2 = t * t;
   const t3 = t2 * t;

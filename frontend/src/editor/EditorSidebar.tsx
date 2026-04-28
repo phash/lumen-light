@@ -291,11 +291,16 @@ export default function EditorSidebar({
         </CollapsibleSection>
 
         {Array.from(groups.entries()).map(([group, items]) => (
-          <div key={group} className="mb-5">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-stone-300 italic">{group}</span>
-              <div className="flex-1 h-px bg-stone-800" />
-            </div>
+          <CollapsibleSection
+            key={group}
+            id={`adjustments-${group}`}
+            title={group}
+            // Licht ist die Erstkontakt-Sektion fuer den Hobby-Fotografen
+            // — Belichtung/Kontrast/Lichter sind „die" Slider. Farbe und
+            // Detail sind weniger universell.
+            defaultOpen={group === "Licht"}
+            testId={`editor-section-${group.toLowerCase()}`}
+          >
             {items.map((a: AdjustmentDefinition) => (
               <Slider
                 key={a.key}
@@ -309,7 +314,7 @@ export default function EditorSidebar({
                 onChange={(v) => onAdjustment(a.key, v)}
               />
             ))}
-          </div>
+          </CollapsibleSection>
         ))}
 
         <CollapsibleSection

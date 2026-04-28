@@ -49,7 +49,11 @@ const CHANNEL_COLOR: Record<HslChannel, string> = {
 };
 
 function formatPct(v: number): string {
-  return Math.round(v * 100).toString();
+  // Vorzeichen explizit, damit "0" vs "+23" vs "-23" konsistent lesbar
+  // sind (UI-Review-Hinweis: ohne `+` ist 0=neutral nicht auf Anhieb klar).
+  const n = Math.round(v * 100);
+  if (n > 0) return `+${n}`;
+  return n.toString();
 }
 
 export default function HslPanel({ hsl, onChange, onReset }: Props) {
@@ -68,7 +72,9 @@ export default function HslPanel({ hsl, onChange, onReset }: Props) {
             key={a.key}
             type="button"
             role="tab"
+            id={`hsl-tab-${a.key}`}
             aria-selected={axis === a.key}
+            aria-controls="hsl-tabpanel"
             data-testid={`hsl-axis-${a.key}`}
             onClick={() => setAxis(a.key)}
             className={`flex-1 py-1 text-[10px] uppercase tracking-[0.2em] border ${
@@ -82,7 +88,12 @@ export default function HslPanel({ hsl, onChange, onReset }: Props) {
         ))}
       </div>
 
-      <div className="space-y-1.5">
+      <div
+        className="space-y-1.5"
+        id="hsl-tabpanel"
+        role="tabpanel"
+        aria-labelledby={`hsl-tab-${axis}`}
+      >
         {HSL_CHANNELS.map((ch) => {
           const v = valueOf(ch);
           return (

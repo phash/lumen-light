@@ -38,6 +38,13 @@ export const HSL_CHANNELS = [
 export type HslChannel = (typeof HSL_CHANNELS)[number];
 export type HslAxis = "hue" | "saturation" | "luminance";
 
+// HSL-Shader-Konstanten — Single-Source-of-Truth. Der GLSL-Shader hat
+// dieselben Werte als `const float`-Literale; Sync-Test deckt das
+// per Regex-Match ab.
+export const HSL_SIGMA = 0.05;
+export const HSL_HUE_GAIN = 0.1;
+export const HSL_LUM_GAIN = 0.3;
+
 export interface HslAdjustments {
   readonly hue: Record<HslChannel, number>;
   readonly saturation: Record<HslChannel, number>;
