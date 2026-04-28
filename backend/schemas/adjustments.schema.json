@@ -20,6 +20,39 @@
     "temperature": { "type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Weißabgleich-Verschiebung blau↔gelb" },
     "tint":        { "type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Weißabgleich-Verschiebung grün↔magenta" },
     "vibrance":    { "type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Sättigung mit Schutz für gesättigte Farben" },
-    "saturation":  { "type": "number", "minimum": -1, "maximum": 1, "default": 0 }
+    "saturation":  { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+    "hsl": {
+      "description": "8 Farbtonbereiche × 3 Achsen. null = HSL inaktiv (spart Speicher in JSONB für Pre-E1-Presets).",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/HslAdjustments" }
+      ],
+      "default": null
+    }
+  },
+  "$defs": {
+    "HslAxis": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "red":     { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+        "orange":  { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+        "yellow":  { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+        "green":   { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+        "aqua":    { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+        "blue":    { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+        "violet":  { "type": "number", "minimum": -1, "maximum": 1, "default": 0 },
+        "magenta": { "type": "number", "minimum": -1, "maximum": 1, "default": 0 }
+      }
+    },
+    "HslAdjustments": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "hue":        { "$ref": "#/$defs/HslAxis" },
+        "saturation": { "$ref": "#/$defs/HslAxis" },
+        "luminance":  { "$ref": "#/$defs/HslAxis" }
+      }
+    }
   }
 }

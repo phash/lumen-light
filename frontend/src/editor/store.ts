@@ -3,8 +3,13 @@ import { create } from "zustand";
 import {
   type AdjustmentKey,
   type Adjustments,
+  type HslAdjustments,
+  type HslAxis,
+  type HslChannel,
   clampAdjustment,
   defaultAdjustments,
+  defaultHslAdjustments,
+  isHslNeutral,
 } from "./adjustments";
 import {
   type DebounceContext,
@@ -60,6 +65,8 @@ export interface EditorState {
   setAdjustment: (key: AdjustmentKey, value: number) => void;
   resetAll: () => void;
   applyAdjustments: (adj: Partial<Adjustments>) => void;
+  setHslChannel: (axis: HslAxis, channel: HslChannel, value: number) => void;
+  resetHsl: () => void;
   setBypass: (bypass: boolean) => void;
   setCropRect: (rect: CropRect) => void;
   setStraightenAngle: (angle: number) => void;
@@ -149,11 +156,38 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set(() => {
       const base = defaultAdjustments();
       const merged: Adjustments = { ...base };
-      for (const [k, v] of Object.entries(incoming) as [AdjustmentKey, number][]) {
-        merged[k] = clampAdjustment(k, v);
+      for (const [k, v] of Object.entries(incoming)) {
+        if (k === "hsl") continue;
+        const key = k as AdjustmentKey;
+        merged[key] = clampAdjustment(key, v as number);
+      }
+      // hsl ueberschreibt komplett (kein deep-merge); undefined behaelt
+      // Default null aus defaultAdjustments().
+      if ("hsl" in incoming) {
+        const incomingHsl = incoming.hsl;
+        return { adjustments: { ...merged, hsl: incomingHsl ?? null } };
       }
       return { adjustments: merged };
     });
+  },
+  setHslChannel: (axis, channel, value) => {
+    _snapshotBefore(get());
+    const v = Math.max(-1, Math.min(1, Number.isNaN(value) ? 0 : value));
+    set((state) => {
+      const base: HslAdjustments = state.adjustments.hsl ?? defaultHslAdjustments();
+      const nextAxis = { ...base[axis], [channel]: v };
+      const next: HslAdjustments = { ...base, [axis]: nextAxis };
+      return {
+        adjustments: {
+          ...state.adjustments,
+          hsl: isHslNeutral(next) ? null : next,
+        },
+      };
+    });
+  },
+  resetHsl: () => {
+    _snapshotBefore(get());
+    set((state) => ({ adjustments: { ...state.adjustments, hsl: null } }));
   },
   setBypass: (bypass) => set({ bypass }),
   setCropRect: (rect) => {

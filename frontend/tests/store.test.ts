@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { defaultAdjustments } from "../src/editor/adjustments";
+import { ADJUSTMENTS, defaultAdjustments, defaultHslAdjustments } from "../src/editor/adjustments";
 import { defaultLensCorrection } from "../src/editor/lens";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "../src/editor/mask";
 import {
@@ -28,9 +28,10 @@ describe("useEditorStore", () => {
   it("startet mit allen Adjustments auf 0 und bypass=false", () => {
     const state = useEditorStore.getState();
     expect(state.bypass).toBe(false);
-    for (const v of Object.values(state.adjustments)) {
-      expect(v).toBe(0);
+    for (const a of ADJUSTMENTS) {
+      expect(state.adjustments[a.key]).toBe(0);
     }
+    expect(state.adjustments.hsl).toBeNull();
   });
 
   it("setAdjustment aendert genau einen Wert, lasst andere unveraendert", () => {
@@ -48,11 +49,13 @@ describe("useEditorStore", () => {
   it("resetAll setzt alles zurueck auf 0", () => {
     useEditorStore.getState().setAdjustment("contrast", 0.5);
     useEditorStore.getState().setAdjustment("exposure", 2);
+    useEditorStore.getState().setHslChannel("saturation", "red", 0.5);
     useEditorStore.getState().resetAll();
     const adj = useEditorStore.getState().adjustments;
-    for (const v of Object.values(adj)) {
-      expect(v).toBe(0);
+    for (const a of ADJUSTMENTS) {
+      expect(adj[a.key]).toBe(0);
     }
+    expect(adj.hsl).toBeNull();
   });
 
   it("applyAdjustments ueberschreibt KOMPLETT (Default-Basis + Patch)", () => {
@@ -72,6 +75,56 @@ describe("useEditorStore", () => {
     const adj = useEditorStore.getState().adjustments;
     expect(adj.exposure).toBe(5);
     expect(adj.contrast).toBe(-1);
+  });
+
+  it("applyAdjustments uebernimmt hsl-Objekt komplett (kein deep-merge)", () => {
+    useEditorStore.getState().setHslChannel("hue", "red", 0.4);
+    const incoming = defaultHslAdjustments();
+    const tweaked = {
+      ...incoming,
+      saturation: { ...incoming.saturation, blue: -0.6 },
+    };
+    useEditorStore.getState().applyAdjustments({ hsl: tweaked });
+    const adj = useEditorStore.getState().adjustments;
+    expect(adj.hsl).not.toBeNull();
+    expect(adj.hsl!.hue.red).toBe(0);
+    expect(adj.hsl!.saturation.blue).toBe(-0.6);
+  });
+
+  it("applyAdjustments mit hsl=null setzt HSL zurueck", () => {
+    useEditorStore.getState().setHslChannel("hue", "red", 0.4);
+    useEditorStore.getState().applyAdjustments({ hsl: null });
+    expect(useEditorStore.getState().adjustments.hsl).toBeNull();
+  });
+
+  it("setHslChannel erzeugt hsl-Objekt aus null und setzt Wert", () => {
+    expect(useEditorStore.getState().adjustments.hsl).toBeNull();
+    useEditorStore.getState().setHslChannel("saturation", "green", 0.5);
+    const adj = useEditorStore.getState().adjustments;
+    expect(adj.hsl).not.toBeNull();
+    expect(adj.hsl!.saturation.green).toBe(0.5);
+    expect(adj.hsl!.hue.red).toBe(0);
+  });
+
+  it("setHslChannel clampt Werte ausserhalb [-1,1]", () => {
+    useEditorStore.getState().setHslChannel("luminance", "blue", 99);
+    expect(useEditorStore.getState().adjustments.hsl!.luminance.blue).toBe(1);
+    useEditorStore.getState().setHslChannel("luminance", "blue", -99);
+    expect(useEditorStore.getState().adjustments.hsl!.luminance.blue).toBe(-1);
+  });
+
+  it("setHslChannel auf 0 setzt hsl zurueck auf null wenn alle 24 = 0", () => {
+    useEditorStore.getState().setHslChannel("hue", "red", 0.4);
+    expect(useEditorStore.getState().adjustments.hsl).not.toBeNull();
+    useEditorStore.getState().setHslChannel("hue", "red", 0);
+    expect(useEditorStore.getState().adjustments.hsl).toBeNull();
+  });
+
+  it("resetHsl setzt hsl auf null", () => {
+    useEditorStore.getState().setHslChannel("hue", "red", 0.4);
+    useEditorStore.getState().setHslChannel("saturation", "blue", -0.2);
+    useEditorStore.getState().resetHsl();
+    expect(useEditorStore.getState().adjustments.hsl).toBeNull();
   });
 
   it("setBypass schaltet um", () => {

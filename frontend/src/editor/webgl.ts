@@ -3,7 +3,12 @@
  * `compileShader` und `linkProgram` sind reine Funktionen, `Renderer` ist
  * ein State-Container, der explizit instanziiert wird.
  */
-import { ADJUSTMENTS, type Adjustments } from "./adjustments";
+import {
+  ADJUSTMENTS,
+  type AdjustmentKey,
+  type Adjustments,
+  HSL_CHANNELS,
+} from "./adjustments";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "./mask";
 import { FRAG_SRC, VERT_SRC } from "./shaders";
 
@@ -71,6 +76,9 @@ interface UniformMap {
   readonly radLocalContrast: WebGLUniformLocation;
   readonly radLocalSaturation: WebGLUniformLocation;
   readonly radLocalTemperature: WebGLUniformLocation;
+  readonly hslHue: WebGLUniformLocation;
+  readonly hslSat: WebGLUniformLocation;
+  readonly hslLum: WebGLUniformLocation;
   readonly adjustments: ReadonlyMap<string, WebGLUniformLocation>;
 }
 
@@ -128,6 +136,9 @@ export class Renderer {
   private readonly radContrast = new Float32Array(MAX_RADIAL_MASKS);
   private readonly radSaturation = new Float32Array(MAX_RADIAL_MASKS);
   private readonly radTemperature = new Float32Array(MAX_RADIAL_MASKS);
+  private readonly hslHueArr = new Float32Array(HSL_CHANNELS.length);
+  private readonly hslSatArr = new Float32Array(HSL_CHANNELS.length);
+  private readonly hslLumArr = new Float32Array(HSL_CHANNELS.length);
 
   constructor(canvas: HTMLCanvasElement) {
     const gl = canvas.getContext("webgl2", {
@@ -203,6 +214,9 @@ export class Renderer {
       radLocalContrast: get("u_radLocalContrast[0]"),
       radLocalSaturation: get("u_radLocalSaturation[0]"),
       radLocalTemperature: get("u_radLocalTemperature[0]"),
+      hslHue: get("u_hslHue[0]"),
+      hslSat: get("u_hslSat[0]"),
+      hslLum: get("u_hslLum[0]"),
       adjustments: adjustmentLocs,
     };
     gl.useProgram(this.program);
@@ -250,6 +264,20 @@ export class Renderer {
       this.linTemperature[i] = m.temperature;
     }
     return n;
+  }
+
+  private packHsl(adjustments: Adjustments): void {
+    this.hslHueArr.fill(0);
+    this.hslSatArr.fill(0);
+    this.hslLumArr.fill(0);
+    const hsl = adjustments.hsl;
+    if (hsl === null) return;
+    for (let i = 0; i < HSL_CHANNELS.length; i++) {
+      const ch = HSL_CHANNELS[i]!;
+      this.hslHueArr[i] = hsl.hue[ch];
+      this.hslSatArr[i] = hsl.saturation[ch];
+      this.hslLumArr[i] = hsl.luminance[ch];
+    }
   }
 
   private packRadialMasks(radial: ReadonlyArray<RadialMaskParams>): number {
@@ -315,8 +343,13 @@ export class Renderer {
     gl.uniform1fv(this.uniforms.radLocalSaturation, this.radSaturation);
     gl.uniform1fv(this.uniforms.radLocalTemperature, this.radTemperature);
 
+    this.packHsl(adjustments);
+    gl.uniform1fv(this.uniforms.hslHue, this.hslHueArr);
+    gl.uniform1fv(this.uniforms.hslSat, this.hslSatArr);
+    gl.uniform1fv(this.uniforms.hslLum, this.hslLumArr);
+
     for (const [key, loc] of this.uniforms.adjustments) {
-      gl.uniform1f(loc, adjustments[key as keyof Adjustments]);
+      gl.uniform1f(loc, adjustments[key as AdjustmentKey]);
     }
     gl.viewport(0, 0, gl.drawingBufferWidth, gl.drawingBufferHeight);
     gl.clearColor(0, 0, 0, 0);

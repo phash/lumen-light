@@ -76,6 +76,8 @@ export default function Editor() {
   const adjustments = useEditorStore((s) => s.adjustments);
   const setAdjustment = useEditorStore((s) => s.setAdjustment);
   const resetAll = useEditorStore((s) => s.resetAll);
+  const setHslChannel = useEditorStore((s) => s.setHslChannel);
+  const resetHsl = useEditorStore((s) => s.resetHsl);
   const bypass = useEditorStore((s) => s.bypass);
   const setBypass = useEditorStore((s) => s.setBypass);
   const cropRect = useEditorStore((s) => s.cropRect);
@@ -819,6 +821,8 @@ export default function Editor() {
         onLensCorrectionChange={setLensCorrection}
         adjustments={adjustments}
         onAdjustment={setAdjustment}
+        onHslChange={setHslChannel}
+        onHslReset={resetHsl}
         onResetAll={resetAll}
       />
     </section>

@@ -38,6 +38,10 @@ uniform float u_lensVignette;
 
 const int MAX_LINEAR_MASKS = 4;
 const int MAX_RADIAL_MASKS = 4;
+const int HSL_CHANNELS = 8;
+const float HSL_SIGMA = 0.05;
+const float HSL_HUE_GAIN = 0.1;
+const float HSL_LUM_GAIN = 0.3;
 
 uniform int u_numLinearMasks;
 uniform vec2 u_linMaskP1[MAX_LINEAR_MASKS];
@@ -56,6 +60,10 @@ uniform float u_radLocalExposure[MAX_RADIAL_MASKS];
 uniform float u_radLocalContrast[MAX_RADIAL_MASKS];
 uniform float u_radLocalSaturation[MAX_RADIAL_MASKS];
 uniform float u_radLocalTemperature[MAX_RADIAL_MASKS];
+
+uniform float u_hslHue[HSL_CHANNELS];
+uniform float u_hslSat[HSL_CHANNELS];
+uniform float u_hslLum[HSL_CHANNELS];
 
 out vec4 outColor;
 
@@ -197,6 +205,31 @@ void main() {
   float vibBoost = u_vibrance * (1.0 - hsl.y) * (1.0 - hsl.y);
   hsl.y = clamp(hsl.y + vibBoost, 0.0, 1.0);
   hsl.y = clamp(hsl.y * (1.0 + effSaturation), 0.0, 1.0);
+
+  // 7b. HSL-Mischer: pro Farbtonbereich Hue/Saturation/Luminance shiften.
+  // Bell-Funktion (Gauss) gewichtet die 8 Center-Hues. Wenn alle 24 Werte
+  // 0 sind, ergibt der Block keine Aenderung.
+  float wSum = 0.0;
+  float dHue = 0.0;
+  float dSat = 0.0;
+  float dLum = 0.0;
+  float centers[HSL_CHANNELS] = float[](
+    0.0, 0.0833, 0.1667, 0.3333, 0.5, 0.6667, 0.75, 0.8333
+  );
+  for (int i = 0; i < HSL_CHANNELS; i++) {
+    float dx = abs(hsl.x - centers[i]);
+    dx = min(dx, 1.0 - dx);
+    float w = exp(-(dx * dx) / (HSL_SIGMA * HSL_SIGMA));
+    dHue += w * u_hslHue[i];
+    dSat += w * u_hslSat[i];
+    dLum += w * u_hslLum[i];
+    wSum += w;
+  }
+  if (wSum > 1e-4) {
+    hsl.x = mod(hsl.x + dHue / wSum * HSL_HUE_GAIN + 1.0, 1.0);
+    hsl.y = clamp(hsl.y * (1.0 + dSat / wSum), 0.0, 1.0);
+    hsl.z = clamp(hsl.z + dLum / wSum * HSL_LUM_GAIN, 0.0, 1.0);
+  }
   c = hslToRgb(hsl);
 
   // 8. Vignette (radial, am Ende der Pipeline)

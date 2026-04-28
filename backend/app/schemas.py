@@ -8,6 +8,36 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
 
 # ----- Adjustments -----
 
+HslChannel = Literal[
+    "red", "orange", "yellow", "green", "aqua", "blue", "violet", "magenta",
+]
+
+HSL_CHANNEL_NAMES: tuple[str, ...] = (
+    "red", "orange", "yellow", "green", "aqua", "blue", "violet", "magenta",
+)
+
+
+class HslAxis(BaseModel):
+    """Pro Achse (hue/saturation/luminance) ein Wert pro Farbtonbereich."""
+    model_config = ConfigDict(extra="forbid")
+    red: float = Field(default=0, ge=-1, le=1)
+    orange: float = Field(default=0, ge=-1, le=1)
+    yellow: float = Field(default=0, ge=-1, le=1)
+    green: float = Field(default=0, ge=-1, le=1)
+    aqua: float = Field(default=0, ge=-1, le=1)
+    blue: float = Field(default=0, ge=-1, le=1)
+    violet: float = Field(default=0, ge=-1, le=1)
+    magenta: float = Field(default=0, ge=-1, le=1)
+
+
+class HslAdjustments(BaseModel):
+    """8 Farbtonbereiche x 3 Achsen — Lightroom-aequivalenter HSL-Mischer."""
+    model_config = ConfigDict(extra="forbid")
+    hue: HslAxis = Field(default_factory=HslAxis)
+    saturation: HslAxis = Field(default_factory=HslAxis)
+    luminance: HslAxis = Field(default_factory=HslAxis)
+
+
 class Adjustments(BaseModel):
     """Single Source of Truth für die Slider-Werte. Pendant zum Frontend."""
 
@@ -23,6 +53,8 @@ class Adjustments(BaseModel):
     tint: float = Field(default=0, ge=-1, le=1)
     vibrance: float = Field(default=0, ge=-1, le=1)
     saturation: float = Field(default=0, ge=-1, le=1)
+    # null = HSL inaktiv. Spart 24 Felder im JSONB fuer alte Presets.
+    hsl: HslAdjustments | None = None
 
 
 # ----- User -----

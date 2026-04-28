@@ -17,7 +17,35 @@ export type AdjustmentKey =
   | "vibrance"
   | "saturation";
 
-export type Adjustments = Record<AdjustmentKey, number>;
+export type ScalarAdjustments = Record<AdjustmentKey, number>;
+
+// HSL: 8 Farbtonbereiche x 3 Achsen, Single Source of Truth fuer Backend +
+// Shader. Reihenfolge muss mit HSL_CENTERS in shaders.ts und mit
+// app.schemas.HSL_CHANNEL_NAMES uebereinstimmen.
+export const HSL_CHANNELS = [
+  "red",
+  "orange",
+  "yellow",
+  "green",
+  "aqua",
+  "blue",
+  "violet",
+  "magenta",
+] as const;
+
+export type HslChannel = (typeof HSL_CHANNELS)[number];
+export type HslAxis = "hue" | "saturation" | "luminance";
+
+export interface HslAdjustments {
+  readonly hue: Record<HslChannel, number>;
+  readonly saturation: Record<HslChannel, number>;
+  readonly luminance: Record<HslChannel, number>;
+}
+
+export type Adjustments = ScalarAdjustments & {
+  // null = HSL inaktiv (Speicher-Optimierung im Backend-JSONB).
+  readonly hsl: HslAdjustments | null;
+};
 
 export type AdjustmentGroup = "Licht" | "Farbe";
 
@@ -59,7 +87,26 @@ export function defaultAdjustments(): Adjustments {
   for (const a of ADJUSTMENTS) {
     result[a.key] = a.default;
   }
-  return result;
+  return { ...result, hsl: null };
+}
+
+export function defaultHslAdjustments(): HslAdjustments {
+  const make = (): Record<HslChannel, number> => {
+    const o = {} as Record<HslChannel, number>;
+    for (const ch of HSL_CHANNELS) o[ch] = 0;
+    return o;
+  };
+  return { hue: make(), saturation: make(), luminance: make() };
+}
+
+export function isHslNeutral(hsl: HslAdjustments | null): boolean {
+  if (hsl === null) return true;
+  for (const axis of ["hue", "saturation", "luminance"] as const) {
+    for (const ch of HSL_CHANNELS) {
+      if (Math.abs(hsl[axis][ch]) > 1e-4) return false;
+    }
+  }
+  return true;
 }
 
 export function clampAdjustment(key: AdjustmentKey, value: number): number {

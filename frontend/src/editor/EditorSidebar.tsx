@@ -3,10 +3,13 @@ import {
   type AdjustmentDefinition,
   type AdjustmentKey,
   type Adjustments,
+  type HslAxis,
+  type HslChannel,
   adjustmentsByGroup,
 } from "./adjustments";
 import CollapsibleSection from "./CollapsibleSection";
 import Histogram from "./Histogram";
+import HslPanel from "./HslPanel";
 import type { LensCorrection } from "./lens";
 import LocalMaskPanel from "./LocalMaskPanel";
 import {
@@ -56,6 +59,8 @@ interface Props {
   // Adjustments + Reset-All
   readonly adjustments: Adjustments;
   readonly onAdjustment: (key: AdjustmentKey, value: number) => void;
+  readonly onHslChange: (axis: HslAxis, channel: HslChannel, value: number) => void;
+  readonly onHslReset: () => void;
   readonly onResetAll: () => void;
 }
 
@@ -87,6 +92,8 @@ export default function EditorSidebar({
   onLensCorrectionChange,
   adjustments,
   onAdjustment,
+  onHslChange,
+  onHslReset,
   onResetAll,
 }: Props) {
   const groups = adjustmentsByGroup();
@@ -283,6 +290,19 @@ export default function EditorSidebar({
             ))}
           </div>
         ))}
+
+        <CollapsibleSection
+          id="hsl"
+          title="Farben (HSL)"
+          defaultOpen={false}
+          testId="editor-section-hsl"
+        >
+          <HslPanel
+            hsl={adjustments.hsl}
+            onChange={onHslChange}
+            onReset={onHslReset}
+          />
+        </CollapsibleSection>
 
         <button
           type="button"

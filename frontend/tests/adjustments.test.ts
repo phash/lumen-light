@@ -2,12 +2,15 @@ import { describe, expect, it } from "vitest";
 
 import {
   ADJUSTMENTS,
+  HSL_CHANNELS,
   adjustmentsByGroup,
   clampAdjustment,
   defaultAdjustments,
+  defaultHslAdjustments,
   formatAdjustmentValue,
   getAdjustment,
   isAtDefault,
+  isHslNeutral,
 } from "../src/editor/adjustments";
 
 describe("adjustments definitions", () => {
@@ -36,12 +39,36 @@ describe("adjustments definitions", () => {
 });
 
 describe("defaultAdjustments", () => {
-  it("liefert ein Objekt mit allen 10 keys auf 0", () => {
+  it("liefert die 10 Scalar-Slider auf 0 plus hsl=null", () => {
     const adj = defaultAdjustments();
-    expect(Object.keys(adj)).toHaveLength(10);
-    for (const v of Object.values(adj)) {
-      expect(v).toBe(0);
+    expect(adj.hsl).toBeNull();
+    for (const a of ADJUSTMENTS) {
+      expect(adj[a.key]).toBe(0);
     }
+  });
+});
+
+describe("HSL", () => {
+  it("HSL_CHANNELS hat 8 eindeutige Eintraege", () => {
+    expect(HSL_CHANNELS).toHaveLength(8);
+    expect(new Set(HSL_CHANNELS).size).toBe(8);
+  });
+
+  it("defaultHslAdjustments liefert 24 Felder = 0", () => {
+    const hsl = defaultHslAdjustments();
+    for (const axis of ["hue", "saturation", "luminance"] as const) {
+      for (const ch of HSL_CHANNELS) {
+        expect(hsl[axis][ch]).toBe(0);
+      }
+    }
+  });
+
+  it("isHslNeutral: null und Default sind neutral, sonst nicht", () => {
+    expect(isHslNeutral(null)).toBe(true);
+    expect(isHslNeutral(defaultHslAdjustments())).toBe(true);
+    const hsl = defaultHslAdjustments();
+    const tweaked = { ...hsl, saturation: { ...hsl.saturation, red: 0.5 } };
+    expect(isHslNeutral(tweaked)).toBe(false);
   });
 });
 

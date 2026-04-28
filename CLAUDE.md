@@ -114,8 +114,13 @@ gesetzt — pytest läuft sonst gegen 429er.
 ## Gotchas
 
 - **Schema-Drift**: `MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`,
-  `DISTORTION_GAIN`, `VIGNETTE_GAIN` leben in TS-Modulen UND als
-  GLSL-Literal. Sync-Test in `frontend/tests/shader-limits-sync.test.ts`.
+  `HSL_CHANNELS=8`, `DISTORTION_GAIN`, `VIGNETTE_GAIN` leben in
+  TS-Modulen UND als GLSL-Literal. Sync-Test in
+  `frontend/tests/shader-limits-sync.test.ts`.
+- **Adjustments-Form**: 10 numerische Slider plus `hsl: HslAdjustments
+  | null`. `Object.values(adjustments)` enthaelt daher `null` —
+  ueber `ADJUSTMENTS` iterieren oder `hsl` separat behandeln. `null`
+  bedeutet HSL inaktiv (spart 24 Felder im Preset-JSONB).
 - **GLSL-Loop-Bound**: Const-Loop-Bound `MAX_*_MASKS` mit
   `if (i >= u_num*) break;` als uniform-driven Early-Termination —
   GLSL ES 3.00-konform. Nicht ändern auf dynamic loop bound.
