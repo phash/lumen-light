@@ -497,17 +497,23 @@ export default function Editor() {
         />
 
         {!hasImage && !error && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center text-stone-500 pointer-events-none gap-3">
+          <div className="absolute inset-8 flex flex-col items-center justify-center text-stone-500 pointer-events-none gap-4 border-2 border-dashed border-stone-800 rounded-lg">
+            <svg
+              className="w-12 h-12 text-stone-700"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="17 8 12 3 7 8" />
+              <line x1="12" y1="3" x2="12" y2="15" />
+            </svg>
             <span className="text-xl">Bild hierhin ziehen</span>
             <div className="flex gap-3 pointer-events-auto">
-              <button
-                type="button"
-                onClick={triggerFileDialog}
-                className="text-amber-200 hover:underline"
-              >
-                Datei wählen
-              </button>
-              <span className="text-stone-700">·</span>
               <button
                 type="button"
                 data-testid="editor-load-sample"
@@ -524,9 +530,16 @@ export default function Editor() {
                     }
                   })();
                 }}
-                className="text-stone-400 hover:text-amber-200 hover:underline"
+                className="px-4 py-2 text-xs uppercase tracking-[0.2em] bg-amber-200/15 border border-amber-300 text-amber-200 hover:bg-amber-200/25"
               >
                 Beispielbild laden
+              </button>
+              <button
+                type="button"
+                onClick={triggerFileDialog}
+                className="px-4 py-2 text-xs uppercase tracking-[0.2em] border border-stone-700 text-stone-300 hover:border-amber-300/40"
+              >
+                Datei wählen
               </button>
             </div>
           </div>

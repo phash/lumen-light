@@ -253,6 +253,37 @@ async def test_marketplace_auto_hides_after_three_reports(
     assert detail.status_code == 404
 
 
+async def test_marketplace_invalid_cursor_returns_422(client, user_a):
+    # Garbage-base64
+    r = await client.get(
+        "/api/v1/marketplace/presets?cursor=not-a-cursor",
+        headers=user_a["headers"],
+    )
+    assert r.status_code == 422
+
+
+async def test_marketplace_negative_cursor_returns_422(client, user_a):
+    import base64
+
+    cursor = base64.urlsafe_b64encode(b"-1").decode()
+    r = await client.get(
+        f"/api/v1/marketplace/presets?cursor={cursor}",
+        headers=user_a["headers"],
+    )
+    assert r.status_code == 422
+
+
+async def test_marketplace_huge_cursor_returns_422(client, user_a):
+    import base64
+
+    cursor = base64.urlsafe_b64encode(b"99999999").decode()
+    r = await client.get(
+        f"/api/v1/marketplace/presets?cursor={cursor}",
+        headers=user_a["headers"],
+    )
+    assert r.status_code == 422
+
+
 async def test_marketplace_double_report_returns_409(client, user_a, user_b):
     src = await _create_public_preset(client, user_a["headers"], name="dup-report")
     r1 = await client.post(

@@ -102,6 +102,11 @@ export default function ToneCurvePanel({
 
   return (
     <div data-testid="tone-curve-panel" className="space-y-2">
+      <p className="text-[10px] text-stone-500 leading-tight">
+        Klick auf die Kurve fuegt einen Punkt hinzu, Doppelklick auf
+        einen Punkt entfernt ihn. Endpunkte (links/rechts) lassen sich
+        nur vertikal bewegen.
+      </p>
       <svg
         ref={svgRef}
         width={SIZE}

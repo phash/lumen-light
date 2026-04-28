@@ -326,7 +326,7 @@ export default function Marketplace() {
             <img
               src={detail.previewUrl}
               alt={detail.name}
-              className="w-full h-64 object-cover"
+              className="w-full h-64 object-contain bg-stone-900"
             />
           ) : (
             <div className="w-full h-64 bg-stone-900" />
