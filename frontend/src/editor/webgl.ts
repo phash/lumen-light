@@ -177,6 +177,8 @@ export class Renderer {
   private texture: WebGLTexture | null = null;
   private readonly toneCurveTexture: WebGLTexture;
   private toneCurveLutCache = new Uint8Array(TONE_CURVE_LUT_SIZE);
+  private _imageWidth = 0;
+  private _imageHeight = 0;
 
   // Pre-allocated typed arrays — vermeiden Allocation pro Frame.
   private readonly linP1 = new Float32Array(MAX_LINEAR_MASKS * 2);
@@ -342,6 +344,8 @@ export class Renderer {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
     this.texture = tex;
+    this._imageWidth = width;
+    this._imageHeight = height;
     gl.canvas.width = width;
     gl.canvas.height = height;
   }
@@ -349,6 +353,10 @@ export class Renderer {
   hasImage(): boolean {
     return this.texture !== null;
   }
+
+  /** Original-Pixel-Dimensionen des geladenen Bildes (vor Crop). */
+  get imageWidth(): number { return this._imageWidth; }
+  get imageHeight(): number { return this._imageHeight; }
 
   private packLinearMasks(linear: ReadonlyArray<LinearMaskParams>): number {
     const n = Math.min(linear.length, MAX_LINEAR_MASKS);
@@ -403,9 +411,19 @@ export class Renderer {
     lensDistortion = 0,
     lensVignette = 0,
     masks: MasksUniforms = EMPTY_MASKS,
+    outputSize: { width: number; height: number } | null = null,
   ): void {
     if (!this.texture) return;
     const gl = this.gl;
+    // Drawingbuffer auf das gewuenschte Output-Format setzen — typisch
+    // imageDimensions × cropSize, sodass das gecropte Rechteck
+    // pixelgenau auf den Output gemapt wird statt gestreckt.
+    if (outputSize) {
+      const w = Math.max(1, Math.round(outputSize.width));
+      const h = Math.max(1, Math.round(outputSize.height));
+      if (gl.canvas.width !== w) gl.canvas.width = w;
+      if (gl.canvas.height !== h) gl.canvas.height = h;
+    }
     gl.useProgram(this.program);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.texture);

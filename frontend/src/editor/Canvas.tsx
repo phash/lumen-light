@@ -2,7 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "rea
 
 import type { MaskInstance } from "./mask";
 import { useEditorStore, type EditorState } from "./store";
-import { uvTransformMatrix } from "./transform";
+import { type CropRect, uvTransformMatrix } from "./transform";
 import {
   type LinearMaskParams,
   type MasksUniforms,
@@ -11,6 +11,21 @@ import {
   WebGLRendererError,
   loadImageFromFile,
 } from "./webgl";
+
+/** Berechnet das Output-Pixel-Format aus Original-Bildgroesse und Crop —
+ *  damit das gecropte Rechteck pixelgenau auf den Drawingbuffer gemapt
+ *  wird, statt gestreckt zu werden. */
+function outputSizeFor(
+  r: Renderer,
+  crop: CropRect,
+): { width: number; height: number } {
+  const cw = Math.max(0.05, crop.x1 - crop.x0);
+  const ch = Math.max(0.05, crop.y1 - crop.y0);
+  return {
+    width: Math.max(1, Math.round(r.imageWidth * cw)),
+    height: Math.max(1, Math.round(r.imageHeight * ch)),
+  };
+}
 
 function buildMasksUniforms(
   masks: ReadonlyArray<MaskInstance>,
@@ -115,9 +130,10 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
       lensCorrection.distortion,
       lensCorrection.vignette,
       masksUniforms,
+      outputSizeFor(r, cropRect),
     );
     onTick();
-  }, [adjustments, bypass, transform, lensCorrection, masksUniforms, onTick]);
+  }, [adjustments, bypass, transform, lensCorrection, masksUniforms, cropRect, onTick]);
 
   useImperativeHandle(
     ref,
@@ -135,6 +151,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
+          outputSizeFor(r, s.cropRect),
         );
         onTick();
       },
@@ -154,6 +171,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
+          outputSizeFor(r, s.cropRect),
         );
         onTick();
       },
@@ -168,6 +186,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
+          outputSizeFor(r, s.cropRect),
         );
         onTick();
       },
@@ -184,6 +203,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
+          outputSizeFor(r, s.cropRect),
         );
         const url = c.toDataURL("image/png");
         // 2. Sofort wieder mit aktuellen bypass-Wert rendern, damit der
@@ -195,6 +215,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.distortion,
           s.lensCorrection.vignette,
           masksFromState(s),
+          outputSizeFor(r, s.cropRect),
         );
         return url;
       },
