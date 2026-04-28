@@ -22,6 +22,7 @@ export default function Library() {
   const [images, setImages] = useState<Image[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [stripExif, setStripExif] = useState(true);
 
   const refresh = useCallback(async () => {
     try {
@@ -43,7 +44,7 @@ export default function Library() {
     setUploading(true);
     setError(null);
     try {
-      await uploadImage(api, file);
+      await uploadImage(api, file, { stripExif });
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload fehlgeschlagen");
@@ -99,6 +100,16 @@ export default function Library() {
             onChange={onPick}
             data-testid="upload-input"
           />
+        </label>
+        <label className="mt-3 flex items-center gap-2 text-xs text-stone-500">
+          <input
+            type="checkbox"
+            data-testid="upload-strip-exif"
+            checked={stripExif}
+            onChange={(e) => setStripExif(e.target.checked)}
+            className="accent-amber-300"
+          />
+          EXIF/GPS aus JPEG entfernen (RAW behaelt Metadaten)
         </label>
         {uploading && (
           <p data-testid="upload-pending" className="mt-2 text-amber-200/80">

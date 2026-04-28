@@ -6,7 +6,9 @@ import Callback from "./auth/Callback";
 import RequireAuth from "./auth/RequireAuth";
 import Header from "./components/Header";
 import Account from "./pages/Account";
+import Datenschutz from "./pages/Datenschutz";
 import Editor from "./pages/Editor";
+import Impressum from "./pages/Impressum";
 import Landing from "./pages/Landing";
 import Library from "./pages/Library";
 import Login from "./pages/Login";
@@ -23,6 +25,8 @@ export default function App() {
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/callback" element={<Callback />} />
+            <Route path="/datenschutz" element={<Datenschutz />} />
+            <Route path="/impressum" element={<Impressum />} />
             <Route
               path="/editor"
               element={

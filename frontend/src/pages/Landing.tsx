@@ -76,6 +76,18 @@ export default function Landing() {
           </p>
         </div>
       </div>
+
+      {/* Footer */}
+      <div className="px-8 py-6 border-t border-stone-800/60">
+        <div className="max-w-4xl mx-auto flex flex-wrap gap-4 text-xs text-stone-500">
+          <Link to="/datenschutz" className="hover:text-stone-300">
+            Datenschutz
+          </Link>
+          <Link to="/impressum" className="hover:text-stone-300">
+            Impressum
+          </Link>
+        </div>
+      </div>
     </section>
   );
 }
