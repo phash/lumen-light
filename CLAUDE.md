@@ -134,6 +134,31 @@ gesetzt — pytest läuft sonst gegen 429er.
   `HSL_CHANNELS=8`, `DISTORTION_GAIN`, `VIGNETTE_GAIN` leben in
   TS-Modulen UND als GLSL-Literal. Sync-Test in
   `frontend/tests/shader-limits-sync.test.ts`.
+- **`pnpm exec` braucht `cwd=frontend/`**: aus dem Repo-Root kommt
+  `ERR_PNPM_RECURSIVE_EXEC_NO_PACKAGE`. `cd frontend && pnpm exec ...`.
+- **localStorage in vitest ist flaky**: Module-Level-Variable als
+  primaere Wahrheit + localStorage als Sync-Backup (siehe `consent.ts`
+  `cachedConsent`-Pattern). `setItem` in `beforeEach` greift nicht
+  zuverlaessig im naechsten Test.
+- **WebGL-Tests in jsdom**: Canvas-getContext fehlt. Pure-Funktion
+  schreiben, die einen RGBA-`Uint8Array` nimmt (siehe
+  `autoStraighten.ts:analyzeStraightenAngle`) — Tests benutzen
+  synthetische Buffer ohne OffscreenCanvas.
+- **`@typescript-eslint/unbound-method` mit `vi.fn()`**: wenn ein Mock
+  ueber Spread an einen ApiClient-Method-Slot gebunden wird, lint
+  meckert. Fix: in der FakeApi-Interface die jeweilige Method als
+  `: Mock` typisieren statt von ApiClient erben.
+- **Mediapipe ESM-Bundling**: `@mediapipe/face_detection` ist UMD-only
+  und bricht Rolldown. Vite-`resolve.alias` auf
+  `src/editor/__shims__/mediapipe-face-detection-shim.ts`; TF.js-Runtime
+  macht den Mediapipe-Pfad ohnehin nicht aktiv.
+- **Crop-Output-Pipeline**: Canvas-Groesse = `imageDims × cropSize`
+  (in `Renderer.render` via `outputSize`-Parameter, sonst wird das Crop
+  gestreckt). Mask-Overlays speichern Mask-UV im Source-System;
+  Drag/Anzeige laufen via `forwardUvTransform` /
+  `invertUvTransform` aus `transform.ts`.
+- **Bildschirmfoto*.png im Repo-Root** ist gitignored — bei `git add -A`
+  trotzdem aufpassen, dass keine versehentlichen Screenshots reinrutschen.
 - **Adjustments-Form**: 10 numerische Slider plus `hsl: HslAdjustments
   | null`. `Object.values(adjustments)` enthaelt daher `null` —
   ueber `ADJUSTMENTS` iterieren oder `hsl` separat behandeln. `null`
@@ -166,6 +191,14 @@ gesetzt — pytest läuft sonst gegen 429er.
 - **Commit-Style**: Conventional `feat()`/`fix()`/`refactor()`/`docs()`/`chore()`. Co-Author-Trailer für Claude-Sessions.
 - **Reviews**: Code/Security/DSGVO/UX-Reviews dispatched parallel via Agent-Tool, Findings in einem zentralen Plan zusammengeführt.
 - **Vor Push** an Production-Stack: `pnpm build && pnpm lint && pnpm test && pnpm exec tsc -b --noEmit` und `pytest -q` müssen grün.
+- **Repo-Setup**: `gh repo create lumen-light --private --source . --push --description "..."` macht Init+Push in einem Schritt.
+
+### Env-Toggles
+
+- `LUMEN_ENV=production` (in `docker-compose.prod.yml` gesetzt) blendet `/docs`, `/openapi.json`, `/redoc` aus.
+- `LUMEN_RATELIMIT_STORAGE=redis://lumen-redis:6379/0` schaltet slowapi auf gemeinsamen Counter ueber alle Worker. Default `memory://` = single-worker-only.
+- `LUMEN_RATELIMIT_DISABLED=1` schaltet slowapi komplett aus (Backend-Tests).
+- Service-Worker registriert nur in PROD-Build (`import.meta.env.PROD`); Dev frisst sonst den Vite-Hot-Reload.
 
 ## Production-Cluster
 
