@@ -328,6 +328,11 @@ export default function PresetDialog({
 
           {publish.enabled && (
             <div className="space-y-2 border border-stone-800 px-3 py-2 bg-stone-950/50">
+              <p className="text-[10px] text-stone-500">
+                Vorschaubild, Beschreibung, Genre und dein Handle (sofern
+                gesetzt) werden fuer alle eingeloggten Lumen-Nutzer
+                sichtbar. Email bleibt privat.
+              </p>
               <select
                 value={publish.genre}
                 onChange={(e) =>
@@ -346,17 +351,30 @@ export default function PresetDialog({
                   </option>
                 ))}
               </select>
-              <textarea
-                value={publish.description}
-                onChange={(e) =>
-                  setPublish((s) => ({ ...s, description: e.target.value }))
-                }
-                placeholder="Beschreibung (10–500 Zeichen)"
-                rows={3}
-                maxLength={500}
-                data-testid="preset-publish-description"
-                className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
-              />
+              <div>
+                <textarea
+                  value={publish.description}
+                  onChange={(e) =>
+                    setPublish((s) => ({ ...s, description: e.target.value }))
+                  }
+                  placeholder="Beschreibung (10–500 Zeichen)"
+                  rows={3}
+                  maxLength={500}
+                  data-testid="preset-publish-description"
+                  className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
+                />
+                <div
+                  className={`text-[10px] mt-0.5 text-right tabular-nums ${
+                    publish.description.length < 10
+                      ? "text-stone-500"
+                      : "text-stone-400"
+                  }`}
+                  data-testid="preset-publish-description-counter"
+                >
+                  {publish.description.length} / 500
+                  {publish.description.length < 10 && " (min 10)"}
+                </div>
+              </div>
               <select
                 value={publish.previewImageId}
                 onChange={(e) =>

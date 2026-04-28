@@ -50,7 +50,9 @@ export default function Marketplace() {
   const [sort, setSort] = useState<"new" | "popular">("new");
   const [items, setItems] = useState<MarketplaceListItem[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  // Initial true: zwischen Mount und erstem Fetch sehen wir sonst den
+  // Empty-State faelschlich.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MarketplaceDetail | null>(null);
 
@@ -193,6 +195,19 @@ export default function Marketplace() {
             data-testid="marketplace-empty"
           >
             Noch keine Presets in diesem Filter.
+            {(genre || q) && (
+              <button
+                type="button"
+                onClick={() => {
+                  setGenre("");
+                  setQ("");
+                }}
+                data-testid="marketplace-empty-reset"
+                className="ml-2 underline text-amber-200 hover:text-amber-100"
+              >
+                Alle anzeigen
+              </button>
+            )}
           </div>
         )}
       </div>
@@ -239,6 +254,21 @@ export default function Marketplace() {
     const applyMasks = useEditorStore((s) => s.applyMasks);
 
     const onApply = async () => {
+      // Schutz vor unbeabsichtigtem Verlust: wenn der User aktuell
+      // an einem Bild arbeitet, vor dem Ueberschreiben nachfragen.
+      const current = useEditorStore.getState();
+      const dirty =
+        current.masks.length > 0 ||
+        Object.entries(current.adjustments).some(([k, v]) => {
+          if (k === "hsl" || k === "toneCurve") return v !== null;
+          return typeof v === "number" && Math.abs(v) > 1e-4;
+        });
+      if (dirty) {
+        const ok = window.confirm(
+          "Aktuelle Bearbeitung wird durch das Marketplace-Preset ueberschrieben. Fortfahren?",
+        );
+        if (!ok) return;
+      }
       setBusy("apply");
       try {
         const res = await api.applyMarketplacePreset(detail.id);
