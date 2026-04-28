@@ -1,126 +1,128 @@
-# Lumen · light — Konzept-Paket
+# Lumen · light
 
-Browser-basierter, self-hosted RAW-Entwickler als Lightroom-Alternative.
+Browser-basierter, selbst-gehosteter RAW-Foto-Editor — Lightroom-Light fuer Hobby-Fotografen, ohne Software-Installation und ohne Cloud-Pflicht.
 
-## Inhalt dieses Pakets
+**Selfhost auf einem 4-GB-VPS · Open-Source-Stack · DSGVO-konform out-of-the-box.**
 
-```
-lumen-light/
-├── README.md                     ← diese Datei
-├── docs/
-│   ├── 01-konzept.md             ← Vision, Scope, Zielgruppe, MVP
-│   ├── 02-architektur.md         ← Systemarchitektur, Datenflüsse
-│   ├── 03-datenmodell.md         ← DB-Schema, Pydantic, Adjustment-Schema
-│   ├── 04-api-spezifikation.md   ← REST-Endpoints, Auth-Flow
-│   ├── 05-frontend-konzept.md    ← Component-Tree, State, WebGL-Pipeline
-│   ├── 06-roadmap.md             ← 16-Wochen-Plan in Phasen
-│   ├── 07-tech-entscheidungen.md ← ADRs (Architecture Decision Records)
-│   └── 08-risiken-offene-fragen.md
-├── diagramme/
-│   └── architektur.mmd           ← Mermaid-Diagramm der Systemarchitektur
-├── frontend/
-│   └── lightroom-light.jsx       ← lauffähiger React-Prototyp (WebGL2)
-├── backend/
-│   ├── app/
-│   │   ├── main.py               ← FastAPI-App
-│   │   ├── config.py             ← Settings (Pydantic)
-│   │   ├── database.py           ← SQLAlchemy-Setup
-│   │   ├── models.py             ← ORM-Modelle
-│   │   ├── schemas.py            ← Pydantic-Schemas
-│   │   ├── auth.py               ← JWT-Logik
-│   │   └── routers/
-│   │       ├── auth.py           ← /auth/register, /auth/login
-│   │       └── presets.py        ← /presets CRUD
-│   ├── alembic/
-│   │   ├── env.py
-│   │   └── versions/001_initial.py
-│   ├── alembic.ini
-│   ├── requirements.txt
-│   └── Dockerfile
-└── deployment/
-    ├── docker-compose.yml        ← Postgres + Backend + Nginx
-    ├── nginx.conf
-    └── .env.example
-```
+## Was Lumen kann
+
+- **RAW direkt im Browser oeffnen**: CR2, CR3, NEF, ARW, DNG, RAF, RW2, ORF — via libraw-wasm in einem Web-Worker.
+- **12 globale Slider** (Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz, Temperatur, Toenung, Dynamik, Saettigung, Schaerfen, Rauschen) plus **HSL-Mischer** (8 Farbkanaele × 3 Achsen) und **Spline-Tonkurve** (2-8 Stuetzpunkte mit Monotone-Hermite).
+- **Bis zu 8 lokale Anpassungen pro Bild**: 4 lineare Verlaufsfilter + 4 elliptische Radialmasken, jede mit Belichtung/Kontrast/Saettigung/Temperatur.
+- **Auto-Funktionen**: Auto-Tone (Histogramm-Analyse), Auto-WB (Gray-World), Auto-Begradigen (Sobel + Hough), Smart-Preset-Vorschlag (EXIF-Brennweite + optionale Face-Detection ueber TensorFlow.js).
+- **Lens-Profile** fuer 18 verbreitete Kamera+Objektiv-Kombinationen (Verzeichnung + Vignette automatisch).
+- **Vorher/Nachher-Vergleich**: Bypass-halten oder Compare-Split.
+- **Export** als JPEG oder PNG, Quality- und Width-Slider.
+- **Preset-Marketplace**: User koennen Presets oeffentlich teilen, andere wenden sie auf eigene Bilder an oder forken in die eigene Bibliothek. Reporting + Auto-Hide bei Missbrauch.
+
+## Stack
+
+- **Backend**: FastAPI · async SQLAlchemy 2 + asyncpg · Alembic · Pydantic 2 · slowapi · boto3
+- **Frontend**: React 19 · Vite 8 · TypeScript strict · Tailwind 4 · Zustand 5 · WebGL2 (Single-Pass-Fragment-Shader mit Uniform-Arrays fuer Multi-Mask)
+- **Auth**: Keycloak (OIDC, Realm `lumen`, JWT RS256-Whitelist)
+- **Storage**: Postgres 16 · Garage S3 (Pre-Signed-URLs, Pixel laufen NICHT durch FastAPI)
+- **Deployment**: Docker Compose · Caddy als Reverse-Proxy (CSP + HSTS + Permissions-Policy)
+- **ML (optional)**: TensorFlow.js Mediapipe-Face-Detection — Lazy-Load, Default-aus, ausdrueckliche User-Einwilligung
 
 ## Schnellstart (lokale Entwicklung)
 
 ```bash
-# Backend hochfahren
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-export DATABASE_URL=postgresql+asyncpg://lumen:lumen@localhost:5432/lumen
-export JWT_SECRET=dev-secret-bitte-ersetzen
-alembic upgrade head
-uvicorn app.main:app --reload
-
-# Frontend (Vite-Projekt im frontend/-Verzeichnis)
-cd frontend
-npm install
-npm run dev      # http://localhost:5173
-npm run test     # Vitest
-npm run lint     # ESLint
-npm run build    # Production-Build nach dist/
-```
-
-## Schnellstart (Docker)
-
-```bash
-cd deployment
-cp .env.example .env
-docker compose up -d
-# Backend auf http://localhost:8000
-# OpenAPI-Docs auf http://localhost:8000/docs
-```
-
-## Lokaler Dev-Stack
-
-```bash
-# Postgres + Keycloak (Realm 'lumen' importiert) + MinIO als Garage-Stand-In
+# 1. Postgres + Keycloak + MinIO (Garage-Ersatz in dev) hochfahren
 docker compose -f deployment/docker-compose.dev.yml up -d
+until curl -fs http://localhost:19000/health/ready >/dev/null; do sleep 2; done
 
-# Backend lokal (Migration + uvicorn)
+# 2. Backend-Migration + Server
 cd backend
 python -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-cp ../deployment/.env.example .env  # editieren falls noetig
-alembic upgrade head
-uvicorn app.main:app --reload --port 8000
+pip install -r requirements.txt -r requirements-dev.txt
+DATABASE_URL="postgresql+asyncpg://lumen:lumen@localhost:5433/lumen" \
+  .venv/bin/alembic upgrade head
 
-# Frontend lokal
-cd ../frontend
-cp .env.example .env.local  # editieren falls noetig
-npm install
-npm run dev   # http://localhost:5173
+DATABASE_URL="postgresql+asyncpg://lumen:lumen@localhost:5433/lumen" \
+KEYCLOAK_ISSUER="http://localhost:18080/realms/lumen" \
+KEYCLOAK_AUDIENCE="lumen-api" \
+GARAGE_S3_ENDPOINT="http://localhost:9000" GARAGE_S3_REGION="us-east-1" \
+GARAGE_S3_BUCKET="lumen-images" \
+GARAGE_S3_ACCESS_KEY_ID="minioadmin" GARAGE_S3_SECRET_ACCESS_KEY="minioadmin" \
+CORS_ORIGIN="http://localhost:5173" \
+.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
+
+# 3. Frontend (anderes Terminal)
+cd frontend
+cp .env.example .env.local   # ggf. anpassen
+pnpm install
+pnpm dev                     # http://localhost:5173
 ```
 
-Default-Admins (NUR lokal, NICHT Production):
-- Keycloak `admin / admin` auf http://localhost:18080
-- MinIO `minioadmin / minioadmin` auf http://localhost:9001 (Console)
+Test-User in Keycloak via Admin-API anlegen — siehe `CLAUDE.md` Abschnitt „Test-User in Keycloak".
 
 ## Tests
 
-Backend-Tests laufen gegen einen automatisch hochgefahrenen Postgres-Container (`testcontainers`). Voraussetzung: laufender Docker-Daemon.
-
 ```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate
-pip install -r requirements-dev.txt
-pytest -q
+# Backend (testcontainers fuer PG + MinIO + Keycloak — Docker muss laufen)
+cd backend && .venv/bin/pytest -q
+# Aktuell: 99 Tests, ~50 s nach Image-Cache.
+
+# Frontend Unit + Component
+cd frontend && pnpm test
+# Aktuell: 295 Tests in 34 Files, ~6 s.
+
+# E2E (Stack muss komplett laufen)
+cd frontend && pnpm exec playwright test
+
+# Statisch
+cd frontend && pnpm lint && pnpm build && pnpm exec tsc -b --noEmit
 ```
 
-Erste Ausführung lädt `postgres:16-alpine` (~80 MB). Folgende Läufe nutzen das gecachte Image. Pro Test: aktive Transaktion mit SAVEPOINT, am Ende Rollback — Tests sind voneinander vollständig isoliert.
+## Architektur (Kurzfassung)
 
-Aktuelle Suite: 35 Tests (Health, Auth-Lifecycle, Presets-CRUD, Tenant-Isolation, Schema-Sync). Lauf in ~20 s nach gecachter Image-Pull.
+```
+                        ┌─────────────┐
+                        │   Browser   │
+                        │  React + WebGL2 │
+                        └──────┬──────┘
+            JWT (Bearer)       │     Pre-Signed PUT/GET
+        ┌──────────────────────┼──────────────────────┐
+        │                      │                      │
+        ▼                      ▼                      ▼
+┌──────────────┐      ┌──────────────┐      ┌──────────────┐
+│   Keycloak   │      │   FastAPI    │      │  Garage S3   │
+│  Realm lumen │      │  /api/v1     │      │  lumen-images│
+└──────────────┘      │  Auth/RS256  │      └──────────────┘
+                      │  Marketplace │
+                      │  Presets/CRUD│
+                      └──────┬───────┘
+                             │
+                             ▼
+                      ┌──────────────┐
+                      │ Postgres 16  │
+                      │ + Alembic    │
+                      └──────────────┘
+```
 
-## Reihenfolge zum Lesen
+WebGL-Pipeline (Fragment-Shader, Single-Pass): Lens-Distortion → Bilateral-Noise → sRGB→Linear → WB → Belichtung → Linear→sRGB → Highlights/Shadows/Whites/Blacks → Kontrast → Vibrance/Saettigung → HSL-Mischer → Tonkurve (LUT) → Unsharp-Mask → Vignette.
 
-1. `docs/01-konzept.md` — was bauen wir und warum
-2. `docs/02-architektur.md` — wie ist es zusammengesetzt
-3. `docs/06-roadmap.md` — in welcher Reihenfolge
-4. Rest nach Bedarf
+## Datenschutz / DSGVO
 
-## Lizenz / Nutzung
+- **Privacy by Default**: Presets sind privat, Profilfelder leer, Marketplace-Toggle aus, Face-Detection aus.
+- **DSGVO Art. 15 + 20**: vollstaendiger JSON-Export aller User-Daten (inklusive Marketplace-Felder, eigene Reports, presigned-Download-URLs fuer Bilder) auf der Account-Seite.
+- **DSGVO Art. 17**: User kann seinen Account in der UI loeschen — Cascade auf Presets/Bilder/S3-Objekte. Reports werden anonymisiert (reporter_user_id auf NULL), damit die Moderationsspur erhalten bleibt.
+- **Drittland-Transfer**: Nur, wenn der User explizit „Smart-Preset mit Gesichtserkennung" aktiviert — dann wird einmalig das TF.js-Modell von `storage.googleapis.com` (Google US) geladen. Die Bilderkennung selbst laeuft lokal im Browser, Bilder verlassen den Client nie. Datenschutz-Erklaerung enthaelt alle Details.
+- **Selfhost-Stack**: Postgres + Garage + Keycloak laufen auf einem deutschen IONOS-VPS, kein anderer Auftragsverarbeiter ausser dem Hoster.
 
-Persönliches Konzept-Paket. Frei verwendbar und anpassbar.
+## Production
+
+Production-Stack ist im `deployment/docker-compose.prod.yml` und benutzt eine separate Realm-Konfiguration (`infra/keycloak/lumen-realm.prod.json`) mit gehaerteten Flags (kein ROPC-Flow, verifyEmail an, nur Production-Origin in den Redirect-URIs). Caddy-Snippet (`infra/caddy/lumen.caddyfile`) setzt Content-Security-Policy, HSTS-preload, Permissions-Policy und blockt `/docs|/redoc|/openapi.json` als Defense-in-Depth.
+
+Volle Anleitung: `infra/deployment-runbook.md`.
+
+## Dokumentation
+
+- `docs/01-konzept.md` … `docs/08-risiken-offene-fragen.md` — Konzept, Architektur, Datenmodell, API, Frontend, Roadmap, ADRs, Risiken
+- `docs/06-roadmap.md` — Iterations-Stand
+- `docs/superpowers/specs/` — Pro Iteration eine Spec (HSL, Tonkurve, Sharpen+Noise, Auto-Straighten, Face-Detection, Marketplace …)
+- `CLAUDE.md` — Hands-on-Anleitung fuer Claude-Code-Sessions in diesem Repo
+
+## Lizenz
+
+Persoenliches Selfhost-Projekt. Code intern, kein offener Vertrieb.

@@ -91,7 +91,11 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `backend/app/auth.py` | JWT-Verify (PyJWT, RS256-Whitelist), JIT-User-Provisioning + 10 Default-Presets (Neutral/Punchy/Soft/SW + 6 Genre-Presets) |
 | `backend/app/schemas.py` | Adjustments, Mask-Discriminated-Union, `MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`. `extra="forbid"` überall |
 | `backend/app/rate_limit.py` | Limiter-Singleton (key = Hash des Auth-Tokens, fallback IP) |
-| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks |
+| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null |
+| `backend/app/routers/marketplace.py` | F1: 7 Endpunkte (list, detail, apply, fork, report, profile, published-presets), Atomic-Increment, Auto-Hide bei 3 Reports, Cursor-Validation MAX_CURSOR_OFFSET=10000 |
+| `backend/app/schemas.py` | `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` — alle Wire-Keys camelCase, Eingang akzeptiert beide |
+| `infra/keycloak/lumen-realm.json` | Dev-Realm: ROPC + verifyEmail off (Tests). Prod nutzt `lumen-realm.prod.json` (gehaertet) |
+| `infra/caddy/lumen.caddyfile` | Prod-Snippet: CSP, HSTS-preload, Permissions-Policy, /docs Block |
 | `frontend/src/editor/shaders.ts` | Fragment-Shader mit `MAX_LINEAR_MASKS = 4` und `MAX_RADIAL_MASKS = 4` (Schema-Sync-Test prüft) |
 | `frontend/src/editor/store.ts` | Zustand-Store inkl. Undo/Redo (history-Snapshot debounced 250ms) |
 | `frontend/src/editor/mask.ts` | Linear-/Radial-Typen, Limits-Konstanten — Single Source |
@@ -172,3 +176,18 @@ project shared).
 
 CI: `.github/workflows/ci.yml` — frontend lint/typecheck/vitest/build +
 backend pytest. E2E nicht in PR-Pipeline (Stack-Compose dauert).
+
+## Aktueller Stand
+
+- **Phase E komplett**: HSL (E1), Tonkurve (E2), Sharpening + Noise (E3), Face-Detection (E4, opt-in), Auto-Straighten (E5).
+- **Phase F1 komplett**: Preset-Marketplace mit Backend (Migration 005, 7 Endpunkte, Auto-Hide), Frontend (Marketplace-Page, Detail-Modal, PresetDialog-Publish-Toggle, Account-Profil + veroeffentlichte Presets).
+- **Phase D durch**: D1 (EditorToolbar/Banners/OverlayCanvas), D2 (LocalAdjBuffers), D4 (Wireformat camelCase), D6 (Component-Tests).
+- **Reviews abgeschlossen**: Security/DSGVO/Code/UI-UX. Critical + High + Medium-Items umgesetzt.
+- **Tests**: 99 backend pytest, 295 frontend vitest, lint + build sauber.
+
+## Offene Backlog-Items (vor public-Launch nochmal pruefen)
+
+- **Pre-Signed-POST mit Content-Length-Range** (Sec High) — heute heuristischer HEAD-Check + Cleanup. Wechsel auf `generate_presigned_post` waere robuster, ist aber Frontend-API-Wechsel.
+- **DELETE /me Keycloak-Account** (DSGVO High) — heute werden nur App-Daten geloescht, der KC-Account bleibt; Datenschutz-Hinweis ist drin. Sauberer Fix: Service-Account-Setup + Admin-API-Call.
+- **Multi-Worker Redis-Backend** fuer slowapi — Counter heute pro Worker isoliert. Sobald `--workers > 1` gefahren wird, muss `storage_uri` gesetzt werden, sonst skaliert das Limit ungewollt.
+- **E2E-Test fuer Marketplace** — Stack-Compose-Setup ausstehend.
