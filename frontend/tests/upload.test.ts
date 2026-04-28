@@ -22,6 +22,14 @@ function makeFakeApi(): FakeApi {
     confirmUpload: vi.fn(),
     getImageUrl: vi.fn(),
     deleteImage: vi.fn(),
+    listMarketplacePresets: vi.fn(),
+    getMarketplacePreset: vi.fn(),
+    applyMarketplacePreset: vi.fn(),
+    forkMarketplacePreset: vi.fn(),
+    reportMarketplacePreset: vi.fn(),
+    getProfile: vi.fn(),
+    updateProfile: vi.fn(),
+    listPublishedPresets: vi.fn(),
   };
 }
 

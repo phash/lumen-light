@@ -5,6 +5,7 @@ const links: ReadonlyArray<{ to: string; label: string }> = [
   { to: "/", label: "Start" },
   { to: "/editor", label: "Editor" },
   { to: "/library", label: "Bibliothek" },
+  { to: "/marketplace", label: "Marketplace" },
   { to: "/account", label: "Account" },
 ];
 

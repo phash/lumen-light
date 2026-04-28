@@ -12,7 +12,7 @@ export default function Datenschutz() {
   return (
     <section data-testid="page-datenschutz" className="px-8 py-12 max-w-3xl mx-auto text-stone-300">
       <h1 className="text-3xl text-stone-100">Datenschutz</h1>
-      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-04-28</p>
+      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-04-28 (Marketplace ergaenzt)</p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">1. Verantwortlicher</h2>
       <p className="mt-3">
@@ -29,8 +29,26 @@ export default function Datenschutz() {
           Keycloak-Realm. Zweck: Zuordnung deiner Daten zu deinem Account.
         </li>
         <li>
+          <span className="text-stone-200">Profil (optional):</span>
+          Handle und Bio. Werden ausschliesslich angezeigt, wenn du ein
+          Preset im Marketplace veroeffentlichst — Email-Adresse bleibt
+          immer privat. Rechtsgrundlage: Einwilligung (Art. 6 Abs. 1
+          lit. a).
+        </li>
+        <li>
           <span className="text-stone-200">Presets:</span> Bezeichnung +
           Slider-Werte + Maskendefinitionen. Inhaltlich keine PII.
+          Wenn du ein Preset oeffentlich machst, werden zusaetzlich
+          Genre, Beschreibung und das von dir gewaehlte Vorschaubild
+          fuer alle authentifizierten Marketplace-Nutzer sichtbar.
+          Anwendungs- und Meldungs-Counter sind aggregiert; einzelne
+          Apply-Events werden nicht protokolliert.
+        </li>
+        <li>
+          <span className="text-stone-200">Marketplace-Meldungen:</span>
+          Wenn du ein Preset meldest, speichern wir deine User-ID, das
+          gemeldete Preset und den Grund (max. 500 Zeichen) zur
+          Moderationsentscheidung. Loeschung mit dem gemeldeten Preset.
         </li>
         <li>
           <span className="text-stone-200">Bilder:</span> die von dir
@@ -70,8 +88,11 @@ export default function Datenschutz() {
         Account- und Bilddaten bleiben erhalten, bis du sie selbst
         loeschst. Du kannst alle Daten ueber{" "}
         <span className="text-amber-200">Account › Account-Daten loeschen</span>{" "}
-        unwiderruflich entfernen lassen. Server-Logs werden durch die
-        Rotation automatisch nach wenigen Wochen ueberschrieben.
+        unwiderruflich entfernen lassen — das umfasst auch alle
+        veroeffentlichten Marketplace-Presets, sodass diese danach fuer
+        andere Nutzer nicht mehr sichtbar sind. Server-Logs werden
+        durch die Rotation automatisch nach wenigen Wochen
+        ueberschrieben.
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">6. Deine Rechte</h2>

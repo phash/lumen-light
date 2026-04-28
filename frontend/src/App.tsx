@@ -12,6 +12,7 @@ import Impressum from "./pages/Impressum";
 import Landing from "./pages/Landing";
 import Library from "./pages/Library";
 import Login from "./pages/Login";
+import Marketplace from "./pages/Marketplace";
 import Register from "./pages/Register";
 
 export default function App() {
@@ -40,6 +41,14 @@ export default function App() {
               element={
                 <RequireAuth>
                   <Library />
+                </RequireAuth>
+              }
+            />
+            <Route
+              path="/marketplace"
+              element={
+                <RequireAuth>
+                  <Marketplace />
                 </RequireAuth>
               }
             />

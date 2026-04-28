@@ -2,7 +2,12 @@ import { useEffect, useState } from "react";
 import { useAuth } from "react-oidc-context";
 
 import { useApi } from "../api/use-api";
-import type { MeExport, User } from "../api/client";
+import {
+  ApiError,
+  type MeExport,
+  type Preset,
+  type User,
+} from "../api/client";
 
 export default function Account() {
   const api = useApi();
@@ -11,6 +16,11 @@ export default function Account() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [profileDraft, setProfileDraft] = useState<{ handle: string; bio: string }>(
+    { handle: "", bio: "" },
+  );
+  const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
+  const [published, setPublished] = useState<Preset[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -28,6 +38,70 @@ export default function Account() {
       cancelled = true;
     };
   }, [api]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api
+      .getProfile()
+      .then((p) => {
+        if (cancelled) return;
+        setProfileDraft({ handle: p.handle ?? "", bio: p.bio ?? "" });
+      })
+      .catch(() => {
+        /* Profil-Fehler nicht blockierend — Block ist optional. */
+      });
+    void api
+      .listPublishedPresets()
+      .then((list) => {
+        if (!cancelled) setPublished(list);
+      })
+      .catch(() => {
+        /* Empty bleibt OK. */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api]);
+
+  const onProfileSave = async () => {
+    setProfileFeedback(null);
+    try {
+      await api.updateProfile({
+        handle: profileDraft.handle.trim() || null,
+        bio: profileDraft.bio.trim() || null,
+      });
+      setProfileFeedback("Gespeichert.");
+    } catch (err) {
+      if (err instanceof ApiError && err.status === 409) {
+        setProfileFeedback("Dieser Handle ist bereits vergeben.");
+      } else if (err instanceof ApiError && err.status === 422) {
+        setProfileFeedback("Handle: 3–40 Zeichen, nur a-z 0-9 -.");
+      } else {
+        setProfileFeedback(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
+      }
+    }
+  };
+
+  const onUnpublish = async (presetId: string, name: string) => {
+    // Loaded preset zurueckziehen via PUT mit visibility=private. Wir
+    // muessen Adjustments + Masks mitschicken, also brauchen wir den
+    // vollen Preset; published-list hat ihn schon.
+    const p = published.find((x) => x.id === presetId);
+    if (!p) return;
+    try {
+      await api.updatePreset(presetId, {
+        name: p.name,
+        adjustments: p.adjustments,
+        masks: p.masks,
+        visibility: "private",
+      });
+      setPublished((list) => list.filter((x) => x.id !== presetId));
+    } catch (err) {
+      setProfileFeedback(
+        err instanceof Error ? `${name}: ${err.message}` : "Zurueckziehen fehlgeschlagen",
+      );
+    }
+  };
 
   const onExport = async () => {
     setBusy(true);
@@ -80,7 +154,94 @@ export default function Account() {
         </p>
       )}
 
-      <div className="mt-8 space-y-6">
+      <div className="mt-8 space-y-8">
+        <section data-testid="account-profile">
+          <h2 className="text-stone-300 italic">Profil</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Handle und Bio werden im Marketplace bei deinen Presets angezeigt.
+            Email bleibt privat.
+          </p>
+          <div className="mt-3 space-y-2 max-w-md">
+            <label className="block text-xs text-stone-400">
+              Handle (3–40 Zeichen, a–z 0–9 -)
+              <input
+                type="text"
+                value={profileDraft.handle}
+                onChange={(e) =>
+                  setProfileDraft((s) => ({ ...s, handle: e.target.value }))
+                }
+                placeholder="anonyme_anna"
+                maxLength={40}
+                data-testid="account-handle"
+                className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
+              />
+            </label>
+            <label className="block text-xs text-stone-400">
+              Bio (optional, max 280)
+              <textarea
+                value={profileDraft.bio}
+                onChange={(e) =>
+                  setProfileDraft((s) => ({ ...s, bio: e.target.value }))
+                }
+                rows={2}
+                maxLength={280}
+                data-testid="account-bio"
+                className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
+              />
+            </label>
+            {profileFeedback && (
+              <p
+                className="text-xs text-amber-200"
+                data-testid="account-profile-feedback"
+              >
+                {profileFeedback}
+              </p>
+            )}
+            <button
+              type="button"
+              onClick={() => void onProfileSave()}
+              data-testid="account-profile-save"
+              className="px-4 py-1.5 text-xs uppercase tracking-[0.2em] border border-amber-300/40 text-amber-200 hover:border-amber-300"
+            >
+              Profil speichern
+            </button>
+          </div>
+        </section>
+
+        <section data-testid="account-published">
+          <h2 className="text-stone-300 italic">Meine veröffentlichten Presets</h2>
+          {published.length === 0 ? (
+            <p className="mt-2 text-sm text-stone-500">
+              Du hast aktuell keine Presets im Marketplace.
+            </p>
+          ) : (
+            <ul className="mt-3 divide-y divide-stone-800 text-sm">
+              {published.map((p) => (
+                <li
+                  key={p.id}
+                  className="flex items-center justify-between py-2"
+                  data-testid={`account-published-${p.id}`}
+                >
+                  <div className="min-w-0">
+                    <div className="text-stone-200 truncate">{p.name}</div>
+                    <div className="text-[10px] uppercase tracking-wider text-stone-500">
+                      {p.genre ?? "–"} · {p.apply_count} Anwendungen
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => void onUnpublish(p.id, p.name)}
+                    data-testid={`account-unpublish-${p.id}`}
+                    className="text-xs uppercase tracking-[0.2em] text-stone-500 hover:text-red-400"
+                  >
+                    Zurückziehen
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
         <section>
           <h2 className="text-stone-300 italic">Daten exportieren</h2>
           <p className="mt-1 text-sm text-stone-500">

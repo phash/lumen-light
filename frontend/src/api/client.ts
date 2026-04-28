@@ -17,6 +17,27 @@ export interface User {
   created_at: string;
 }
 
+export interface HslAxisWire {
+  red: number;
+  orange: number;
+  yellow: number;
+  green: number;
+  aqua: number;
+  blue: number;
+  violet: number;
+  magenta: number;
+}
+
+export interface HslAdjustmentsWire {
+  hue: HslAxisWire;
+  saturation: HslAxisWire;
+  luminance: HslAxisWire;
+}
+
+export interface ToneCurveWire {
+  points: ReadonlyArray<{ x: number; y: number }>;
+}
+
 export interface Adjustments {
   exposure: number;
   contrast: number;
@@ -28,6 +49,10 @@ export interface Adjustments {
   tint: number;
   vibrance: number;
   saturation: number;
+  sharpness: number;
+  noiseReduction: number;
+  hsl: HslAdjustmentsWire | null;
+  toneCurve: ToneCurveWire | null;
 }
 
 export interface PresetMaskLocalAdjustments {
@@ -64,11 +89,30 @@ export interface PresetMaskRadial {
 
 export type PresetMask = PresetMaskLinear | PresetMaskRadial;
 
+export type PresetVisibility = "private" | "public";
+
+export type PresetGenre =
+  | "portrait"
+  | "landscape"
+  | "city"
+  | "nature"
+  | "animals"
+  | "sports"
+  | "blackandwhite"
+  | "other";
+
 export interface Preset {
   id: string;
   name: string;
   adjustments: Adjustments;
   masks: PresetMask[];
+  visibility: PresetVisibility;
+  genre: PresetGenre | null;
+  description: string | null;
+  preview_image_id: string | null;
+  published_at: string | null;
+  apply_count: number;
+  report_count: number;
   created_at: string;
   updated_at: string;
 }
@@ -77,6 +121,10 @@ export interface PresetWritePayload {
   name: string;
   adjustments: Adjustments;
   masks?: PresetMask[];
+  visibility?: PresetVisibility;
+  genre?: PresetGenre | null;
+  description?: string | null;
+  preview_image_id?: string | null;
 }
 
 export type UploadState = "pending" | "ready" | "failed";
@@ -114,6 +162,50 @@ export interface MeExport {
   images: Array<Image & { download_url: string; download_url_expires_in: number }>;
 }
 
+export interface MarketplaceListItem {
+  id: string;
+  name: string;
+  genre: PresetGenre | null;
+  description: string | null;
+  creator_handle: string | null;
+  apply_count: number;
+  published_at: string;
+  preview_url: string | null;
+}
+
+export interface MarketplaceList {
+  items: MarketplaceListItem[];
+  next_cursor: string | null;
+}
+
+export interface MarketplaceDetail extends MarketplaceListItem {
+  creator_bio: string | null;
+}
+
+export interface MarketplaceApply {
+  adjustments: Adjustments;
+  masks: PresetMask[];
+}
+
+export interface Profile {
+  id: string;
+  handle: string | null;
+  bio: string | null;
+}
+
+export interface ProfilePayload {
+  handle?: string | null;
+  bio?: string | null;
+}
+
+export interface MarketplaceListQuery {
+  genre?: PresetGenre;
+  q?: string;
+  sort?: "new" | "popular";
+  cursor?: string;
+  limit?: number;
+}
+
 export interface ApiClient {
   me(): Promise<User>;
   deleteMe(): Promise<void>;
@@ -128,6 +220,16 @@ export interface ApiClient {
   confirmUpload(id: string): Promise<Image>;
   getImageUrl(id: string): Promise<ImageUrl>;
   deleteImage(id: string): Promise<void>;
+
+  listMarketplacePresets(query?: MarketplaceListQuery): Promise<MarketplaceList>;
+  getMarketplacePreset(id: string): Promise<MarketplaceDetail>;
+  applyMarketplacePreset(id: string): Promise<MarketplaceApply>;
+  forkMarketplacePreset(id: string): Promise<Preset>;
+  reportMarketplacePreset(id: string, reason: string): Promise<void>;
+
+  getProfile(): Promise<Profile>;
+  updateProfile(payload: ProfilePayload): Promise<Profile>;
+  listPublishedPresets(): Promise<Preset[]>;
 }
 
 export interface ApiClientOptions {
@@ -198,5 +300,39 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     getImageUrl: (id) => request<ImageUrl>(`/images/${id}/url`),
     deleteImage: (id) =>
       request<void>(`/images/${id}`, { method: "DELETE" }),
+
+    listMarketplacePresets: (query = {}) => {
+      const p = new URLSearchParams();
+      if (query.genre) p.set("genre", query.genre);
+      if (query.q) p.set("q", query.q);
+      if (query.sort) p.set("sort", query.sort);
+      if (query.cursor) p.set("cursor", query.cursor);
+      if (query.limit !== undefined) p.set("limit", String(query.limit));
+      const qs = p.toString();
+      return request<MarketplaceList>(
+        `/marketplace/presets${qs ? `?${qs}` : ""}`,
+      );
+    },
+    getMarketplacePreset: (id) =>
+      request<MarketplaceDetail>(`/marketplace/presets/${id}`),
+    applyMarketplacePreset: (id) =>
+      request<MarketplaceApply>(`/marketplace/presets/${id}/apply`, {
+        method: "POST",
+      }),
+    forkMarketplacePreset: (id) =>
+      request<Preset>(`/marketplace/presets/${id}/fork`, { method: "POST" }),
+    reportMarketplacePreset: (id, reason) =>
+      request<void>(`/marketplace/presets/${id}/report`, {
+        method: "POST",
+        body: JSON.stringify({ reason }),
+      }),
+
+    getProfile: () => request<Profile>("/auth/me/profile"),
+    updateProfile: (payload) =>
+      request<Profile>("/auth/me/profile", {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
+    listPublishedPresets: () => request<Preset[]>("/auth/me/published-presets"),
   };
 }

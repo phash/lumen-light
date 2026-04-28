@@ -1,9 +1,36 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import { ApiError, type Preset } from "../api/client";
+import {
+  ApiError,
+  type Image,
+  type Preset,
+  type PresetGenre,
+} from "../api/client";
 import { useApi } from "../api/use-api";
 import { masksToWire, wireToMasks } from "./maskSerializer";
 import { useEditorStore } from "./store";
+
+const GENRE_OPTIONS: ReadonlyArray<{ value: PresetGenre; label: string }> = [
+  { value: "portrait", label: "Portrait" },
+  { value: "landscape", label: "Landschaft" },
+  { value: "city", label: "Stadt" },
+  { value: "nature", label: "Natur" },
+  { value: "animals", label: "Tiere" },
+  { value: "sports", label: "Sport" },
+  { value: "blackandwhite", label: "Schwarzweiß" },
+  { value: "other", label: "Sonstiges" },
+];
+
+interface PublishState {
+  enabled: boolean;
+  genre: PresetGenre | "";
+  description: string;
+  previewImageId: string;
+}
+
+function emptyPublishState(): PublishState {
+  return { enabled: false, genre: "", description: "", previewImageId: "" };
+}
 
 interface Props {
   readonly open: boolean;
@@ -24,6 +51,8 @@ export default function PresetDialog({
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const [publish, setPublish] = useState<PublishState>(emptyPublishState());
+  const [images, setImages] = useState<Image[]>([]);
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const masks = useEditorStore((s) => s.masks);
@@ -63,6 +92,25 @@ export default function PresetDialog({
     void refresh();
   }, [open, refresh]);
 
+  // Bilder lazy laden — erst wenn der User Veroeffentlichen aktiviert,
+  // damit der Listing-Endpoint nicht jedes Mal beim Open getroffen wird.
+  useEffect(() => {
+    if (!publish.enabled) return;
+    if (images.length > 0) return;
+    let cancelled = false;
+    void api
+      .listImages("ready")
+      .then((list) => {
+        if (!cancelled && mountedRef.current) setImages(list);
+      })
+      .catch(() => {
+        /* Liste leer lassen — Picker zeigt dann „keine Bilder". */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, publish.enabled, images.length]);
+
   const onLoad = (p: Preset) => {
     setError(null);
     applyAdjustments(p.adjustments);
@@ -87,10 +135,24 @@ export default function PresetDialog({
     }
   };
 
+  const validatePublish = (): string | null => {
+    if (!publish.enabled) return null;
+    if (publish.genre === "") return "Genre auswaehlen.";
+    if (publish.description.trim().length < 10) return "Beschreibung mind. 10 Zeichen.";
+    if (publish.description.length > 500) return "Beschreibung max. 500 Zeichen.";
+    if (publish.previewImageId === "") return "Vorschaubild auswaehlen.";
+    return null;
+  };
+
   const onSave = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
       setError("Name darf nicht leer sein.");
+      return;
+    }
+    const publishError = validatePublish();
+    if (publishError) {
+      setError(publishError);
       return;
     }
     setError(null);
@@ -100,10 +162,19 @@ export default function PresetDialog({
         name: trimmed,
         adjustments,
         masks: masksToWire(masks),
+        ...(publish.enabled
+          ? {
+              visibility: "public" as const,
+              genre: publish.genre as PresetGenre,
+              description: publish.description.trim(),
+              preview_image_id: publish.previewImageId,
+            }
+          : {}),
       });
       if (!mountedRef.current) return;
       onLoadedPresetIdChange(created.id);
       setName("");
+      setPublish(emptyPublishState());
       await refresh();
     } catch (err) {
       if (!mountedRef.current) return;
@@ -241,6 +312,72 @@ export default function PresetDialog({
             >
               {`„${loadedPreset.name}“ überschreiben`}
             </button>
+          )}
+
+          <label className="flex items-center gap-2 text-xs text-stone-300 cursor-pointer">
+            <input
+              type="checkbox"
+              data-testid="preset-publish-toggle"
+              checked={publish.enabled}
+              onChange={(e) =>
+                setPublish((s) => ({ ...s, enabled: e.target.checked }))
+              }
+            />
+            Im Marketplace veröffentlichen
+          </label>
+
+          {publish.enabled && (
+            <div className="space-y-2 border border-stone-800 px-3 py-2 bg-stone-950/50">
+              <select
+                value={publish.genre}
+                onChange={(e) =>
+                  setPublish((s) => ({
+                    ...s,
+                    genre: e.target.value as PresetGenre | "",
+                  }))
+                }
+                data-testid="preset-publish-genre"
+                className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
+              >
+                <option value="">Genre wählen…</option>
+                {GENRE_OPTIONS.map((g) => (
+                  <option key={g.value} value={g.value}>
+                    {g.label}
+                  </option>
+                ))}
+              </select>
+              <textarea
+                value={publish.description}
+                onChange={(e) =>
+                  setPublish((s) => ({ ...s, description: e.target.value }))
+                }
+                placeholder="Beschreibung (10–500 Zeichen)"
+                rows={3}
+                maxLength={500}
+                data-testid="preset-publish-description"
+                className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
+              />
+              <select
+                value={publish.previewImageId}
+                onChange={(e) =>
+                  setPublish((s) => ({ ...s, previewImageId: e.target.value }))
+                }
+                data-testid="preset-publish-preview"
+                className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
+                disabled={images.length === 0}
+              >
+                <option value="">
+                  {images.length === 0
+                    ? "Erst ein Bild in der Bibliothek hochladen"
+                    : "Vorschaubild wählen…"}
+                </option>
+                {images.map((img) => (
+                  <option key={img.id} value={img.id}>
+                    {img.original_filename}
+                  </option>
+                ))}
+              </select>
+            </div>
           )}
 
           <div className="flex gap-2">

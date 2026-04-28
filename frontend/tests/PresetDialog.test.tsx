@@ -37,6 +37,14 @@ function makeFakeApi(presets: Preset[] = []): FakeApi {
     confirmUpload: vi.fn(),
     getImageUrl: vi.fn(),
     deleteImage: vi.fn(),
+    listMarketplacePresets: vi.fn(),
+    getMarketplacePreset: vi.fn(),
+    applyMarketplacePreset: vi.fn(),
+    forkMarketplacePreset: vi.fn(),
+    reportMarketplacePreset: vi.fn(),
+    getProfile: vi.fn(),
+    updateProfile: vi.fn(),
+    listPublishedPresets: vi.fn(),
   };
 }
 
@@ -51,6 +59,13 @@ function makePreset(overrides: Partial<Preset> = {}): Preset {
     name: "Mein Look",
     adjustments: ZERO_ADJ,
     masks: [],
+    visibility: "private",
+    genre: null,
+    description: null,
+    preview_image_id: null,
+    published_at: null,
+    apply_count: 0,
+    report_count: 0,
     created_at: "x",
     updated_at: "x",
     ...overrides,
