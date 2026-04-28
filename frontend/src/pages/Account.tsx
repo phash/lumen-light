@@ -8,6 +8,10 @@ import {
   type Preset,
   type User,
 } from "../api/client";
+import {
+  isFaceDetectionConsented,
+  setFaceDetectionConsent,
+} from "../editor/consent";
 
 export default function Account() {
   const api = useApi();
@@ -21,6 +25,9 @@ export default function Account() {
   );
   const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
   const [published, setPublished] = useState<Preset[]>([]);
+  const [faceConsent, setFaceConsent] = useState<boolean>(() =>
+    isFaceDetectionConsented(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -155,6 +162,36 @@ export default function Account() {
       )}
 
       <div className="mt-8 space-y-8">
+        <section data-testid="account-smart-suggestion">
+          <h2 className="text-stone-300 italic">Smart-Preset-Vorschlag</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            Beim Laden eines Bildes versucht Lumen, ein passendes Preset-
+            Genre vorzuschlagen (Portrait, Landschaft, Sport…). Fuer die
+            Portrait-Erkennung wird einmalig pro Browser-Profil ein
+            Modell von Google&apos;s TensorFlow-CDN geladen — dabei werden
+            deine IP-Adresse und User-Agent an Google in den USA
+            uebermittelt. Die eigentliche Erkennung laeuft danach lokal
+            in deinem Browser; Bilder verlassen deinen Rechner nicht.
+            <span className="block mt-2 text-stone-400">
+              Default ist deaktiviert. Mit dem Toggle gibst du
+              ausdrueckliche Einwilligung im Sinne von Art. 49 Abs. 1
+              lit. a DSGVO.
+            </span>
+          </p>
+          <label className="mt-3 flex items-center gap-2 text-sm text-stone-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={faceConsent}
+              onChange={(e) => {
+                setFaceConsent(e.target.checked);
+                setFaceDetectionConsent(e.target.checked);
+              }}
+              data-testid="account-face-consent"
+            />
+            Smart-Preset mit Gesichtserkennung aktivieren
+          </label>
+        </section>
+
         <section data-testid="account-profile">
           <h2 className="text-stone-300 italic">Profil</h2>
           <p className="mt-1 text-sm text-stone-500">

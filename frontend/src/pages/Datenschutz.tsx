@@ -78,27 +78,63 @@ export default function Datenschutz() {
       <h2 className="mt-8 text-xl text-stone-200 italic">4. Speicherort und Empfaenger</h2>
       <p className="mt-3">
         Postgres-Datenbank, Garage-S3-Bucket und Keycloak-Realm liegen auf
-        einem deutschen IONOS-VPS. Es findet kein Drittlandtransfer statt.
-        Auftragsverarbeiter: IONOS SE als Hoster. Keine Analytics-/
-        Tracking-/CDN-Dienste.
+        einem deutschen IONOS-VPS. Auftragsverarbeiter: IONOS SE als Hoster.
+        Bilder selbst werden ausschliesslich auf diesem VPS gespeichert.
+      </p>
+      <p className="mt-3">
+        <span className="text-stone-200">Drittlandtransfer:</span> Wenn du
+        die optionale Smart-Preset-Erkennung aktivierst (Account › Smart
+        Suggestion, deaktiviert per default), laedt dein Browser einmalig
+        ein Modell von Google&apos;s TensorFlow-CDN
+        (<code className="text-stone-400">storage.googleapis.com</code>,
+        USA). Dabei wird deine IP-Adresse + User-Agent an Google
+        uebermittelt — Drittlandtransfer im Sinne von Art. 44 DSGVO.
+        Rechtsgrundlage: Art. 6 Abs. 1 lit. a + Art. 49 Abs. 1 lit. a
+        (ausdrueckliche Einwilligung). Die eigentliche Bilderkennung
+        laeuft danach lokal in deinem Browser; deine Bilder verlassen
+        deinen Rechner nicht. Zurueckziehen jederzeit ueber den Toggle.
+      </p>
+      <p className="mt-3">
+        Keine sonstigen Analytics-/Tracking-/CDN-Dienste.
+      </p>
+
+      <h2 className="mt-8 text-xl text-stone-200 italic">4a. Marketplace-Sichtbarkeit</h2>
+      <p className="mt-3">
+        Wenn du ein Preset im Marketplace veroeffentlichst, sind das
+        gewaehlte Vorschaubild, der Preset-Name, die Beschreibung,
+        Genre und dein Handle (falls gesetzt) fuer alle anderen
+        eingeloggten Lumen-Nutzer sichtbar. Email-Adresse bleibt immer
+        privat. Veroeffentlichung ist Default deaktiviert und erfolgt
+        nur durch dein aktives Setzen des Toggles. Du kannst jedes
+        Preset jederzeit auf privat zuruecksetzen
+        (<span className="text-amber-200">Account › Meine veroeffentlichten Presets › Zurueckziehen</span>).
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">5. Speicherdauer</h2>
       <p className="mt-3">
         Account- und Bilddaten bleiben erhalten, bis du sie selbst
-        loeschst. Du kannst alle Daten ueber{" "}
+        loeschst. Du kannst alle App-Daten ueber{" "}
         <span className="text-amber-200">Account › Account-Daten loeschen</span>{" "}
-        unwiderruflich entfernen lassen — das umfasst auch alle
-        veroeffentlichten Marketplace-Presets, sodass diese danach fuer
-        andere Nutzer nicht mehr sichtbar sind. Server-Logs werden
-        durch die Rotation automatisch nach wenigen Wochen
+        unwiderruflich entfernen lassen — das umfasst Bilder, Presets
+        (auch veroeffentlichte) und dein Profil. Marketplace-Meldungen,
+        die du abgegeben hast, werden bei Account-Loeschung
+        anonymisiert (reporter_user_id auf NULL gesetzt), damit die
+        Moderationsspur fuer den gemeldeten Creator erhalten bleibt;
+        deine Identitaet ist danach nicht mehr verknuepft. Server-Logs
+        werden durch die Rotation automatisch nach wenigen Wochen
         ueberschrieben.
+      </p>
+      <p className="mt-3 text-sm text-stone-400">
+        Hinweis: Der separate Keycloak-Account (Login-Daten) wird nicht
+        automatisch mit-geloescht. Du kannst ihn ueber das Keycloak-
+        Self-Service-UI deines Realms separat schliessen, oder den
+        Selfhost-Betreiber bitten, ihn zu entfernen.
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">6. Deine Rechte</h2>
       <ul className="mt-3 list-disc pl-6 space-y-1">
         <li>Auskunft (Art. 15) — siehe „Daten exportieren“ auf Account-Seite.</li>
-        <li>Berichtigung (Art. 16) — E-Mail im Keycloak-Account-UI aenderbar.</li>
+        <li>Berichtigung (Art. 16) — E-Mail im Keycloak-Account-UI aenderbar; Handle und Bio auf der Account-Seite.</li>
         <li>Loeschung (Art. 17) — Button auf der Account-Seite.</li>
         <li>Datenuebertragbarkeit (Art. 20) — JSON-Export auf der Account-Seite.</li>
         <li>Beschwerderecht bei der zustaendigen Aufsichtsbehoerde.</li>

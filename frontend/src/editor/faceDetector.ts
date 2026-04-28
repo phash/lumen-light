@@ -6,10 +6,15 @@
  * den Initial-Bundle klein; Modell-Weights kommen vom CDN beim
  * naechsten Aufruf.
  *
+ * DSGVO: `detectFacesSafe` prueft den Consent-Toggle aus
+ * `consent.ts` — ohne Einwilligung kein CDN-Fetch (Drittlandtransfer
+ * an Google US) und keine Detection.
+ *
  * Tests umgehen die Lazy-Loading-Maschinerie ueber `setFaceDetector`
  * — eine Stub-Implementation mit deterministischen Detection-Daten
  * laesst sich so direkt einspeisen.
  */
+import { isFaceDetectionConsented } from "./consent";
 
 export interface DetectedFace {
   /** Bounding-Box in Pixeln des untersuchten Bildes. */
@@ -89,10 +94,13 @@ export async function getFaceDetector(): Promise<FaceDetector> {
   return loading;
 }
 
-/** Best-Effort Detection: liefert leere Liste bei jedem Fehler. */
+/** Best-Effort Detection: liefert leere Liste bei jedem Fehler.
+ *  Beachtet den Consent-Toggle — ohne Einwilligung kein CDN-Fetch
+ *  und keine Detection. */
 export async function detectFacesSafe(
   canvas: HTMLCanvasElement,
 ): Promise<DetectedFace[]> {
+  if (!isFaceDetectionConsented()) return [];
   try {
     const detector = await getFaceDetector();
     return await detector.detect(canvas);

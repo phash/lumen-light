@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { setFaceDetectionConsent } from "../src/editor/consent";
 import {
   detectFacesSafe,
   setFaceDetector,
@@ -18,8 +19,14 @@ function makeStubDetector(faces = 0): FaceDetector {
   };
 }
 
+beforeEach(() => {
+  // Tests setzen Consent explizit — ohne den feuert detectFacesSafe nichts.
+  setFaceDetectionConsent(true);
+});
+
 afterEach(() => {
   setFaceDetector(null);
+  setFaceDetectionConsent(false);
 });
 
 describe("faceDetector", () => {
@@ -49,5 +56,14 @@ describe("faceDetector", () => {
     const faces = await detectFacesSafe({} as HTMLCanvasElement);
     expect(Array.isArray(faces)).toBe(true);
     expect(faces).toHaveLength(0);
+  });
+
+  it("ohne Consent feuert detectFacesSafe gar nicht den Detector", async () => {
+    setFaceDetectionConsent(false);
+    const detectMock = vi.fn().mockResolvedValue([]);
+    setFaceDetector({ detect: detectMock, dispose: vi.fn() });
+    const faces = await detectFacesSafe({} as HTMLCanvasElement);
+    expect(faces).toEqual([]);
+    expect(detectMock).not.toHaveBeenCalled();
   });
 });
