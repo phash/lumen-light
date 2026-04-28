@@ -25,6 +25,7 @@ import {
   type MaskInstance,
   type RadialMaskInstance,
 } from "../editor/mask";
+import CollapsibleSection from "../editor/CollapsibleSection";
 import PresetDialog from "../editor/PresetDialog";
 import RadialMaskOverlay from "../editor/RadialMaskOverlay";
 import ShortcutCheatsheet from "../editor/ShortcutCheatsheet";
@@ -865,11 +866,12 @@ export default function Editor() {
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
-          <div className="mb-5" data-testid="geometry-section">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-stone-300 italic">Geometrie</span>
-              <div className="flex-1 h-px bg-stone-800" />
-            </div>
+          <CollapsibleSection
+            id="geometry"
+            title="Geometrie"
+            defaultOpen={false}
+            testId="geometry-section"
+          >
             <label className="block py-1.5">
               <span className="text-[11px] uppercase tracking-wider text-stone-400">
                 Aspect-Ratio
@@ -911,7 +913,7 @@ export default function Editor() {
             >
               Geometrie zurücksetzen
             </button>
-          </div>
+          </CollapsibleSection>
 
           {masks.length > 0 && (
             <div className="mb-5" data-testid="mask-list">
@@ -1094,11 +1096,12 @@ export default function Editor() {
             </div>
           )}
 
-          <div className="mb-5" data-testid="lens-section">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="text-stone-300 italic">Objektiv</span>
-              <div className="flex-1 h-px bg-stone-800" />
-            </div>
+          <CollapsibleSection
+            id="lens"
+            title="Objektiv"
+            defaultOpen={false}
+            testId="lens-section"
+          >
             <div
               className="text-[10px] uppercase tracking-[0.18em] text-stone-500 mb-2"
               data-testid="lens-profile-status"
@@ -1145,7 +1148,7 @@ export default function Editor() {
                 className="mt-1 w-full"
               />
             </label>
-          </div>
+          </CollapsibleSection>
 
           {Array.from(groups.entries()).map(([group, items]) => (
             <div key={group} className="mb-5">

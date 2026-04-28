@@ -54,6 +54,10 @@ test.describe("Editor", () => {
       await expect(page.getByTestId("crop-overlay")).toBeVisible();
       await expect(page.getByTestId("crop-handle-nw")).toBeVisible();
 
+      // Geometrie-Section ist standardmaessig collapsed — fuer Aspect/Reset
+      // muss sie aufgeklappt werden.
+      await page.getByTestId("geometry-section-toggle").click();
+
       // Aspect-Ratio aendern
       await page.getByTestId("aspect-select").selectOption("1:1");
 
@@ -96,6 +100,11 @@ test.describe("Editor", () => {
       await page.goto("/editor");
       await page.setInputFiles('[data-testid="editor-file-input"]', JPG_PATH);
       await expect(page.getByTestId("editor-bypass")).toBeVisible({ timeout: 5_000 });
+
+      // Objektiv-Section ist standardmaessig collapsed — Toggle aufklappen.
+      await page.getByTestId("lens-section-toggle").click();
+      // Geometrie auch — fuer den Reset-Button am Ende.
+      await page.getByTestId("geometry-section-toggle").click();
 
       const distSlider = page.getByTestId("lens-distortion-slider");
       const vigSlider = page.getByTestId("lens-vignette-slider");
