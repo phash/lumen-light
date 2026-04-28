@@ -1,7 +1,7 @@
 """Tests fuer die JWT-Verifikation gegen Keycloak (siehe ADR-010)."""
 import time
 
-from jose import jwt
+import jwt
 
 
 async def test_endpoint_without_token_returns_401(client):

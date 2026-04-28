@@ -9,9 +9,11 @@ import time
 from typing import Any
 
 import httpx
+import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
-from jose import JWTError, jwt
+from jwt.algorithms import RSAAlgorithm
+from jwt.exceptions import InvalidTokenError, PyJWTError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -167,26 +169,33 @@ _jwk_cache = _JwkCache()
 def _decode_token(token: str) -> dict[str, Any]:
     try:
         header = jwt.get_unverified_header(token)
-    except JWTError as exc:
+    except PyJWTError as exc:
         raise HTTPException(status_code=401, detail="Token-Header unlesbar.") from exc
 
     kid = header.get("kid")
     if not kid:
         raise HTTPException(status_code=401, detail="Token ohne kid-Header.")
 
-    key = _jwk_cache.get(kid)
+    jwk = _jwk_cache.get(kid)
+    # JWK-Dict in einen RSA-Public-Key fuer pyjwt umwandeln. RSAAlgorithm.
+    # from_jwk akzeptiert dict oder JSON-String — wir nutzen den dict-Pfad.
+    try:
+        public_key = RSAAlgorithm.from_jwk(jwk)
+    except (PyJWTError, ValueError) as exc:
+        raise HTTPException(status_code=401, detail="JWK ungueltig.") from exc
+
     # Whitelist statt Header-Wert: verhindert "alg confusion" (Token mit
     # alg=HS256, das die Bibliothek mit dem RSA-Public-Key als HMAC-Secret
     # verifizieren wuerde). Keycloak signiert ausschliesslich RS256.
     try:
         return jwt.decode(
             token,
-            key,
+            public_key,
             algorithms=["RS256"],
             audience=settings.keycloak_audience,
             issuer=settings.keycloak_issuer,
         )
-    except JWTError as exc:
+    except InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail=f"Token ungueltig: {exc}") from exc
 
 
