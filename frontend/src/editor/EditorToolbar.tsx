@@ -1,14 +1,14 @@
+import { Link } from "react-router-dom";
+
 /**
  * Editor-Toolbar: drei Button-Gruppen am unteren Bildrand.
  *
  *   Gruppe 1: View-Aktionen (Bypass, Crop, Auto-Tone, Auto-WB,
  *             Compare, WB-Picker, Reset-View, Undo/Redo)
  *   Gruppe 2: Mask-Aktionen (+Verlauf, +Radial)
- *   Gruppe 3: Hilfe/Presets/Export
+ *   Gruppe 3: Hilfe/Presets/Marketplace/Export
  *
  * Stateless: alle Werte und Callbacks kommen vom Editor (Parent).
- * Reine UI-Aufteilung — keine Verhaltens-Aenderung gegenueber dem
- * inline-rendering vorher in Editor.tsx.
  */
 
 interface Props {
@@ -225,6 +225,14 @@ export default function EditorToolbar({
         >
           Presets
         </button>
+        <Link
+          to="/marketplace"
+          data-testid="editor-marketplace-link"
+          className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
+          title="Community-Presets durchstoebern"
+        >
+          Marketplace
+        </Link>
         <button
           type="button"
           data-testid="editor-export"
