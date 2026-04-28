@@ -349,3 +349,13 @@ async def user_b(make_keycloak_user, client) -> dict:
     assert r.status_code == 200, r.text
     info["user"] = r.json()
     return info
+
+
+@pytest.fixture
+async def user_c(make_keycloak_user, client) -> dict:
+    """Dritter Test-User — nuetzlich fuer Marketplace-Auto-Hide-Test (3 Reports)."""
+    info = make_keycloak_user(f"clara-{secrets.token_hex(4)}@example.com")
+    r = await client.get("/api/v1/auth/me", headers=info["headers"])
+    assert r.status_code == 200, r.text
+    info["user"] = r.json()
+    return info

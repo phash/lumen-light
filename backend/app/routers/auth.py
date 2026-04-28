@@ -6,15 +6,16 @@ DELETE/Export sind DSGVO Art. 17 + 20.
 from datetime import datetime
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, EmailStr
-from sqlalchemy import select
+from sqlalchemy import desc, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
 from app.database import get_db
 from app.models import Image, Preset, User
-from app.schemas import UserOut
+from app.schemas import PresetOut, ProfileIn, ProfileOut, UserOut
 from app.storage import StorageService, get_storage
 
 
@@ -24,6 +25,43 @@ router = APIRouter()
 @router.get("/me", response_model=UserOut)
 async def me(user: User = Depends(current_user)) -> UserOut:
     return UserOut.model_validate(user)
+
+
+@router.get("/me/profile", response_model=ProfileOut)
+async def get_profile(user: User = Depends(current_user)) -> ProfileOut:
+    return ProfileOut.model_validate(user)
+
+
+@router.patch("/me/profile", response_model=ProfileOut)
+async def update_profile(
+    payload: ProfileIn,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> ProfileOut:
+    user.handle = payload.handle
+    user.bio = payload.bio
+    try:
+        await db.commit()
+    except IntegrityError:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Handle bereits vergeben.")
+    await db.refresh(user)
+    return ProfileOut.model_validate(user)
+
+
+@router.get("/me/published-presets", response_model=list[PresetOut])
+async def list_published_presets(
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> list[PresetOut]:
+    rows = (
+        await db.execute(
+            select(Preset)
+            .where(Preset.user_id == user.id, Preset.visibility == "public")
+            .order_by(desc(Preset.published_at))
+        )
+    ).scalars().all()
+    return [PresetOut.model_validate(p) for p in rows]
 
 
 # ----- DSGVO Art. 17 (Loeschung) -----

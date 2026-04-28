@@ -9,7 +9,7 @@ from slowapi.errors import RateLimitExceeded
 from app.config import settings
 from app.database import engine
 from app.rate_limit import limiter
-from app.routers import auth, images, presets
+from app.routers import auth, images, marketplace, presets
 
 
 @asynccontextmanager
@@ -38,6 +38,9 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(presets.router, prefix="/api/v1/presets", tags=["presets"])
 app.include_router(images.router, prefix="/api/v1/images", tags=["images"])
+app.include_router(
+    marketplace.router, prefix="/api/v1/marketplace", tags=["marketplace"]
+)
 
 
 @app.get("/api/v1/health", tags=["meta"])

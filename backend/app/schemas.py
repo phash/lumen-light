@@ -155,11 +155,28 @@ MaskData = Annotated[
 
 # ----- Preset -----
 
+PresetVisibility = Literal["private", "public"]
+PresetGenre = Literal[
+    "portrait",
+    "landscape",
+    "city",
+    "nature",
+    "animals",
+    "sports",
+    "blackandwhite",
+    "other",
+]
+
+
 class PresetIn(BaseModel):
     model_config = ConfigDict(extra="forbid")
     name: str = Field(min_length=1, max_length=80)
     adjustments: Adjustments
     masks: list[MaskData] = Field(default_factory=list)
+    visibility: PresetVisibility = "private"
+    genre: PresetGenre | None = None
+    description: str | None = Field(default=None, max_length=500)
+    preview_image_id: UUID | None = None
 
     @model_validator(mode="after")
     def _check_mask_caps(self) -> Self:
@@ -175,14 +192,86 @@ class PresetIn(BaseModel):
             )
         return self
 
+    @model_validator(mode="after")
+    def _check_public_required_fields(self) -> Self:
+        if self.visibility == "public":
+            missing = []
+            if self.genre is None:
+                missing.append("genre")
+            if self.description is None or len(self.description.strip()) < 10:
+                missing.append("description (>=10 Zeichen)")
+            if self.preview_image_id is None:
+                missing.append("preview_image_id")
+            if missing:
+                raise ValueError(
+                    "Public Preset benoetigt: " + ", ".join(missing)
+                )
+        return self
+
 
 class PresetOut(BaseModel):
     id: UUID
     name: str
     adjustments: Adjustments
     masks: list[MaskData] = Field(default_factory=list)
+    visibility: PresetVisibility
+    genre: PresetGenre | None
+    description: str | None
+    preview_image_id: UUID | None
+    published_at: datetime | None
+    apply_count: int
+    report_count: int
     created_at: datetime
     updated_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+# ----- Marketplace -----
+
+class MarketplaceListItem(BaseModel):
+    id: UUID
+    name: str
+    genre: PresetGenre | None
+    description: str | None
+    creator_handle: str | None
+    apply_count: int
+    published_at: datetime
+    preview_url: str | None
+    model_config = ConfigDict(from_attributes=False)
+
+
+class MarketplaceListOut(BaseModel):
+    items: list[MarketplaceListItem]
+    next_cursor: str | None = None
+
+
+class MarketplaceDetailOut(MarketplaceListItem):
+    creator_bio: str | None
+    # Adjustments und Masken werden NICHT im Detail mitgeschickt — kommen
+    # erst ueber den Apply-Endpoint, damit der Apply-Counter sauber
+    # inkrementiert (kein „lese-mit-und-wende-an"-Skip).
+
+
+class MarketplaceApplyOut(BaseModel):
+    adjustments: Adjustments
+    masks: list[MaskData] = Field(default_factory=list)
+
+
+class PresetReportIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    reason: str = Field(min_length=1, max_length=500)
+
+
+class ProfileIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    handle: str | None = Field(default=None, min_length=3, max_length=40, pattern=r"^[a-z0-9-]+$")
+    bio: str | None = Field(default=None, max_length=280)
+
+
+class ProfileOut(BaseModel):
+    id: UUID
+    handle: str | None
+    bio: str | None
     model_config = ConfigDict(from_attributes=True)
 
 

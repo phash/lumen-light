@@ -1,4 +1,5 @@
 """Presets-CRUD-Endpoints."""
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
@@ -8,9 +9,30 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
 from app.database import get_db
-from app.models import Preset, User
+from app.models import Image, Preset, User
 from app.rate_limit import limiter
 from app.schemas import PresetIn, PresetOut
+
+
+async def _validate_preview_image(
+    db: AsyncSession,
+    user: User,
+    preview_image_id: UUID | None,
+) -> None:
+    if preview_image_id is None:
+        return
+    img = (
+        await db.execute(
+            select(Image).where(
+                Image.id == preview_image_id, Image.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if img is None:
+        raise HTTPException(
+            status_code=400,
+            detail="preview_image_id muss zu einem eigenen Bild gehoeren.",
+        )
 
 
 router = APIRouter()
@@ -49,11 +71,20 @@ async def create_preset(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PresetOut:
+    await _validate_preview_image(db, user, payload.preview_image_id)
+    published_at: datetime | None = (
+        datetime.now(timezone.utc) if payload.visibility == "public" else None
+    )
     p = Preset(
         user_id=user.id,
         name=payload.name,
         adjustments=payload.adjustments.model_dump(),
         masks=[m.model_dump() for m in payload.masks],
+        visibility=payload.visibility,
+        genre=payload.genre,
+        description=payload.description,
+        preview_image_id=payload.preview_image_id,
+        published_at=published_at,
     )
     db.add(p)
     try:
@@ -80,9 +111,23 @@ async def update_preset(
     p = result.scalar_one_or_none()
     if p is None:
         raise HTTPException(status_code=404, detail="Preset nicht gefunden.")
+    await _validate_preview_image(db, user, payload.preview_image_id)
     p.name = payload.name
     p.adjustments = payload.adjustments.model_dump()
     p.masks = [m.model_dump() for m in payload.masks]
+    # published_at: null -> NOW beim erstmaligen Veroeffentlichen,
+    # sonst beibehalten. Bei privat: zuruecksetzen, damit Public-Listen
+    # konsistent bleiben.
+    was_public = p.visibility == "public"
+    p.visibility = payload.visibility
+    p.genre = payload.genre
+    p.description = payload.description
+    p.preview_image_id = payload.preview_image_id
+    if payload.visibility == "public":
+        if not was_public or p.published_at is None:
+            p.published_at = datetime.now(timezone.utc)
+    else:
+        p.published_at = None
     try:
         await db.commit()
     except IntegrityError:
