@@ -18,6 +18,12 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
+# Non-root-User fuer Defense-in-Depth — bei einer RCE im Worker hat der
+# Angreifer kein root im Container.
+RUN groupadd --system app && useradd --system --gid app --no-create-home app \
+    && chown -R app:app /app
+USER app
+
 EXPOSE 4100
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD curl -fsS http://localhost:4100/api/v1/health || exit 1

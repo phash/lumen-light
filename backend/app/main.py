@@ -1,10 +1,14 @@
 """FastAPI-Anwendung — Einstiegspunkt."""
 from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from slowapi import _rate_limit_exceeded_handler
+from slowapi.errors import RateLimitExceeded
 
 from app.config import settings
 from app.database import engine
+from app.rate_limit import limiter
 from app.routers import auth, images, presets
 
 
@@ -20,6 +24,8 @@ app = FastAPI(
     description="Backend für den browser-basierten RAW-Entwickler.",
     lifespan=lifespan,
 )
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 app.add_middleware(
     CORSMiddleware,

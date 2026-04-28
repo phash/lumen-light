@@ -2,7 +2,7 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -10,6 +10,7 @@ from app.auth import current_user
 from app.config import settings
 from app.database import get_db
 from app.models import Image, User
+from app.rate_limit import limiter
 from app.schemas import (
     ALLOWED_IMAGE_CONTENT_TYPES,
     ImageInitIn,
@@ -42,7 +43,9 @@ def _ensure_owns_key(image: Image, user: User) -> None:
 
 
 @router.post("", response_model=ImageInitOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("30/minute")
 async def init_upload(
+    request: Request,
     payload: ImageInitIn,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -80,7 +83,9 @@ async def init_upload(
 
 
 @router.post("/{image_id}/confirm", response_model=ImageOut)
+@limiter.limit("30/minute")
 async def confirm_upload(
+    request: Request,
     image_id: UUID,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -171,7 +176,9 @@ async def get_download_url(
 
 
 @router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
 async def delete_image(
+    request: Request,
     image_id: UUID,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),

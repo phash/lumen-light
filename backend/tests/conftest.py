@@ -14,12 +14,17 @@ session-scoped async-Fixtures und function-scoped async-Tests.
 """
 from __future__ import annotations
 
+import os
 import secrets
 import time
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
+
+# Rate-Limiter abschalten BEVOR app-Module geladen werden — limiter.enabled
+# wird zur Import-Zeit aus der Env gelesen (siehe app/rate_limit.py).
+os.environ.setdefault("LUMEN_RATELIMIT_DISABLED", "1")
 
 import pytest
 from keycloak import KeycloakAdmin, KeycloakOpenID

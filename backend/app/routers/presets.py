@@ -1,7 +1,7 @@
 """Presets-CRUD-Endpoints."""
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import current_user
 from app.database import get_db
 from app.models import Preset, User
+from app.rate_limit import limiter
 from app.schemas import PresetIn, PresetOut
 
 
@@ -41,7 +42,9 @@ async def list_presets(
 
 
 @router.post("", response_model=PresetOut, status_code=status.HTTP_201_CREATED)
+@limiter.limit("60/minute")
 async def create_preset(
+    request: Request,
     payload: PresetIn,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -63,7 +66,9 @@ async def create_preset(
 
 
 @router.put("/{preset_id}", response_model=PresetOut)
+@limiter.limit("60/minute")
 async def update_preset(
+    request: Request,
     preset_id: UUID,
     payload: PresetIn,
     user: User = Depends(current_user),
@@ -88,7 +93,9 @@ async def update_preset(
 
 
 @router.delete("/{preset_id}", status_code=status.HTTP_204_NO_CONTENT)
+@limiter.limit("60/minute")
 async def delete_preset(
+    request: Request,
     preset_id: UUID,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
