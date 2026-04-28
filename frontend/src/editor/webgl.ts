@@ -85,11 +85,9 @@ interface UniformMap {
   readonly adjustments: ReadonlyMap<string, WebGLUniformLocation>;
 }
 
-export interface LinearMaskParams {
-  readonly p1u: number;
-  readonly p1v: number;
-  readonly p2u: number;
-  readonly p2v: number;
+/** Lokale Anpassung + Feather — identisch zwischen Linear- und Radial-
+ *  Maske. */
+interface LocalAdj {
   readonly feather: number;
   readonly exposure: number;
   readonly contrast: number;
@@ -97,16 +95,18 @@ export interface LinearMaskParams {
   readonly temperature: number;
 }
 
-export interface RadialMaskParams {
+export interface LinearMaskParams extends LocalAdj {
+  readonly p1u: number;
+  readonly p1v: number;
+  readonly p2u: number;
+  readonly p2v: number;
+}
+
+export interface RadialMaskParams extends LocalAdj {
   readonly cu: number;
   readonly cv: number;
   readonly rx: number;
   readonly ry: number;
-  readonly feather: number;
-  readonly exposure: number;
-  readonly contrast: number;
-  readonly saturation: number;
-  readonly temperature: number;
 }
 
 export interface MasksUniforms {
@@ -115,6 +115,58 @@ export interface MasksUniforms {
 }
 
 const EMPTY_MASKS: MasksUniforms = { linear: [], radial: [] };
+
+/** Pre-allokierte Float32-Arrays fuer feather + 4 Local-Adj-Felder.
+ *  Wird zwischen Linear- und Radial-Pfad geteilt — beide haben dieselben
+ *  Local-Adj-Slots, nur die Geometrie unterscheidet sich. */
+class LocalAdjBuffers {
+  readonly feather: Float32Array;
+  readonly exposure: Float32Array;
+  readonly contrast: Float32Array;
+  readonly saturation: Float32Array;
+  readonly temperature: Float32Array;
+
+  constructor(capacity: number) {
+    this.feather = new Float32Array(capacity);
+    this.exposure = new Float32Array(capacity);
+    this.contrast = new Float32Array(capacity);
+    this.saturation = new Float32Array(capacity);
+    this.temperature = new Float32Array(capacity);
+  }
+
+  clear(): void {
+    this.feather.fill(0);
+    this.exposure.fill(0);
+    this.contrast.fill(0);
+    this.saturation.fill(0);
+    this.temperature.fill(0);
+  }
+
+  set(i: number, m: LocalAdj): void {
+    this.feather[i] = m.feather;
+    this.exposure[i] = m.exposure;
+    this.contrast[i] = m.contrast;
+    this.saturation[i] = m.saturation;
+    this.temperature[i] = m.temperature;
+  }
+
+  bind(
+    gl: WebGL2RenderingContext,
+    locs: {
+      feather: WebGLUniformLocation;
+      exposure: WebGLUniformLocation;
+      contrast: WebGLUniformLocation;
+      saturation: WebGLUniformLocation;
+      temperature: WebGLUniformLocation;
+    },
+  ): void {
+    gl.uniform1fv(locs.feather, this.feather);
+    gl.uniform1fv(locs.exposure, this.exposure);
+    gl.uniform1fv(locs.contrast, this.contrast);
+    gl.uniform1fv(locs.saturation, this.saturation);
+    gl.uniform1fv(locs.temperature, this.temperature);
+  }
+}
 
 const IDENTITY_UV_TRANSFORM = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
@@ -129,18 +181,10 @@ export class Renderer {
   // Pre-allocated typed arrays — vermeiden Allocation pro Frame.
   private readonly linP1 = new Float32Array(MAX_LINEAR_MASKS * 2);
   private readonly linP2 = new Float32Array(MAX_LINEAR_MASKS * 2);
-  private readonly linFeather = new Float32Array(MAX_LINEAR_MASKS);
-  private readonly linExposure = new Float32Array(MAX_LINEAR_MASKS);
-  private readonly linContrast = new Float32Array(MAX_LINEAR_MASKS);
-  private readonly linSaturation = new Float32Array(MAX_LINEAR_MASKS);
-  private readonly linTemperature = new Float32Array(MAX_LINEAR_MASKS);
+  private readonly linLocal = new LocalAdjBuffers(MAX_LINEAR_MASKS);
   private readonly radCenter = new Float32Array(MAX_RADIAL_MASKS * 2);
   private readonly radRadii = new Float32Array(MAX_RADIAL_MASKS * 2);
-  private readonly radFeather = new Float32Array(MAX_RADIAL_MASKS);
-  private readonly radExposure = new Float32Array(MAX_RADIAL_MASKS);
-  private readonly radContrast = new Float32Array(MAX_RADIAL_MASKS);
-  private readonly radSaturation = new Float32Array(MAX_RADIAL_MASKS);
-  private readonly radTemperature = new Float32Array(MAX_RADIAL_MASKS);
+  private readonly radLocal = new LocalAdjBuffers(MAX_RADIAL_MASKS);
   private readonly hslHueArr = new Float32Array(HSL_CHANNELS.length);
   private readonly hslSatArr = new Float32Array(HSL_CHANNELS.length);
   private readonly hslLumArr = new Float32Array(HSL_CHANNELS.length);
@@ -310,22 +354,14 @@ export class Renderer {
     const n = Math.min(linear.length, MAX_LINEAR_MASKS);
     this.linP1.fill(0);
     this.linP2.fill(0);
-    this.linFeather.fill(0);
-    this.linExposure.fill(0);
-    this.linContrast.fill(0);
-    this.linSaturation.fill(0);
-    this.linTemperature.fill(0);
+    this.linLocal.clear();
     for (let i = 0; i < n; i++) {
       const m = linear[i]!;
       this.linP1[2 * i] = m.p1u;
       this.linP1[2 * i + 1] = m.p1v;
       this.linP2[2 * i] = m.p2u;
       this.linP2[2 * i + 1] = m.p2v;
-      this.linFeather[i] = m.feather;
-      this.linExposure[i] = m.exposure;
-      this.linContrast[i] = m.contrast;
-      this.linSaturation[i] = m.saturation;
-      this.linTemperature[i] = m.temperature;
+      this.linLocal.set(i, m);
     }
     return n;
   }
@@ -348,22 +384,14 @@ export class Renderer {
     const n = Math.min(radial.length, MAX_RADIAL_MASKS);
     this.radCenter.fill(0);
     this.radRadii.fill(0);
-    this.radFeather.fill(0);
-    this.radExposure.fill(0);
-    this.radContrast.fill(0);
-    this.radSaturation.fill(0);
-    this.radTemperature.fill(0);
+    this.radLocal.clear();
     for (let i = 0; i < n; i++) {
       const m = radial[i]!;
       this.radCenter[2 * i] = m.cu;
       this.radCenter[2 * i + 1] = m.cv;
       this.radRadii[2 * i] = m.rx;
       this.radRadii[2 * i + 1] = m.ry;
-      this.radFeather[i] = m.feather;
-      this.radExposure[i] = m.exposure;
-      this.radContrast[i] = m.contrast;
-      this.radSaturation[i] = m.saturation;
-      this.radTemperature[i] = m.temperature;
+      this.radLocal.set(i, m);
     }
     return n;
   }
@@ -391,21 +419,25 @@ export class Renderer {
     gl.uniform1i(this.uniforms.numLinearMasks, numLin);
     gl.uniform2fv(this.uniforms.linMaskP1, this.linP1);
     gl.uniform2fv(this.uniforms.linMaskP2, this.linP2);
-    gl.uniform1fv(this.uniforms.linMaskFeather, this.linFeather);
-    gl.uniform1fv(this.uniforms.linLocalExposure, this.linExposure);
-    gl.uniform1fv(this.uniforms.linLocalContrast, this.linContrast);
-    gl.uniform1fv(this.uniforms.linLocalSaturation, this.linSaturation);
-    gl.uniform1fv(this.uniforms.linLocalTemperature, this.linTemperature);
+    this.linLocal.bind(gl, {
+      feather: this.uniforms.linMaskFeather,
+      exposure: this.uniforms.linLocalExposure,
+      contrast: this.uniforms.linLocalContrast,
+      saturation: this.uniforms.linLocalSaturation,
+      temperature: this.uniforms.linLocalTemperature,
+    });
 
     const numRad = this.packRadialMasks(masks.radial);
     gl.uniform1i(this.uniforms.numRadialMasks, numRad);
     gl.uniform2fv(this.uniforms.radMaskCenter, this.radCenter);
     gl.uniform2fv(this.uniforms.radMaskRadii, this.radRadii);
-    gl.uniform1fv(this.uniforms.radMaskFeather, this.radFeather);
-    gl.uniform1fv(this.uniforms.radLocalExposure, this.radExposure);
-    gl.uniform1fv(this.uniforms.radLocalContrast, this.radContrast);
-    gl.uniform1fv(this.uniforms.radLocalSaturation, this.radSaturation);
-    gl.uniform1fv(this.uniforms.radLocalTemperature, this.radTemperature);
+    this.radLocal.bind(gl, {
+      feather: this.uniforms.radMaskFeather,
+      exposure: this.uniforms.radLocalExposure,
+      contrast: this.uniforms.radLocalContrast,
+      saturation: this.uniforms.radLocalSaturation,
+      temperature: this.uniforms.radLocalTemperature,
+    });
 
     this.packHsl(adjustments);
     gl.uniform1fv(this.uniforms.hslHue, this.hslHueArr);
