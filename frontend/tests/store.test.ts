@@ -127,6 +127,49 @@ describe("useEditorStore", () => {
     expect(useEditorStore.getState().adjustments.hsl).toBeNull();
   });
 
+  it("setToneCurvePoint baut Kurve aus null und ueberschreibt y des Endpunkts", () => {
+    expect(useEditorStore.getState().adjustments.toneCurve).toBeNull();
+    useEditorStore.getState().setToneCurvePoint(1, 0.5, 0.7);
+    const c = useEditorStore.getState().adjustments.toneCurve;
+    expect(c).not.toBeNull();
+    // Endpunkt-x muss auf 1 fixiert bleiben.
+    expect(c!.points[1]!.x).toBe(1);
+    expect(c!.points[1]!.y).toBe(0.7);
+  });
+
+  it("setToneCurvePoint clampt innere Punkte zwischen Nachbarn", () => {
+    useEditorStore.getState().addToneCurvePoint(0.4, 0.4);
+    useEditorStore.getState().setToneCurvePoint(1, 1.5, 0.5);
+    const c = useEditorStore.getState().adjustments.toneCurve!;
+    // x wurde auf < 1 (max wegen Endpunkt) geklemmt.
+    expect(c.points[1]!.x).toBeLessThan(1);
+    expect(c.points[1]!.x).toBeGreaterThan(0);
+  });
+
+  it("addToneCurvePoint sortiert nach x und respektiert Maximum", () => {
+    useEditorStore.getState().addToneCurvePoint(0.7, 0.6);
+    useEditorStore.getState().addToneCurvePoint(0.3, 0.2);
+    const points = useEditorStore.getState().adjustments.toneCurve!.points;
+    const xs = points.map((p) => p.x);
+    expect(xs).toEqual([...xs].sort((a, b) => a - b));
+    expect(points.length).toBe(4);
+  });
+
+  it("removeToneCurvePoint entfernt nur innere Punkte", () => {
+    useEditorStore.getState().addToneCurvePoint(0.4, 0.5);
+    useEditorStore.getState().removeToneCurvePoint(0); // Endpunkt → no-op
+    expect(useEditorStore.getState().adjustments.toneCurve!.points.length).toBe(3);
+    useEditorStore.getState().removeToneCurvePoint(1);
+    // Bleibt Identitaet (2 Punkte (0,0)/(1,1)) → toneCurve wird null.
+    expect(useEditorStore.getState().adjustments.toneCurve).toBeNull();
+  });
+
+  it("resetToneCurve setzt auf null", () => {
+    useEditorStore.getState().addToneCurvePoint(0.4, 0.5);
+    useEditorStore.getState().resetToneCurve();
+    expect(useEditorStore.getState().adjustments.toneCurve).toBeNull();
+  });
+
   it("setBypass schaltet um", () => {
     useEditorStore.getState().setBypass(true);
     expect(useEditorStore.getState().bypass).toBe(true);

@@ -42,9 +42,25 @@ export interface HslAdjustments {
   readonly luminance: Record<HslChannel, number>;
 }
 
+export interface ToneCurvePoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+export interface ToneCurve {
+  // 2..8 Stuetzpunkte, sortiert nach x. Wireformat camelCase wegen
+  // Backend-Konvention (siehe schemas.py: toneCurve).
+  readonly points: ReadonlyArray<ToneCurvePoint>;
+}
+
+export const TONE_CURVE_MIN_POINTS = 2;
+export const TONE_CURVE_MAX_POINTS = 8;
+
 export type Adjustments = ScalarAdjustments & {
   // null = HSL inaktiv (Speicher-Optimierung im Backend-JSONB).
   readonly hsl: HslAdjustments | null;
+  // null = Tonkurve = Identitaet.
+  readonly toneCurve: ToneCurve | null;
 };
 
 export type AdjustmentGroup = "Licht" | "Farbe";
@@ -87,7 +103,29 @@ export function defaultAdjustments(): Adjustments {
   for (const a of ADJUSTMENTS) {
     result[a.key] = a.default;
   }
-  return { ...result, hsl: null };
+  return { ...result, hsl: null, toneCurve: null };
+}
+
+export function defaultToneCurve(): ToneCurve {
+  return {
+    points: [
+      { x: 0, y: 0 },
+      { x: 1, y: 1 },
+    ],
+  };
+}
+
+export function isToneCurveIdentity(curve: ToneCurve | null): boolean {
+  if (curve === null) return true;
+  if (curve.points.length !== 2) return false;
+  const [a, b] = curve.points;
+  if (!a || !b) return false;
+  return (
+    Math.abs(a.x - 0) < 1e-4 &&
+    Math.abs(a.y - 0) < 1e-4 &&
+    Math.abs(b.x - 1) < 1e-4 &&
+    Math.abs(b.y - 1) < 1e-4
+  );
 }
 
 export function defaultHslAdjustments(): HslAdjustments {

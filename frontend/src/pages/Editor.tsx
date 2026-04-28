@@ -78,6 +78,10 @@ export default function Editor() {
   const resetAll = useEditorStore((s) => s.resetAll);
   const setHslChannel = useEditorStore((s) => s.setHslChannel);
   const resetHsl = useEditorStore((s) => s.resetHsl);
+  const setToneCurvePoint = useEditorStore((s) => s.setToneCurvePoint);
+  const addToneCurvePoint = useEditorStore((s) => s.addToneCurvePoint);
+  const removeToneCurvePoint = useEditorStore((s) => s.removeToneCurvePoint);
+  const resetToneCurve = useEditorStore((s) => s.resetToneCurve);
   const bypass = useEditorStore((s) => s.bypass);
   const setBypass = useEditorStore((s) => s.setBypass);
   const cropRect = useEditorStore((s) => s.cropRect);
@@ -823,6 +827,10 @@ export default function Editor() {
         onAdjustment={setAdjustment}
         onHslChange={setHslChannel}
         onHslReset={resetHsl}
+        onToneCurveSetPoint={setToneCurvePoint}
+        onToneCurveAddPoint={addToneCurvePoint}
+        onToneCurveRemovePoint={removeToneCurvePoint}
+        onToneCurveReset={resetToneCurve}
         onResetAll={resetAll}
       />
     </section>

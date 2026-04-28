@@ -11,6 +11,7 @@ import {
 } from "./adjustments";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "./mask";
 import { FRAG_SRC, VERT_SRC } from "./shaders";
+import { TONE_CURVE_LUT_SIZE, computeToneCurveLut } from "./toneCurve";
 
 export class WebGLRendererError extends Error {
   constructor(message: string) {
@@ -79,6 +80,8 @@ interface UniformMap {
   readonly hslHue: WebGLUniformLocation;
   readonly hslSat: WebGLUniformLocation;
   readonly hslLum: WebGLUniformLocation;
+  readonly toneCurveLut: WebGLUniformLocation;
+  readonly toneCurveActive: WebGLUniformLocation;
   readonly adjustments: ReadonlyMap<string, WebGLUniformLocation>;
 }
 
@@ -120,6 +123,8 @@ export class Renderer {
   private readonly program: WebGLProgram;
   private readonly uniforms: UniformMap;
   private texture: WebGLTexture | null = null;
+  private readonly toneCurveTexture: WebGLTexture;
+  private toneCurveLutCache = new Uint8Array(TONE_CURVE_LUT_SIZE);
 
   // Pre-allocated typed arrays — vermeiden Allocation pro Frame.
   private readonly linP1 = new Float32Array(MAX_LINEAR_MASKS * 2);
@@ -217,9 +222,68 @@ export class Renderer {
       hslHue: get("u_hslHue[0]"),
       hslSat: get("u_hslSat[0]"),
       hslLum: get("u_hslLum[0]"),
+      toneCurveLut: get("u_toneCurveLut"),
+      toneCurveActive: get("u_toneCurveActive"),
       adjustments: adjustmentLocs,
     };
+
+    // Tonkurven-LUT als 256x1 R8-Texture. Identity beim Init, wird beim
+    // ersten Render mit aktiver Kurve via uploadToneCurveLut neu befuellt.
+    const lutTex = gl.createTexture();
+    if (!lutTex) throw new WebGLRendererError("createTexture (LUT) fehlgeschlagen");
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, lutTex);
+    const identity = new Uint8Array(TONE_CURVE_LUT_SIZE);
+    for (let i = 0; i < TONE_CURVE_LUT_SIZE; i++) identity[i] = i;
+    this.toneCurveLutCache = identity.slice();
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(
+      gl.TEXTURE_2D,
+      0,
+      gl.R8,
+      TONE_CURVE_LUT_SIZE,
+      1,
+      0,
+      gl.RED,
+      gl.UNSIGNED_BYTE,
+      identity,
+    );
+    this.toneCurveTexture = lutTex;
+    gl.activeTexture(gl.TEXTURE0);
     gl.useProgram(this.program);
+  }
+
+  private uploadToneCurveLut(adjustments: Adjustments): void {
+    const gl = this.gl;
+    if (adjustments.toneCurve === null) return;
+    const lut = computeToneCurveLut(adjustments.toneCurve);
+    // Skip-Upload, wenn unveraendert (drag-Frame-Spam).
+    let same = true;
+    for (let i = 0; i < TONE_CURVE_LUT_SIZE; i++) {
+      if (this.toneCurveLutCache[i] !== lut[i]) {
+        same = false;
+        break;
+      }
+    }
+    if (same) return;
+    this.toneCurveLutCache.set(lut);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.toneCurveTexture);
+    gl.texSubImage2D(
+      gl.TEXTURE_2D,
+      0,
+      0,
+      0,
+      TONE_CURVE_LUT_SIZE,
+      1,
+      gl.RED,
+      gl.UNSIGNED_BYTE,
+      lut,
+    );
+    gl.activeTexture(gl.TEXTURE0);
   }
 
   loadImage(image: TexImageSource, width: number, height: number): void {
@@ -347,6 +411,16 @@ export class Renderer {
     gl.uniform1fv(this.uniforms.hslHue, this.hslHueArr);
     gl.uniform1fv(this.uniforms.hslSat, this.hslSatArr);
     gl.uniform1fv(this.uniforms.hslLum, this.hslLumArr);
+
+    this.uploadToneCurveLut(adjustments);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, this.toneCurveTexture);
+    gl.uniform1i(this.uniforms.toneCurveLut, 1);
+    gl.uniform1f(
+      this.uniforms.toneCurveActive,
+      adjustments.toneCurve === null ? 0 : 1,
+    );
+    gl.activeTexture(gl.TEXTURE0);
 
     for (const [key, loc] of this.uniforms.adjustments) {
       gl.uniform1f(loc, adjustments[key as AdjustmentKey]);

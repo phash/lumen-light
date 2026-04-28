@@ -28,6 +28,14 @@
         { "$ref": "#/$defs/HslAdjustments" }
       ],
       "default": null
+    },
+    "toneCurve": {
+      "description": "Punktbasierte Tonwertkurve (2..8 Punkte, sortiert). null = Identität.",
+      "oneOf": [
+        { "type": "null" },
+        { "$ref": "#/$defs/ToneCurve" }
+      ],
+      "default": null
     }
   },
   "$defs": {
@@ -52,6 +60,28 @@
         "hue":        { "$ref": "#/$defs/HslAxis" },
         "saturation": { "$ref": "#/$defs/HslAxis" },
         "luminance":  { "$ref": "#/$defs/HslAxis" }
+      }
+    },
+    "ToneCurvePoint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["x", "y"],
+      "properties": {
+        "x": { "type": "number", "minimum": 0, "maximum": 1 },
+        "y": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    },
+    "ToneCurve": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["points"],
+      "properties": {
+        "points": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 8,
+          "items": { "$ref": "#/$defs/ToneCurvePoint" }
+        }
       }
     }
   }

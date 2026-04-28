@@ -38,6 +38,26 @@ class HslAdjustments(BaseModel):
     luminance: HslAxis = Field(default_factory=HslAxis)
 
 
+class ToneCurvePoint(BaseModel):
+    """Stuetzpunkt einer Tonwertkurve."""
+    model_config = ConfigDict(extra="forbid")
+    x: float = Field(ge=0, le=1)
+    y: float = Field(ge=0, le=1)
+
+
+class ToneCurve(BaseModel):
+    """Punktbasierte Tonwertkurve, 2..8 nach x sortierte Stuetzpunkte."""
+    model_config = ConfigDict(extra="forbid")
+    points: list[ToneCurvePoint] = Field(min_length=2, max_length=8)
+
+    @model_validator(mode="after")
+    def _check_sorted(self) -> Self:
+        xs = [p.x for p in self.points]
+        if xs != sorted(xs):
+            raise ValueError("Tonkurve-Punkte muessen nach x sortiert sein")
+        return self
+
+
 class Adjustments(BaseModel):
     """Single Source of Truth für die Slider-Werte. Pendant zum Frontend."""
 
@@ -55,6 +75,9 @@ class Adjustments(BaseModel):
     saturation: float = Field(default=0, ge=-1, le=1)
     # null = HSL inaktiv. Spart 24 Felder im JSONB fuer alte Presets.
     hsl: HslAdjustments | None = None
+    # null = Tonkurve inaktiv (Identitaet). Wireformat camelCase wie
+    # die Mask-Body-Felder, daher # noqa: N815.
+    toneCurve: ToneCurve | None = None  # noqa: N815
 
 
 # ----- User -----

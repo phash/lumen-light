@@ -22,6 +22,8 @@ export const FRAG_SRC = `#version 300 es
 precision highp float;
 in vec2 v_uv;
 uniform sampler2D u_tex;
+uniform sampler2D u_toneCurveLut;
+uniform float u_toneCurveActive;
 uniform float u_exposure;
 uniform float u_contrast;
 uniform float u_highlights;
@@ -231,6 +233,17 @@ void main() {
     hsl.z = clamp(hsl.z + dLum / wSum * HSL_LUM_GAIN, 0.0, 1.0);
   }
   c = hslToRgb(hsl);
+
+  // 7c. Tonkurve (Luminanz). LUT 256x1 R8 wird im JS als
+  // Monotone-Hermite-Interpolation gerechnet und hier nur gesampled.
+  if (u_toneCurveActive > 0.5) {
+    float L = luminance(c);
+    float newL = texture(u_toneCurveLut, vec2(L, 0.5)).r;
+    if (L > 1e-4) {
+      c *= newL / L;
+      c = clamp(c, 0.0, 1.0);
+    }
+  }
 
   // 8. Vignette (radial, am Ende der Pipeline)
   float vr2 = dot(dc, dc);

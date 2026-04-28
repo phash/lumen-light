@@ -18,6 +18,7 @@ import {
 } from "./mask";
 import Slider from "./Slider";
 import { MAX_STRAIGHTEN_RADIANS } from "./store";
+import ToneCurvePanel from "./ToneCurvePanel";
 import { type AspectRatio } from "./transform";
 
 function maskTypeLabel(type: "linear" | "radial"): string {
@@ -61,6 +62,10 @@ interface Props {
   readonly onAdjustment: (key: AdjustmentKey, value: number) => void;
   readonly onHslChange: (axis: HslAxis, channel: HslChannel, value: number) => void;
   readonly onHslReset: () => void;
+  readonly onToneCurveSetPoint: (index: number, x: number, y: number) => void;
+  readonly onToneCurveAddPoint: (x: number, y: number) => number | null;
+  readonly onToneCurveRemovePoint: (index: number) => void;
+  readonly onToneCurveReset: () => void;
   readonly onResetAll: () => void;
 }
 
@@ -94,6 +99,10 @@ export default function EditorSidebar({
   onAdjustment,
   onHslChange,
   onHslReset,
+  onToneCurveSetPoint,
+  onToneCurveAddPoint,
+  onToneCurveRemovePoint,
+  onToneCurveReset,
   onResetAll,
 }: Props) {
   const groups = adjustmentsByGroup();
@@ -301,6 +310,21 @@ export default function EditorSidebar({
             hsl={adjustments.hsl}
             onChange={onHslChange}
             onReset={onHslReset}
+          />
+        </CollapsibleSection>
+
+        <CollapsibleSection
+          id="tone-curve"
+          title="Tonkurve"
+          defaultOpen={false}
+          testId="editor-section-tone-curve"
+        >
+          <ToneCurvePanel
+            curve={adjustments.toneCurve}
+            onSetPoint={onToneCurveSetPoint}
+            onAddPoint={onToneCurveAddPoint}
+            onRemovePoint={onToneCurveRemovePoint}
+            onReset={onToneCurveReset}
           />
         </CollapsibleSection>
 

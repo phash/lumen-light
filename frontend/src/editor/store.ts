@@ -6,10 +6,16 @@ import {
   type HslAdjustments,
   type HslAxis,
   type HslChannel,
+  TONE_CURVE_MAX_POINTS,
+  TONE_CURVE_MIN_POINTS,
+  type ToneCurve,
+  type ToneCurvePoint,
   clampAdjustment,
   defaultAdjustments,
   defaultHslAdjustments,
+  defaultToneCurve,
   isHslNeutral,
+  isToneCurveIdentity,
 } from "./adjustments";
 import {
   type DebounceContext,
@@ -67,6 +73,10 @@ export interface EditorState {
   applyAdjustments: (adj: Partial<Adjustments>) => void;
   setHslChannel: (axis: HslAxis, channel: HslChannel, value: number) => void;
   resetHsl: () => void;
+  setToneCurvePoint: (index: number, x: number, y: number) => void;
+  addToneCurvePoint: (x: number, y: number) => number | null;
+  removeToneCurvePoint: (index: number) => void;
+  resetToneCurve: () => void;
   setBypass: (bypass: boolean) => void;
   setCropRect: (rect: CropRect) => void;
   setStraightenAngle: (angle: number) => void;
@@ -155,18 +165,17 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     _snapshotBefore(get());
     set(() => {
       const base = defaultAdjustments();
-      const merged: Adjustments = { ...base };
+      const merged: Record<AdjustmentKey, number> & {
+        hsl: HslAdjustments | null;
+        toneCurve: ToneCurve | null;
+      } = { ...base };
       for (const [k, v] of Object.entries(incoming)) {
-        if (k === "hsl") continue;
+        if (k === "hsl" || k === "toneCurve") continue;
         const key = k as AdjustmentKey;
         merged[key] = clampAdjustment(key, v as number);
       }
-      // hsl ueberschreibt komplett (kein deep-merge); undefined behaelt
-      // Default null aus defaultAdjustments().
-      if ("hsl" in incoming) {
-        const incomingHsl = incoming.hsl;
-        return { adjustments: { ...merged, hsl: incomingHsl ?? null } };
-      }
+      if ("hsl" in incoming) merged.hsl = incoming.hsl ?? null;
+      if ("toneCurve" in incoming) merged.toneCurve = incoming.toneCurve ?? null;
       return { adjustments: merged };
     });
   },
@@ -188,6 +197,84 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   resetHsl: () => {
     _snapshotBefore(get());
     set((state) => ({ adjustments: { ...state.adjustments, hsl: null } }));
+  },
+  setToneCurvePoint: (index, x, y) => {
+    _snapshotBefore(get());
+    set((state) => {
+      const curve: ToneCurve = state.adjustments.toneCurve ?? defaultToneCurve();
+      const points = [...curve.points];
+      const last = points.length - 1;
+      if (index < 0 || index > last) return state;
+      // Endpunkte: x bleibt fix (0 bzw. 1), nur y darf bewegt werden.
+      let nextX = Math.max(0, Math.min(1, Number.isNaN(x) ? 0 : x));
+      const nextY = Math.max(0, Math.min(1, Number.isNaN(y) ? 0 : y));
+      if (index === 0) nextX = 0;
+      else if (index === last) nextX = 1;
+      else {
+        const prev = points[index - 1]!;
+        const next = points[index + 1]!;
+        // Mindestabstand 1/255, damit keine zwei Punkte denselben x haben.
+        nextX = Math.max(prev.x + 1 / 255, Math.min(next.x - 1 / 255, nextX));
+      }
+      points[index] = { x: nextX, y: nextY };
+      const nextCurve: ToneCurve = { points };
+      return {
+        adjustments: {
+          ...state.adjustments,
+          toneCurve: isToneCurveIdentity(nextCurve) ? null : nextCurve,
+        },
+      };
+    });
+  },
+  addToneCurvePoint: (x, y) => {
+    const state = get();
+    const curve: ToneCurve = state.adjustments.toneCurve ?? defaultToneCurve();
+    if (curve.points.length >= TONE_CURVE_MAX_POINTS) return null;
+    const cx = Math.max(0, Math.min(1, x));
+    const cy = Math.max(0, Math.min(1, y));
+    // Ablegen so, dass die Liste sortiert bleibt.
+    const points: ToneCurvePoint[] = [];
+    let inserted = false;
+    let insertIdx = -1;
+    for (const p of curve.points) {
+      if (!inserted && cx < p.x) {
+        insertIdx = points.length;
+        points.push({ x: cx, y: cy });
+        inserted = true;
+      }
+      points.push(p);
+    }
+    if (!inserted) {
+      // Nach allen vorhandenen — direkt vor dem Endpunkt einsortieren,
+      // damit der letzte Punkt (1, *) der Endpunkt bleibt.
+      insertIdx = Math.max(0, points.length - 1);
+      points.splice(insertIdx, 0, { x: cx, y: cy });
+    }
+    _snapshotBefore(state);
+    set((s) => ({
+      adjustments: { ...s.adjustments, toneCurve: { points } },
+    }));
+    return insertIdx;
+  },
+  removeToneCurvePoint: (index) => {
+    const state = get();
+    const curve = state.adjustments.toneCurve;
+    if (curve === null) return;
+    if (curve.points.length <= TONE_CURVE_MIN_POINTS) return;
+    if (index === 0 || index === curve.points.length - 1) return;
+    _snapshotBefore(state);
+    const points = curve.points.filter((_, i) => i !== index);
+    const next: ToneCurve = { points };
+    set((s) => ({
+      adjustments: {
+        ...s.adjustments,
+        toneCurve: isToneCurveIdentity(next) ? null : next,
+      },
+    }));
+  },
+  resetToneCurve: () => {
+    _snapshotBefore(get());
+    set((state) => ({ adjustments: { ...state.adjustments, toneCurve: null } }));
   },
   setBypass: (bypass) => set({ bypass }),
   setCropRect: (rect) => {
