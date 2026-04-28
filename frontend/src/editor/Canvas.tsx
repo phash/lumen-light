@@ -146,6 +146,8 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
       lensCorrection.vignette,
       masksUniforms,
       outputSizeFor(r, cropRect),
+      lensCorrection.tcaR,
+      lensCorrection.tcaB,
     );
     onTick();
   }, [adjustments, bypass, transform, lensCorrection, masksUniforms, cropRect, onTick]);
@@ -168,6 +170,8 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.vignette,
           masksFromState(s),
           outputSizeFor(r, effCrop),
+          s.lensCorrection.tcaR,
+          s.lensCorrection.tcaB,
         );
         onTick();
       },
@@ -189,6 +193,8 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.vignette,
           masksFromState(s),
           outputSizeFor(r, effCrop),
+          s.lensCorrection.tcaR,
+          s.lensCorrection.tcaB,
         );
         onTick();
       },
@@ -205,6 +211,8 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.vignette,
           masksFromState(s),
           outputSizeFor(r, effCrop),
+          s.lensCorrection.tcaR,
+          s.lensCorrection.tcaB,
         );
         onTick();
       },
@@ -223,6 +231,8 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.vignette,
           masksFromState(s),
           outputSizeFor(r, effCrop),
+          s.lensCorrection.tcaR,
+          s.lensCorrection.tcaB,
         );
         const url = c.toDataURL("image/png");
         // 2. Sofort wieder mit aktuellen bypass-Wert rendern, damit der
@@ -235,6 +245,8 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.vignette,
           masksFromState(s),
           outputSizeFor(r, effCrop),
+          s.lensCorrection.tcaR,
+          s.lensCorrection.tcaB,
         );
         return url;
       },

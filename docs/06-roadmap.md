@@ -69,6 +69,17 @@ E1 HSL · E2 Tonkurve · E3 Sharpen+Noise · E4 Face-Detection (opt-in DSGVO) ·
 | F1 | Preset-Marketplace MVP (publish/apply/fork/report, Auto-Hide, Profil) | ✓ |
 | F2 | Credits-System (Creator-Earnings, Stripe-Kauf) | ⏸ deferred (Rechtsform/AGB nötig) |
 
+## Phase G · Pro-Korrekturen (RawTherapee-inspiriert)
+
+Recherche-Output siehe `docs/superpowers/specs/2026-04-28-phase-g-pro-corrections.md`.
+
+| Item | Aufgabe | Status |
+|---|---|---|
+| G1 | Highlight Recovery Blend-Modus (geclippte Channels auf unclipped-Mittel pullen) | ✓ |
+| G2 | Local Contrast / Clarity (Unsharp-Mask im Y-Kanal mit asymm Gain) | ⏳ offen |
+| G3 | TCA-Korrektur (per-Channel-Distortion fuer R/B) | ✓ |
+| G4 | Lensfun-DB-Migration mit Stuetzstellen-Interpolation | ⏸ Backlog |
+
 ## Aktuell offen (Stand 2026-04-28)
 
 **Pre-Beta-Polish:**

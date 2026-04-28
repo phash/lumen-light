@@ -350,6 +350,48 @@ export default function EditorSidebar({
               className="mt-1 w-full"
             />
           </label>
+          <label
+            className="block py-1.5"
+            title="Transverse Chromatic Aberration: roter Saum an Hochkontrastkanten korrigieren (Weitwinkel-Offen)."
+          >
+            <span className="text-[11px] uppercase tracking-wider text-stone-400">
+              CA Rot ({Math.round(lensCorrection.tcaR * 100)})
+            </span>
+            <input
+              type="range"
+              min={-1}
+              max={1}
+              step={0.01}
+              value={lensCorrection.tcaR}
+              onChange={(e) =>
+                onLensCorrectionChange({ tcaR: Number(e.target.value) })
+              }
+              onDoubleClick={() => onLensCorrectionChange({ tcaR: 0 })}
+              data-testid="lens-tca-r-slider"
+              className="mt-1 w-full"
+            />
+          </label>
+          <label
+            className="block py-1.5"
+            title="Transverse Chromatic Aberration: blauer Saum an Hochkontrastkanten korrigieren."
+          >
+            <span className="text-[11px] uppercase tracking-wider text-stone-400">
+              CA Blau ({Math.round(lensCorrection.tcaB * 100)})
+            </span>
+            <input
+              type="range"
+              min={-1}
+              max={1}
+              step={0.01}
+              value={lensCorrection.tcaB}
+              onChange={(e) =>
+                onLensCorrectionChange({ tcaB: Number(e.target.value) })
+              }
+              onDoubleClick={() => onLensCorrectionChange({ tcaB: 0 })}
+              data-testid="lens-tca-b-slider"
+              className="mt-1 w-full"
+            />
+          </label>
         </CollapsibleSection>
 
         <button

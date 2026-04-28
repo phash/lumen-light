@@ -14,20 +14,25 @@ import {
 } from "../src/editor/adjustments";
 
 describe("adjustments definitions", () => {
-  it("hat 12 Adjustments mit eindeutigen keys", () => {
-    expect(ADJUSTMENTS).toHaveLength(12);
+  it("hat 13 Adjustments mit eindeutigen keys", () => {
+    expect(ADJUSTMENTS).toHaveLength(13);
     const keys = new Set(ADJUSTMENTS.map((a) => a.key));
-    expect(keys.size).toBe(12);
+    expect(keys.size).toBe(13);
   });
 
-  it("ranges: exposure -5..+5, Detail 0..+1, Rest -1..+1", () => {
+  it("ranges: exposure -5..+5, einseitig-positive 0..+1, Rest -1..+1", () => {
     const expo = getAdjustment("exposure");
     expect(expo.min).toBe(-5);
     expect(expo.max).toBe(5);
-    const detailKeys = new Set(["sharpness", "noiseReduction"]);
+    // Highlight-Recovery + Detail-Sektion: 0..1 (negative Werte sinnlos)
+    const positiveOnly = new Set([
+      "sharpness",
+      "noiseReduction",
+      "highlightRecovery",
+    ]);
     for (const a of ADJUSTMENTS) {
       if (a.key === "exposure") continue;
-      if (detailKeys.has(a.key)) {
+      if (positiveOnly.has(a.key)) {
         expect(a.min).toBe(0);
         expect(a.max).toBe(1);
       } else {
@@ -113,9 +118,9 @@ describe("formatAdjustmentValue", () => {
 });
 
 describe("adjustmentsByGroup", () => {
-  it("Licht=6, Farbe=4, Detail=2", () => {
+  it("Licht=7, Farbe=4, Detail=2", () => {
     const groups = adjustmentsByGroup();
-    expect(groups.get("Licht")).toHaveLength(6);
+    expect(groups.get("Licht")).toHaveLength(7);
     expect(groups.get("Farbe")).toHaveLength(4);
     expect(groups.get("Detail")).toHaveLength(2);
   });

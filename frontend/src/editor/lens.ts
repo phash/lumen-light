@@ -7,11 +7,20 @@
 export interface LensCorrection {
   readonly distortion: number; // -1..+1
   readonly vignette: number;   // -1..+1
+  /** Transverse Chromatic Aberration: zusaetzlicher Distortion-Faktor
+   *  fuer den Rot- bzw. Blau-Kanal (Gruen ist Referenz). Positiv =
+   *  Channel laeuft staerker nach aussen. Bei Weitwinkel-Offen-
+   *  Aufnahmen sieht man oft rote/blaue Saeume an Hochkontrast-Kanten —
+   *  TCA-R/B passt das aus. RawTherapee-Lensfun-inspiriert. */
+  readonly tcaR: number;      // -1..+1
+  readonly tcaB: number;      // -1..+1
 }
 
 export const defaultLensCorrection = (): LensCorrection => ({
   distortion: 0,
   vignette: 0,
+  tcaR: 0,
+  tcaB: 0,
 });
 
 /** Skalierungsfaktor fuer k1 in der Brown-Conrady-Formel. */
@@ -20,10 +29,16 @@ export const DISTORTION_GAIN = 0.4;
 /** Skalierungsfaktor fuer den Vignette-Effekt. */
 export const VIGNETTE_GAIN = 2.0;
 
+/** Skalierungsfaktor fuer TCA — bewusst klein, weil typische TCA-Werte
+ *  bei Lensfun unter 0.005 liegen und wir auf -1..+1 mappen. */
+export const TCA_GAIN = 0.05;
+
 export function clampLens(c: LensCorrection): LensCorrection {
   return {
     distortion: Math.max(-1, Math.min(1, c.distortion)),
     vignette: Math.max(-1, Math.min(1, c.vignette)),
+    tcaR: Math.max(-1, Math.min(1, c.tcaR)),
+    tcaB: Math.max(-1, Math.min(1, c.tcaB)),
   };
 }
 

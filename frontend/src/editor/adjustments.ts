@@ -17,7 +17,8 @@ export type AdjustmentKey =
   | "vibrance"
   | "saturation"
   | "sharpness"
-  | "noiseReduction";
+  | "noiseReduction"
+  | "highlightRecovery";
 
 export type ScalarAdjustments = Record<AdjustmentKey, number>;
 
@@ -100,6 +101,8 @@ export const ADJUSTMENTS: ReadonlyArray<AdjustmentDefinition> = [
     tooltip: "Setzt den hellsten Punkt. Negativ verhindert Clip in den Lichtern." },
   { key: "blacks",      label: "Schwarz",    group: "Licht", min: -1, max: 1, step: 0.01, default: 0,
     tooltip: "Setzt den dunkelsten Punkt. Negativ verstaerkt tiefes Schwarz." },
+  { key: "highlightRecovery", label: "Lichter retten", group: "Licht", min: 0, max: 1, step: 0.01, default: 0,
+    tooltip: "Rettet ausgebrannte Bereiche, indem geclippte Farbkanaele auf den Mittelwert der unclipped Kanaele gezogen werden. Entfernt Magenta-Cast in der Sonne. (RawTherapee-Blend-Modus inspiriert.)" },
   { key: "temperature", label: "Temperatur", group: "Farbe", min: -1, max: 1, step: 0.01, default: 0,
     tooltip: "Weissabgleich blau↔gelb. Positiv = waermer." },
   { key: "tint",        label: "Tönung",     group: "Farbe", min: -1, max: 1, step: 0.01, default: 0,

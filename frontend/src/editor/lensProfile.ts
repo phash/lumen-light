@@ -67,5 +67,10 @@ export function profileToCorrection(profile: LensProfile): LensCorrection {
   return {
     distortion: Math.max(-1, Math.min(1, profile.k1 / DISTORTION_GAIN)),
     vignette: Math.max(-1, Math.min(1, profile.vignette)),
+    // Phase G3: TCA-Werte sind heute nicht in `infra/lensfun/profiles.json`
+    // — Default 0, der User stellt manuell ein. Migration auf die volle
+    // Lensfun-DB mit Stuetzstellen ist Phase G4 (Backlog).
+    tcaR: 0,
+    tcaB: 0,
   };
 }

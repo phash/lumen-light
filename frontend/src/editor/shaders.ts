@@ -36,9 +36,12 @@ uniform float u_vibrance;
 uniform float u_saturation;
 uniform float u_sharpness;
 uniform float u_noiseReduction;
+uniform float u_highlightRecovery;
 uniform float u_bypass;
 uniform float u_lensDistortion;
 uniform float u_lensVignette;
+uniform float u_lensTcaR;
+uniform float u_lensTcaB;
 
 const int MAX_LINEAR_MASKS = 4;
 const int MAX_RADIAL_MASKS = 4;
@@ -73,6 +76,7 @@ out vec4 outColor;
 
 const float DISTORTION_GAIN = 0.4;
 const float VIGNETTE_GAIN = 2.0;
+const float TCA_GAIN = 0.05;
 
 float computeLinearMaskN(int i, vec2 uv) {
   vec2 d = u_linMaskP2[i] - u_linMaskP1[i];
@@ -140,11 +144,26 @@ void main() {
   // Distortion (Brown-Conrady 1-Term) — vor Texture-Fetch.
   vec2 dc = v_uv - 0.5;
   float dr2 = dot(dc, dc);
-  float k1 = u_lensDistortion * DISTORTION_GAIN;
-  vec2 src_uv = dc * (1.0 + k1 * dr2) + 0.5;
+  float kg = u_lensDistortion * DISTORTION_GAIN;
+  vec2 src_uv = dc * (1.0 + kg * dr2) + 0.5;
 
   vec2 px = 1.0 / vec2(textureSize(u_tex, 0));
-  vec4 src = texture(u_tex, src_uv);
+  // TCA: pro Channel eigener Distortion-Faktor. Wenn Slider beide auf 0,
+  // greifen wir den gemeinsamen src-Sample, sparen 2 Texture-Reads.
+  vec4 src;
+  if (abs(u_lensTcaR) > 0.001 || abs(u_lensTcaB) > 0.001) {
+    float kr = kg + u_lensTcaR * TCA_GAIN;
+    float kb = kg + u_lensTcaB * TCA_GAIN;
+    vec2 src_uv_r = dc * (1.0 + kr * dr2) + 0.5;
+    vec2 src_uv_b = dc * (1.0 + kb * dr2) + 0.5;
+    float r_ch = texture(u_tex, src_uv_r).r;
+    float g_ch = texture(u_tex, src_uv).g;
+    float b_ch = texture(u_tex, src_uv_b).b;
+    float a_ch = texture(u_tex, src_uv).a;
+    src = vec4(r_ch, g_ch, b_ch, a_ch);
+  } else {
+    src = texture(u_tex, src_uv);
+  }
 
   // Noise-Reduction: 3x3 Bilateral-Light. Tonal-Sigma waechst mit
   // Slider — bei 1 mittelt der Filter staerker. wRange = 0.05 + (1-r)*0.3
@@ -270,6 +289,24 @@ void main() {
     if (L > 1e-4) {
       c *= newL / L;
       c = clamp(c, 0.0, 1.0);
+    }
+  }
+
+  // 7c2. Highlight-Recovery (RawTherapee Blend-Modus, vereinfacht):
+  // Geclippte Channels werden auf den Mittelwert der noch nicht
+  // clipped Channels gezogen. Wenn 1-2 Channels clipped, verschwindet
+  // der typische Magenta-Cast (gruen-clipped) bzw. Cyan-Cast
+  // (rot-clipped); wenn alle 3 clipped, ist es echtes Weiss und
+  // bleibt unveraendert.
+  if (u_highlightRecovery > 0.001) {
+    float thr = 0.94;
+    vec3 isClipped = step(vec3(thr), c);
+    float n = isClipped.r + isClipped.g + isClipped.b;
+    if (n > 0.5 && n < 2.5) {
+      vec3 unclipped = c * (1.0 - isClipped);
+      float refValue = (unclipped.r + unclipped.g + unclipped.b) / max(0.001, 3.0 - n);
+      vec3 recovered = mix(c, vec3(refValue), isClipped);
+      c = mix(c, recovered, u_highlightRecovery);
     }
   }
 

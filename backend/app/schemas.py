@@ -106,6 +106,10 @@ class Adjustments(BaseModel):
     # Gauss-Blur als eigene Achse.
     sharpness: float = Field(default=0, ge=0, le=1)
     noiseReduction: float = Field(default=0, ge=0, le=1)  # noqa: N815
+    # Phase G1: rettet ausgebrannte Bereiche durch Pull-Down auf den
+    # Mittelwert der noch nicht clipped Channels. 0 = aus, 1 = volles
+    # Recovery. Inspiriert von RawTherapee's HLRecovery_blend.
+    highlightRecovery: float = Field(default=0, ge=0, le=1)  # noqa: N815
     # null = HSL inaktiv. Spart 24 Felder im JSONB fuer alte Presets.
     hsl: HslAdjustments | None = None
     # null = Tonkurve inaktiv (Identitaet). Wireformat camelCase wie

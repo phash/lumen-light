@@ -61,6 +61,8 @@ interface UniformMap {
   readonly uvTransform: WebGLUniformLocation;
   readonly lensDistortion: WebGLUniformLocation;
   readonly lensVignette: WebGLUniformLocation;
+  readonly lensTcaR: WebGLUniformLocation;
+  readonly lensTcaB: WebGLUniformLocation;
   readonly numLinearMasks: WebGLUniformLocation;
   readonly linMaskP1: WebGLUniformLocation;
   readonly linMaskP2: WebGLUniformLocation;
@@ -249,6 +251,8 @@ export class Renderer {
       uvTransform: get("u_uvTransform"),
       lensDistortion: get("u_lensDistortion"),
       lensVignette: get("u_lensVignette"),
+      lensTcaR: get("u_lensTcaR"),
+      lensTcaB: get("u_lensTcaB"),
       numLinearMasks: get("u_numLinearMasks"),
       linMaskP1: get("u_linMaskP1[0]"),
       linMaskP2: get("u_linMaskP2[0]"),
@@ -412,6 +416,8 @@ export class Renderer {
     lensVignette = 0,
     masks: MasksUniforms = EMPTY_MASKS,
     outputSize: { width: number; height: number } | null = null,
+    lensTcaR = 0,
+    lensTcaB = 0,
   ): void {
     if (!this.texture) return;
     const gl = this.gl;
@@ -432,6 +438,8 @@ export class Renderer {
     gl.uniformMatrix3fv(this.uniforms.uvTransform, false, uvTransform);
     gl.uniform1f(this.uniforms.lensDistortion, lensDistortion);
     gl.uniform1f(this.uniforms.lensVignette, lensVignette);
+    gl.uniform1f(this.uniforms.lensTcaR, lensTcaR);
+    gl.uniform1f(this.uniforms.lensTcaB, lensTcaB);
 
     const numLin = this.packLinearMasks(masks.linear);
     gl.uniform1i(this.uniforms.numLinearMasks, numLin);

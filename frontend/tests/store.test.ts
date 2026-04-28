@@ -209,19 +209,30 @@ describe("useEditorStore", () => {
     expect(useEditorStore.getState().lensCorrection).toEqual({
       distortion: 0.5,
       vignette: 0,
+      tcaR: 0,
+      tcaB: 0,
     });
     useEditorStore.getState().setLensCorrection({ vignette: -0.4 });
     expect(useEditorStore.getState().lensCorrection).toEqual({
       distortion: 0.5,
       vignette: -0.4,
+      tcaR: 0,
+      tcaB: 0,
     });
   });
 
   it("setLensCorrection clampt auf [-1, 1]", () => {
-    useEditorStore.getState().setLensCorrection({ distortion: 99, vignette: -99 });
+    useEditorStore.getState().setLensCorrection({
+      distortion: 99,
+      vignette: -99,
+      tcaR: 5,
+      tcaB: -5,
+    });
     expect(useEditorStore.getState().lensCorrection).toEqual({
       distortion: 1,
       vignette: -1,
+      tcaR: 1,
+      tcaB: -1,
     });
   });
 

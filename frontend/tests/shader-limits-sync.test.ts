@@ -12,7 +12,7 @@ import {
   HSL_LUM_GAIN,
   HSL_SIGMA,
 } from "../src/editor/adjustments";
-import { DISTORTION_GAIN, VIGNETTE_GAIN } from "../src/editor/lens";
+import { DISTORTION_GAIN, TCA_GAIN, VIGNETTE_GAIN } from "../src/editor/lens";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "../src/editor/mask";
 import { FRAG_SRC } from "../src/editor/shaders";
 
@@ -39,6 +39,12 @@ describe("Shader-Limits-Sync", () => {
     const m = FRAG_SRC.match(/const float VIGNETTE_GAIN = ([\d.]+)/);
     expect(m).not.toBeNull();
     expect(Number(m![1])).toBeCloseTo(VIGNETTE_GAIN, 5);
+  });
+
+  it("TCA_GAIN in FRAG_SRC matched lens.ts", () => {
+    const m = FRAG_SRC.match(/const float TCA_GAIN = ([\d.]+)/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeCloseTo(TCA_GAIN, 5);
   });
 
   it("HSL_CHANNELS in FRAG_SRC matched adjustments.ts", () => {

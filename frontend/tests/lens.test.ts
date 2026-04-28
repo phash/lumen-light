@@ -10,23 +10,26 @@ import {
 } from "../src/editor/lens";
 
 describe("defaultLensCorrection", () => {
-  it("liefert Distortion 0, Vignette 0", () => {
-    expect(defaultLensCorrection()).toEqual({ distortion: 0, vignette: 0 });
+  it("liefert alle Werte 0", () => {
+    expect(defaultLensCorrection()).toEqual({
+      distortion: 0,
+      vignette: 0,
+      tcaR: 0,
+      tcaB: 0,
+    });
   });
 });
 
 describe("clampLens", () => {
   it("klemmt Werte auf [-1, 1]", () => {
-    expect(clampLens({ distortion: 99, vignette: -99 })).toEqual({
-      distortion: 1,
-      vignette: -1,
-    });
+    expect(
+      clampLens({ distortion: 99, vignette: -99, tcaR: 5, tcaB: -5 }),
+    ).toEqual({ distortion: 1, vignette: -1, tcaR: 1, tcaB: -1 });
   });
   it("laesst Werte im Bereich unveraendert", () => {
-    expect(clampLens({ distortion: 0.5, vignette: -0.3 })).toEqual({
-      distortion: 0.5,
-      vignette: -0.3,
-    });
+    expect(
+      clampLens({ distortion: 0.5, vignette: -0.3, tcaR: 0.1, tcaB: -0.2 }),
+    ).toEqual({ distortion: 0.5, vignette: -0.3, tcaR: 0.1, tcaB: -0.2 });
   });
 });
 
