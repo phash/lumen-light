@@ -5,7 +5,7 @@
  * das WebGL-Canvas mit dem Transform-Wrapper, blendet Crop-, Linear-,
  * Radial- und Compare-Split-Overlays daruebergelegt.
  */
-import { type Ref } from "react";
+import { type Ref, useMemo } from "react";
 
 import Canvas, { type CanvasHandle } from "./Canvas";
 import CompareSplitOverlay from "./CompareSplitOverlay";
@@ -16,7 +16,12 @@ import {
   type RadialMaskInstance,
 } from "./mask";
 import RadialMaskOverlay from "./RadialMaskOverlay";
-import { type AspectRatio, type CropRect } from "./transform";
+import {
+  type AspectRatio,
+  type CropRect,
+  invertUvTransform,
+  uvTransformMatrix,
+} from "./transform";
 
 interface Props {
   readonly canvasHandleRef: Ref<CanvasHandle>;
@@ -51,6 +56,8 @@ interface Props {
   readonly compareSnapshot: string | null;
   readonly splitX: number;
   readonly onSplitChange: (x: number) => void;
+
+  readonly straightenAngle: number;
 }
 
 export default function EditorOverlayCanvas({
@@ -75,7 +82,21 @@ export default function EditorOverlayCanvas({
   compareSnapshot,
   splitX,
   onSplitChange,
+  straightenAngle,
 }: Props) {
+  // Forward = Output-UV → Source-UV (Vertex-Shader macht dasselbe).
+  // Inverse = Source-UV → Output-UV. Beide werden an die Mask-Overlays
+  // gereicht, damit der User auf dem gecropten Output-Canvas dragged
+  // und die Maske trotzdem im Source-Coordinate-System landet.
+  const forwardUvTransform = useMemo(
+    () => uvTransformMatrix(cropRect, straightenAngle),
+    [cropRect, straightenAngle],
+  );
+  const inverseUvTransform = useMemo(
+    () => invertUvTransform(forwardUvTransform),
+    [forwardUvTransform],
+  );
+
   return (
     <div
       className="relative max-w-full max-h-full"
@@ -105,6 +126,8 @@ export default function EditorOverlayCanvas({
           onChangePoint={(which, uv) =>
             onLinearMaskPoint(selectedLinear.id, which, uv)
           }
+          forwardUvTransform={forwardUvTransform}
+          inverseUvTransform={inverseUvTransform}
         />
       )}
       {hasImage && selectedRadial && (
@@ -114,6 +137,8 @@ export default function EditorOverlayCanvas({
           onChangeRadii={(rx, ry) =>
             onRadialMaskRadii(selectedRadial.id, rx, ry)
           }
+          forwardUvTransform={forwardUvTransform}
+          inverseUvTransform={inverseUvTransform}
         />
       )}
       {hasImage && compareSnapshot && (

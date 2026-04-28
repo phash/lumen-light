@@ -83,6 +83,39 @@ export function applyUv(
   return { x, y };
 }
 
+/**
+ * Invertiert eine 3x3 affine 2D-Matrix (column-major, letzte Spalte
+ * (tx, ty, 1)). Wird vom Mask-Overlay genutzt, um Display-UV
+ * (cropped Output) zurueck zu Source-UV zu rechnen — die Maske wird
+ * im Shader gegen Source-UV evaluiert, der User klickt aber im
+ * Output-Coordinate-System.
+ */
+export function invertUvTransform(m: Float32Array): Float32Array {
+  const a = m[0]!;
+  const b = m[1]!;
+  const c = m[3]!;
+  const d = m[4]!;
+  const tx = m[6]!;
+  const ty = m[7]!;
+  const det = a * d - b * c;
+  if (Math.abs(det) < 1e-12) {
+    // Degeneriertes Crop — Identity zurueck, sonst spuckt der Picker Inf raus.
+    return new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  }
+  const inv = 1 / det;
+  const ai = d * inv;
+  const bi = -b * inv;
+  const ci = -c * inv;
+  const di = a * inv;
+  const txi = -(ai * tx + ci * ty);
+  const tyi = -(bi * tx + di * ty);
+  return new Float32Array([
+    ai, bi, 0,
+    ci, di, 0,
+    txi, tyi, 1,
+  ]);
+}
+
 export type CropHandle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 export type AspectRatio = "free" | "1:1" | "3:2" | "4:3" | "16:9";
 

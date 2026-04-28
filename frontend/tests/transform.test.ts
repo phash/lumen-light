@@ -6,6 +6,7 @@ import {
   aspectValue,
   clampCropRect,
   defaultCropRect,
+  invertUvTransform,
   isIdentityCrop,
   updateCropOnDrag,
   uvTransformMatrix,
@@ -87,6 +88,45 @@ describe("aspectValue", () => {
     expect(aspectValue("3:2")).toBe(1.5);
     expect(aspectValue("4:3")).toBeCloseTo(1.3333, 4);
     expect(aspectValue("16:9")).toBeCloseTo(1.7778, 4);
+  });
+});
+
+describe("invertUvTransform", () => {
+  it("Identity bleibt Identity", () => {
+    const inv = invertUvTransform(uvTransformMatrix(ID, 0));
+    approxArr(inv, [1, 0, 0, 0, 1, 0, 0, 0, 1]);
+  });
+
+  it("Center-Crop: Forward+Inverse = Round-Trip", () => {
+    const m = uvTransformMatrix({ x0: 0.2, y0: 0.3, x1: 0.8, y1: 0.7 }, 0);
+    const inv = invertUvTransform(m);
+    // Output-UV (0.5, 0.5) → Source-UV → wieder Output-UV ergibt 0.5, 0.5.
+    const src = applyUv(m, 0.5, 0.5);
+    const back = applyUv(inv, src.x, src.y);
+    expect(back.x).toBeCloseTo(0.5, 5);
+    expect(back.y).toBeCloseTo(0.5, 5);
+  });
+
+  it("Center-Crop: Source-Mitte mappt zurueck auf Output-Mitte", () => {
+    const m = uvTransformMatrix({ x0: 0.25, y0: 0.25, x1: 0.75, y1: 0.75 }, 0);
+    const inv = invertUvTransform(m);
+    // Source (0.5, 0.5) ist Crop-Mitte → Output (0.5, 0.5).
+    const out = applyUv(inv, 0.5, 0.5);
+    expect(out.x).toBeCloseTo(0.5, 5);
+    expect(out.y).toBeCloseTo(0.5, 5);
+    // Source (0.25, 0.25) ist Crop-Top-Left → Output (0, 0).
+    const corner = applyUv(inv, 0.25, 0.25);
+    expect(corner.x).toBeCloseTo(0, 5);
+    expect(corner.y).toBeCloseTo(0, 5);
+  });
+
+  it("Mit Rotation: Round-Trip stabil", () => {
+    const m = uvTransformMatrix({ x0: 0.1, y0: 0.1, x1: 0.9, y1: 0.9 }, 0.05);
+    const inv = invertUvTransform(m);
+    const src = applyUv(m, 0.3, 0.7);
+    const back = applyUv(inv, src.x, src.y);
+    expect(back.x).toBeCloseTo(0.3, 4);
+    expect(back.y).toBeCloseTo(0.7, 4);
   });
 });
 

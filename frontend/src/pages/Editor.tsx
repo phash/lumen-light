@@ -485,6 +485,7 @@ export default function Editor() {
           compareSnapshot={compareSnapshot}
           splitX={splitX}
           onSplitChange={setSplitX}
+          straightenAngle={straightenAngle}
         />
 
         <input
