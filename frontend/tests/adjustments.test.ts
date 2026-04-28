@@ -14,20 +14,26 @@ import {
 } from "../src/editor/adjustments";
 
 describe("adjustments definitions", () => {
-  it("hat 10 Adjustments mit eindeutigen keys", () => {
-    expect(ADJUSTMENTS).toHaveLength(10);
+  it("hat 12 Adjustments mit eindeutigen keys", () => {
+    expect(ADJUSTMENTS).toHaveLength(12);
     const keys = new Set(ADJUSTMENTS.map((a) => a.key));
-    expect(keys.size).toBe(10);
+    expect(keys.size).toBe(12);
   });
 
-  it("ranges sind sinnvoll: exposure -5..+5, Rest -1..+1", () => {
+  it("ranges: exposure -5..+5, Detail 0..+1, Rest -1..+1", () => {
     const expo = getAdjustment("exposure");
     expect(expo.min).toBe(-5);
     expect(expo.max).toBe(5);
+    const detailKeys = new Set(["sharpness", "noiseReduction"]);
     for (const a of ADJUSTMENTS) {
       if (a.key === "exposure") continue;
-      expect(a.min).toBe(-1);
-      expect(a.max).toBe(1);
+      if (detailKeys.has(a.key)) {
+        expect(a.min).toBe(0);
+        expect(a.max).toBe(1);
+      } else {
+        expect(a.min).toBe(-1);
+        expect(a.max).toBe(1);
+      }
     }
   });
 
@@ -107,9 +113,10 @@ describe("formatAdjustmentValue", () => {
 });
 
 describe("adjustmentsByGroup", () => {
-  it("Licht enthaelt die 6 Tonwerte, Farbe die 4 Farb-Adjustments", () => {
+  it("Licht=6, Farbe=4, Detail=2", () => {
     const groups = adjustmentsByGroup();
     expect(groups.get("Licht")).toHaveLength(6);
     expect(groups.get("Farbe")).toHaveLength(4);
+    expect(groups.get("Detail")).toHaveLength(2);
   });
 });

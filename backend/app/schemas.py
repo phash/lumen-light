@@ -73,6 +73,11 @@ class Adjustments(BaseModel):
     tint: float = Field(default=0, ge=-1, le=1)
     vibrance: float = Field(default=0, ge=-1, le=1)
     saturation: float = Field(default=0, ge=-1, le=1)
+    # Detail-Gruppe (E3). 0..1 statt -1..+1 — kein „weicher als
+    # Original" sinnvoll im Browser-Pfad; statt dessen ggf. spaeter
+    # Gauss-Blur als eigene Achse.
+    sharpness: float = Field(default=0, ge=0, le=1)
+    noiseReduction: float = Field(default=0, ge=0, le=1)  # noqa: N815
     # null = HSL inaktiv. Spart 24 Felder im JSONB fuer alte Presets.
     hsl: HslAdjustments | None = None
     # null = Tonkurve inaktiv (Identitaet). Wireformat camelCase wie

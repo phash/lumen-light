@@ -15,7 +15,9 @@ export type AdjustmentKey =
   | "temperature"
   | "tint"
   | "vibrance"
-  | "saturation";
+  | "saturation"
+  | "sharpness"
+  | "noiseReduction";
 
 export type ScalarAdjustments = Record<AdjustmentKey, number>;
 
@@ -63,7 +65,7 @@ export type Adjustments = ScalarAdjustments & {
   readonly toneCurve: ToneCurve | null;
 };
 
-export type AdjustmentGroup = "Licht" | "Farbe";
+export type AdjustmentGroup = "Licht" | "Farbe" | "Detail";
 
 export interface AdjustmentDefinition {
   readonly key: AdjustmentKey;
@@ -86,6 +88,8 @@ export const ADJUSTMENTS: ReadonlyArray<AdjustmentDefinition> = [
   { key: "tint",        label: "Tönung",     group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
   { key: "vibrance",    label: "Dynamik",    group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
   { key: "saturation",  label: "Sättigung",  group: "Farbe", min: -1, max: 1, step: 0.01, default: 0 },
+  { key: "sharpness",      label: "Schärfen",   group: "Detail", min: 0, max: 1, step: 0.01, default: 0 },
+  { key: "noiseReduction", label: "Rauschen",   group: "Detail", min: 0, max: 1, step: 0.01, default: 0 },
 ] as const;
 
 const ADJUSTMENT_BY_KEY: ReadonlyMap<AdjustmentKey, AdjustmentDefinition> = new Map(

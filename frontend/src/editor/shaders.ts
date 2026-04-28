@@ -34,6 +34,8 @@ uniform float u_temperature;
 uniform float u_tint;
 uniform float u_vibrance;
 uniform float u_saturation;
+uniform float u_sharpness;
+uniform float u_noiseReduction;
 uniform float u_bypass;
 uniform float u_lensDistortion;
 uniform float u_lensVignette;
@@ -141,7 +143,33 @@ void main() {
   float k1 = u_lensDistortion * DISTORTION_GAIN;
   vec2 src_uv = dc * (1.0 + k1 * dr2) + 0.5;
 
+  vec2 px = 1.0 / vec2(textureSize(u_tex, 0));
   vec4 src = texture(u_tex, src_uv);
+
+  // Noise-Reduction: 3x3 Bilateral-Light. Tonal-Sigma waechst mit
+  // Slider — bei 1 mittelt der Filter staerker. wRange = 0.05 + (1-r)*0.3
+  // sorgt dafuer, dass kleine Slider-Werte eher konservativ wirken.
+  if (u_noiseReduction > 0.001) {
+    vec3 sum = vec3(0.0);
+    float wsum = 0.0;
+    float tonalSigma = 0.05 + (1.0 - u_noiseReduction) * 0.3;
+    for (int oy = -1; oy <= 1; oy++) {
+      for (int ox = -1; ox <= 1; ox++) {
+        vec3 sn = texture(u_tex, src_uv + vec2(float(ox), float(oy)) * px).rgb;
+        float dl = luminance(sn) - luminance(src.rgb);
+        float wt = exp(-(dl * dl) / (tonalSigma * tonalSigma));
+        // Spatial-Kernel: Mitte 1, Kanten 0.5, Diagonalen 0.25.
+        float wsx = (ox == 0 ? 1.0 : 0.5);
+        float wsy = (oy == 0 ? 1.0 : 0.5);
+        float w = wt * wsx * wsy;
+        sum += sn * w;
+        wsum += w;
+      }
+    }
+    vec3 denoised = sum / max(wsum, 1e-4);
+    src.rgb = mix(src.rgb, denoised, u_noiseReduction);
+  }
+
   if (u_bypass > 0.5) { outColor = src; return; }
 
   // Lokale Masken summieren: effective = global + Sum_i(maskFactor_i * local_i).
@@ -243,6 +271,18 @@ void main() {
       c *= newL / L;
       c = clamp(c, 0.0, 1.0);
     }
+  }
+
+  // 7d. Sharpening (Unsharp-Mask, 4-Tap-Laplacian aus u_tex).
+  // Bewusst auf den Quell-Pixeln berechnet — fuer ein 1-Pass-Shader
+  // genuegt das, statt die ganze Pipeline pro Nachbar zu replayen.
+  if (u_sharpness > 0.001) {
+    vec3 cn = texture(u_tex, src_uv + vec2( 0.0, -px.y)).rgb;
+    vec3 cs = texture(u_tex, src_uv + vec2( 0.0,  px.y)).rgb;
+    vec3 cw = texture(u_tex, src_uv + vec2(-px.x, 0.0)).rgb;
+    vec3 ce = texture(u_tex, src_uv + vec2( px.x, 0.0)).rgb;
+    vec3 hf = src.rgb - (cn + cs + cw + ce) * 0.25;
+    c = clamp(c + hf * u_sharpness * 1.5, 0.0, 1.0);
   }
 
   // 8. Vignette (radial, am Ende der Pipeline)
