@@ -359,3 +359,45 @@ async def user_c(make_keycloak_user, client) -> dict:
     assert r.status_code == 200, r.text
     info["user"] = r.json()
     return info
+
+
+# --- Admin-User (mit Realm-Role 'admin' im JWT) ------------------------------
+
+
+@pytest.fixture
+def assign_admin_role(
+    keycloak_admin: KeycloakAdmin, keycloak_oid: KeycloakOpenID
+):
+    """Hilfs-Funktion: assigned dem User die `admin`-Realm-Role und gibt
+    einen frischen Token zurueck. Wir holen einen NEUEN Token nach der
+    Role-Assignment, weil bestehende Tokens die alte Rolle-Liste behalten."""
+
+    def _assign(info: dict, password: str = VALID_PW) -> dict:
+        sub = info["keycloak_sub"]
+        admin_role = keycloak_admin.get_realm_role("admin")
+        keycloak_admin.assign_realm_roles(user_id=sub, roles=[admin_role])
+        # Frischer Token mit Roles-Claim
+        token_response = keycloak_oid.token(
+            username=info["email"], password=password
+        )
+        info["tokens"] = {
+            "access_token": token_response["access_token"],
+            "refresh_token": token_response["refresh_token"],
+        }
+        info["headers"] = {
+            "Authorization": f"Bearer {token_response['access_token']}"
+        }
+        return info
+
+    return _assign
+
+
+@pytest.fixture
+async def admin_user(make_keycloak_user, assign_admin_role, client) -> dict:
+    """User mit `admin`-Realm-Role. Wird in den Admin-Tests gebraucht."""
+    info = make_keycloak_user(f"admin-{secrets.token_hex(4)}@example.com")
+    info = assign_admin_role(info)
+    r = await client.get("/api/v1/auth/me", headers=info["headers"])
+    assert r.status_code == 200, r.text
+    info["user"] = r.json()
+    return info

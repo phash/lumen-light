@@ -3,9 +3,11 @@ import { BrowserRouter, Route, Routes } from "react-router-dom";
 
 import { oidcConfig } from "./auth/config";
 import Callback from "./auth/Callback";
+import RequireAdmin from "./auth/RequireAdmin";
 import RequireAuth from "./auth/RequireAuth";
 import Header from "./components/Header";
 import Account from "./pages/Account";
+import Admin from "./pages/Admin";
 import Datenschutz from "./pages/Datenschutz";
 import Editor from "./pages/Editor";
 import Impressum from "./pages/Impressum";
@@ -58,6 +60,14 @@ export default function App() {
                 <RequireAuth>
                   <Account />
                 </RequireAuth>
+              }
+            />
+            <Route
+              path="/admin"
+              element={
+                <RequireAdmin>
+                  <Admin />
+                </RequireAdmin>
               }
             />
           </Routes>

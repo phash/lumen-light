@@ -47,6 +47,12 @@ function makeFakeApi(): FakeApi {
     getProfile: vi.fn(),
     updateProfile: vi.fn(),
     listPublishedPresets: vi.fn(),
+    submitFeedback: vi.fn(),
+    adminListUsers: vi.fn(),
+    adminPatchUser: vi.fn(),
+    adminStats: vi.fn(),
+    adminListFeedback: vi.fn(),
+    adminPatchFeedback: vi.fn(),
   };
 }
 

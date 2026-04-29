@@ -360,6 +360,84 @@ class ImageUrlOut(BaseModel):
     expires_in: int
 
 
+# ----- Admin -----
+
+class AdminUserOut(BaseModel):
+    """User-Listen-Eintrag fuer Admin. Enthaelt Aggregate (Counts), aber
+    keine Inhalte — Email + Handle als Identifikatoren reichen fuer die
+    UI-Liste."""
+    model_config = CAMEL_OUT_CONFIG
+    id: UUID
+    email: EmailStr
+    handle: str | None
+    is_disabled: bool
+    preset_count: int
+    image_count: int
+    published_preset_count: int
+    feedback_count: int
+    created_at: datetime
+
+
+class AdminUserPatchIn(BaseModel):
+    model_config = CAMEL_BASE_CONFIG
+    is_disabled: bool
+
+
+class AdminStatsOut(BaseModel):
+    """Globale Counts fuer das Admin-Dashboard."""
+    model_config = CAMEL_BASE_CONFIG
+    user_count: int
+    user_disabled_count: int
+    preset_count: int
+    preset_published_count: int
+    image_count: int
+    feedback_open_count: int
+    report_open_count: int
+
+
+# ----- Feedback -----
+
+FeedbackKind = Literal["bug", "idea", "other"]
+FeedbackStatus = Literal["new", "triaged", "closed"]
+
+
+class FeedbackIn(BaseModel):
+    """User-Submit. `website` ist Honeypot — Bots fuellen es typischerweise,
+    der echte UI-Code laesst es leer. Pruefung im Router (nicht im Schema),
+    weil `extra='forbid'` das Feld sonst ablehnt."""
+    model_config = ConfigDict(
+        alias_generator=to_camel,
+        populate_by_name=True,
+        serialize_by_alias=True,
+        extra="allow",  # Honeypot 'website' wird im Router rausgefiltert
+    )
+    kind: FeedbackKind
+    message: str = Field(min_length=10, max_length=2000)
+    page: str | None = Field(default=None, max_length=200)
+
+
+class FeedbackOut(BaseModel):
+    model_config = CAMEL_OUT_CONFIG
+    id: UUID
+    user_id: UUID | None
+    user_email: EmailStr | None
+    kind: FeedbackKind
+    message: str
+    page: str | None
+    status: FeedbackStatus
+    admin_notes: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
+class FeedbackPatchIn(BaseModel):
+    """Nur Status + Admin-Notiz darf geaendert werden — Inhalt bleibt
+    immutable, damit kein Admin nachtraeglich Reports umschreibt."""
+    model_config = CAMEL_BASE_CONFIG
+    status: FeedbackStatus | None = None
+    admin_notes: str | None = Field(default=None, max_length=2000)
+
+
 # ----- Fehler -----
 
 class ErrorResponse(BaseModel):

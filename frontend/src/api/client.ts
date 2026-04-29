@@ -230,6 +230,68 @@ export interface ApiClient {
   getProfile(): Promise<Profile>;
   updateProfile(payload: ProfilePayload): Promise<Profile>;
   listPublishedPresets(): Promise<Preset[]>;
+
+  // Feedback (user-facing)
+  submitFeedback(payload: FeedbackPayload): Promise<{ id: string | null }>;
+
+  // Admin
+  adminListUsers(): Promise<AdminUser[]>;
+  adminPatchUser(id: string, isDisabled: boolean): Promise<AdminUser>;
+  adminStats(): Promise<AdminStats>;
+  adminListFeedback(status?: AdminFeedbackStatus): Promise<AdminFeedback[]>;
+  adminPatchFeedback(id: string, payload: AdminFeedbackPatch): Promise<AdminFeedback>;
+}
+
+export type FeedbackKind = "bug" | "idea" | "other";
+export type AdminFeedbackStatus = "new" | "triaged" | "closed";
+
+export interface FeedbackPayload {
+  kind: FeedbackKind;
+  message: string;
+  page?: string | null;
+  /** Honeypot — UI laesst leer, Bots fuellen. Wird vom Backend silent
+   *  verworfen, falls nicht-leer. */
+  website?: string;
+}
+
+export interface AdminUser {
+  id: string;
+  email: string;
+  handle: string | null;
+  isDisabled: boolean;
+  presetCount: number;
+  publishedPresetCount: number;
+  imageCount: number;
+  feedbackCount: number;
+  createdAt: string;
+}
+
+export interface AdminStats {
+  userCount: number;
+  userDisabledCount: number;
+  presetCount: number;
+  presetPublishedCount: number;
+  imageCount: number;
+  feedbackOpenCount: number;
+  reportOpenCount: number;
+}
+
+export interface AdminFeedback {
+  id: string;
+  userId: string | null;
+  userEmail: string | null;
+  kind: FeedbackKind;
+  message: string;
+  page: string | null;
+  status: AdminFeedbackStatus;
+  adminNotes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminFeedbackPatch {
+  status?: AdminFeedbackStatus;
+  adminNotes?: string | null;
 }
 
 export interface ApiClientOptions {
@@ -330,5 +392,28 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         body: JSON.stringify(payload),
       }),
     listPublishedPresets: () => request<Preset[]>("/auth/me/published-presets"),
+
+    submitFeedback: (payload) =>
+      request<{ id: string | null }>("/feedback", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
+
+    adminListUsers: () => request<AdminUser[]>("/admin/users"),
+    adminPatchUser: (id, isDisabled) =>
+      request<AdminUser>(`/admin/users/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ isDisabled }),
+      }),
+    adminStats: () => request<AdminStats>("/admin/stats"),
+    adminListFeedback: (status) => {
+      const qs = status ? `?status_filter=${status}` : "";
+      return request<AdminFeedback[]>(`/admin/feedback${qs}`);
+    },
+    adminPatchFeedback: (id, payload) =>
+      request<AdminFeedback>(`/admin/feedback/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(payload),
+      }),
   };
 }

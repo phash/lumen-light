@@ -2,7 +2,10 @@ import { useState } from "react";
 import { useAuth } from "react-oidc-context";
 import { NavLink } from "react-router-dom";
 
-const links: ReadonlyArray<{ to: string; label: string }> = [
+import { useIsAdmin } from "../auth/useIsAdmin";
+import FeedbackDialog from "./FeedbackDialog";
+
+const baseLinks: ReadonlyArray<{ to: string; label: string }> = [
   { to: "/", label: "Start" },
   { to: "/editor", label: "Editor" },
   { to: "/library", label: "Bibliothek" },
@@ -12,7 +15,15 @@ const links: ReadonlyArray<{ to: string; label: string }> = [
 
 export default function Header() {
   const auth = useAuth();
+  const isAdmin = useIsAdmin();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [feedbackOpen, setFeedbackOpen] = useState(false);
+  // Wird bei jedem Open inkrementiert — gibt dem Dialog einen neuen Key,
+  // sodass interner State (Nachricht, Honeypot, Kind) frisch ist.
+  const [feedbackOpenCount, setFeedbackOpenCount] = useState(0);
+  const links = isAdmin
+    ? [...baseLinks, { to: "/admin", label: "Admin" }]
+    : baseLinks;
 
   const onLogin = () => {
     void auth.signinRedirect();
@@ -83,6 +94,18 @@ export default function Header() {
               </span>
               <button
                 type="button"
+                onClick={() => {
+                  setFeedbackOpenCount((c) => c + 1);
+                  setFeedbackOpen(true);
+                }}
+                data-testid="header-feedback"
+                className="text-stone-400 hover:text-amber-200"
+                aria-label="Feedback senden"
+              >
+                Feedback
+              </button>
+              <button
+                type="button"
                 onClick={onLogout}
                 className="text-stone-400 hover:text-amber-200"
               >
@@ -101,6 +124,12 @@ export default function Header() {
           )}
         </div>
       </nav>
+
+      <FeedbackDialog
+        key={feedbackOpenCount}
+        open={feedbackOpen}
+        onClose={() => setFeedbackOpen(false)}
+      />
 
       {/* Mobile-Drawer */}
       {mobileOpen && (

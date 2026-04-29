@@ -91,7 +91,12 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `backend/app/auth.py` | JWT-Verify (PyJWT, RS256-Whitelist), JIT-User-Provisioning + 10 Default-Presets (Neutral/Punchy/Soft/SW + 6 Genre-Presets) |
 | `backend/app/schemas.py` | Adjustments, Mask-Discriminated-Union, `MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`. `extra="forbid"` überall |
 | `backend/app/rate_limit.py` | slowapi-Limiter (SHA-256-Token-Hash-Key, IP-Fallback). `LUMEN_RATELIMIT_STORAGE` ueber env auf Redis-URI fuer Multi-Worker-Setups |
-| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null |
+| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback |
+| `backend/app/routers/admin.py` | Admin-Endpoints (Users-Liste/Disable, Stats, Feedback-Inbox + PATCH). Gating via `current_admin` Dep |
+| `backend/app/routers/feedback.py` | User-Feedback-Submit. Honeypot `website` (silent drop), Rate-Limit 5/h |
+| `frontend/src/auth/useIsAdmin.ts` | Realm-/Resource-Access-Roles aus dem OIDC-Profile. `RequireAdmin` schuetzt `/admin` |
+| `frontend/src/pages/Admin.tsx` | Tabs Users + Feedback, Stats-Strip oben |
+| `frontend/src/components/FeedbackDialog.tsx` | Header-Button-getriggert, Honeypot a11y/visuell versteckt |
 | `backend/app/routers/marketplace.py` | F1: 7 Endpunkte (list, detail, apply, fork, report, profile, published-presets), Atomic-Increment, Auto-Hide bei 3 Reports, Cursor-Validation MAX_CURSOR_OFFSET=10000 |
 | `backend/app/schemas.py` | `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` — alle Wire-Keys camelCase, Eingang akzeptiert beide |
 | `infra/keycloak/lumen-realm.json` | Dev-Realm: ROPC + verifyEmail off (Tests). Prod nutzt `lumen-realm.prod.json` (gehaertet) |
@@ -221,7 +226,8 @@ backend pytest. E2E nicht in PR-Pipeline (Stack-Compose dauert).
 - **Phase F1 komplett**: Preset-Marketplace mit Backend (Migration 005, 7 Endpunkte, Auto-Hide), Frontend (Marketplace-Page, Detail-Modal, PresetDialog-Publish-Toggle, Account-Profil + veroeffentlichte Presets).
 - **Phase D durch**: D1 (EditorToolbar/Banners/OverlayCanvas), D2 (LocalAdjBuffers), D4 (Wireformat camelCase), D6 (Component-Tests).
 - **Reviews abgeschlossen**: Security/DSGVO/Code/UI-UX. Critical + High + Medium-Items umgesetzt.
-- **Tests**: 99 backend pytest, 295 frontend vitest, lint + build sauber.
+- **Tests**: 122 backend pytest, 312 frontend vitest, lint + build sauber.
+- **Admin & Feedback (MVP)**: `/admin` mit Users + Feedback-Inbox; Header-Feedback-Dialog mit Honeypot. Realm `admin`-Rolle muss in KC einem User zugewiesen werden, damit der Backend-`current_admin`-Dep durchlaesst.
 
 ## Offene Backlog-Items (vor public-Launch nochmal pruefen)
 

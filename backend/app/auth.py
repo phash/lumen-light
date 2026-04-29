@@ -224,10 +224,29 @@ async def _get_or_create_user(db: AsyncSession, sub: str, email: str) -> User:
 
 # ----- FastAPI-Dependency -----
 
-async def current_user(
-    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
-    db: AsyncSession = Depends(get_db),
-) -> User:
+ADMIN_ROLE = "admin"
+
+
+def _has_admin_role(payload: dict[str, Any]) -> bool:
+    """Keycloak-Realm-Roles liegen unter realm_access.roles. Wir akzeptieren
+    auch resource_access.<audience>.roles als Fallback fuer Client-spezifische
+    Rollen — beides ist im Realm-Setup ueblich."""
+    realm_roles = (payload.get("realm_access") or {}).get("roles") or []
+    if ADMIN_ROLE in realm_roles:
+        return True
+    resource_access = payload.get("resource_access") or {}
+    for client in resource_access.values():
+        if ADMIN_ROLE in (client.get("roles") or []):
+            return True
+    return False
+
+
+async def _resolve_user(
+    creds: HTTPAuthorizationCredentials | None,
+    db: AsyncSession,
+) -> tuple[User, dict[str, Any]]:
+    """Token verifizieren, User JIT-provisionieren und sowohl User als auch
+    den Token-Payload zurueckgeben (Letzteres fuer Role-Checks)."""
     if creds is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -242,4 +261,41 @@ async def current_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token ohne sub- oder email-Claim.",
         )
-    return await _get_or_create_user(db, sub=sub, email=email)
+    user = await _get_or_create_user(db, sub=sub, email=email)
+    return user, payload
+
+
+async def current_user(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    user, _ = await _resolve_user(creds, db)
+    if user.is_disabled:
+        # 403 statt 401: Token ist gueltig, der Account aber gesperrt.
+        # Frontend soll einen klaren "Account deaktiviert"-Banner zeigen,
+        # nicht zum Login schicken.
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account deaktiviert.",
+        )
+    return user
+
+
+async def current_admin(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Nutzer-Resolve + Admin-Role-Check. Auch fuer Admins gilt der
+    is_disabled-Block — ein gesperrter Admin soll nichts mehr aendern."""
+    user, payload = await _resolve_user(creds, db)
+    if user.is_disabled:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account deaktiviert.",
+        )
+    if not _has_admin_role(payload):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin-Rolle erforderlich.",
+        )
+    return user

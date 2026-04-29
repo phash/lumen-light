@@ -4,9 +4,11 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
+    Index,
     Integer,
     String,
     Text,
@@ -28,6 +30,9 @@ class User(Base):
     email: Mapped[str] = mapped_column(String(255), nullable=False)
     handle: Mapped[str | None] = mapped_column(String(40), unique=True, nullable=True)
     bio: Mapped[str | None] = mapped_column(Text, nullable=True)
+    is_disabled: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
@@ -155,4 +160,51 @@ class PresetReport(Base):
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class Feedback(Base):
+    """User-Feedback (bug/idea/other). user_id ist nullable, weil bei
+    User-Loeschung (DSGVO Art. 17) die Meldungen anonymisiert bleiben
+    sollen — der Inhalt darf bleiben, der Personenbezug nicht."""
+    __tablename__ = "feedbacks"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('bug','idea','other')",
+            name="ck_feedbacks_kind",
+        ),
+        CheckConstraint(
+            "status IN ('new','triaged','closed')",
+            name="ck_feedbacks_status",
+        ),
+        CheckConstraint(
+            "char_length(message) BETWEEN 10 AND 2000",
+            name="ck_feedbacks_message_length",
+        ),
+        Index("ix_feedbacks_status_created", "status", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True), primary_key=True, default=uuid4
+    )
+    user_id: Mapped[UUID | None] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    page: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), nullable=False, server_default=text("'new'"), default="new"
+    )
+    admin_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
     )

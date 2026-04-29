@@ -94,6 +94,11 @@ Recherche-Output siehe `docs/superpowers/specs/2026-04-28-phase-g-pro-correction
 - ~~DELETE /me Keycloak-Admin-API-Aufruf~~ ✓ erledigt — `app/keycloak_admin.py` mit Service-Account-Client (Client-Credentials-Grant). Konfiguriert via `KEYCLOAK_ADMIN_CLIENT_ID` + `KEYCLOAK_ADMIN_CLIENT_SECRET`. Best-effort: KC-Ausfall blockiert App-Cleanup nicht.
 - E2E-Test für Marketplace — Stack-Compose-Setup ausstehend.
 
+**Admin & Bot-Härtung (neu, MVP komplett):**
+- Admin-Bereich `/admin` mit User-Tabelle (Disable-Toggle, Aggregate) und Feedback-Inbox (Status-Workflow new/triaged/closed, Admin-Notes). Frontend-Gating via `useIsAdmin`-Hook + `RequireAdmin`, Backend-Gating via `current_admin` (Realm-Role `admin`). Migration 007 (`users.is_disabled` + `feedbacks`).
+- User-Feedback-Dialog im Header (kind: bug/idea/other, message 10-2000 Zeichen, Honeypot `website` + Rate-Limit 5/h).
+- Realm-PROD-Härtung: failureFactor 5→3, lockout-Wait verdoppelt, passwordPolicy enforced (length 10, digits, history 3). Dev-Realm bekommt zusätzlich die `admin`-Realm-Role im Import.
+
 **Stretch-Features (Backlog, nach Beta):**
 - KI-Masken (Motiv-/Himmel-/Personen-Selektion via Segment-Anything-WebGPU oder MobileSAM)
 - Spot-Removal (Inpainting)
