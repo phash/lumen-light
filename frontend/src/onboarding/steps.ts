@@ -53,7 +53,7 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
     id: "auto-tone",
     kind: "spotlight",
     target: "editor-auto-tone",
-    placement: "bottom",
+    placement: "top",
     title: "2. Auto-Ton",
     body:
       "Ein Klick — Lumen analysiert das Bild und setzt Belichtung, Kontrast, " +

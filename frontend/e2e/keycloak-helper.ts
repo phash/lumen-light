@@ -83,3 +83,38 @@ export async function deleteTestUser(userId: string): Promise<void> {
     /* best effort cleanup */
   }
 }
+
+/**
+ * Weist einem bestehenden Test-User die `admin`-Realm-Role zu. Muss
+ * VOR dem Login-Flow passieren, weil bestehende Tokens die alte
+ * Roles-Liste behalten.
+ */
+export async function assignAdminRole(userId: string): Promise<void> {
+  const token = await adminToken();
+  const roleRes = await fetch(
+    `${KEYCLOAK_URL}/admin/realms/${REALM}/roles/admin`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+  if (!roleRes.ok) {
+    throw new Error(
+      `Admin-Role-Lookup fehlgeschlagen: ${roleRes.status}`,
+    );
+  }
+  const role = await roleRes.json();
+  const assign = await fetch(
+    `${KEYCLOAK_URL}/admin/realms/${REALM}/users/${userId}/role-mappings/realm`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify([role]),
+    },
+  );
+  if (!assign.ok && assign.status !== 204) {
+    throw new Error(
+      `Admin-Role-Assignment fehlgeschlagen: ${assign.status}`,
+    );
+  }
+}

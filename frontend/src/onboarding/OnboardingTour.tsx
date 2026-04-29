@@ -125,13 +125,16 @@ export default function OnboardingTour({ onClose }: Props) {
     const GAP = 12;
     if (placement === "bottom") {
       return {
-        top: rect.top + rect.height + GAP,
+        top: clampY(rect.top + rect.height + GAP, TOOLTIP_H),
         left: clampX(rect.left + rect.width / 2 - TOOLTIP_W / 2, TOOLTIP_W),
       };
     }
     if (placement === "top") {
+      // top-placement: Tooltip-Bottom = rect.top - GAP. Wir wollen auch
+      // hier gegen Viewport-Top clampen (translateY=-100% verschiebt
+      // dann nach oben aus der angegebenen Position).
       return {
-        top: rect.top - GAP - 1,
+        top: Math.max(TOOLTIP_H + 16, rect.top - GAP - 1),
         left: clampX(rect.left + rect.width / 2 - TOOLTIP_W / 2, TOOLTIP_W),
         translateY: "-100%",
       };
@@ -156,13 +159,13 @@ export default function OnboardingTour({ onClose }: Props) {
   return (
     <div
       data-testid="onboarding-tour"
-      className="fixed inset-0 z-50"
+      className="fixed inset-0 z-50 pointer-events-none"
       role="dialog"
       aria-modal="true"
       aria-labelledby="onboarding-title"
     >
       {step.kind === "modal" ? (
-        <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-4">
+        <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-4 pointer-events-auto">
           <div
             data-testid="onboarding-modal"
             className="w-full max-w-md bg-stone-900 border border-stone-700 p-6 text-stone-200"
@@ -231,19 +234,30 @@ export default function OnboardingTour({ onClose }: Props) {
           {tooltipPos && (
             <div
               data-testid="onboarding-tooltip"
-              className="absolute w-[320px] bg-stone-900 border border-stone-700 p-4 text-stone-200 shadow-2xl"
+              className="absolute pointer-events-auto w-[320px] bg-stone-900 border border-stone-700 p-4 text-stone-200 shadow-2xl"
               style={{
                 top: tooltipPos.top,
                 left: tooltipPos.left,
                 transform: composeTransform(tooltipPos),
               }}
             >
-              <h3
-                id="onboarding-title"
-                className="text-amber-200 text-sm uppercase tracking-[0.2em]"
-              >
-                {step.title}
-              </h3>
+              <div className="flex items-start justify-between gap-2">
+                <h3
+                  id="onboarding-title"
+                  className="text-amber-200 text-sm uppercase tracking-[0.2em]"
+                >
+                  {step.title}
+                </h3>
+                <button
+                  type="button"
+                  data-testid="onboarding-skip"
+                  onClick={handleSkip}
+                  aria-label="Tour ueberspringen"
+                  className="text-stone-500 hover:text-stone-200 -mt-1 -mr-1 px-1"
+                >
+                  ✕
+                </button>
+              </div>
               <p className="mt-2 text-sm text-stone-300">{step.body}</p>
               {waitingFor && (
                 <p
@@ -256,14 +270,6 @@ export default function OnboardingTour({ onClose }: Props) {
               <div className="mt-4 flex items-center justify-between">
                 <ProgressDots index={stepIdx} />
                 <div className="flex gap-2 text-xs">
-                  <button
-                    type="button"
-                    data-testid="onboarding-skip"
-                    onClick={handleSkip}
-                    className="px-2 py-1 uppercase tracking-[0.2em] text-stone-500 hover:text-stone-300"
-                  >
-                    Spaeter
-                  </button>
                   {stepIdx > 0 && (
                     <button
                       type="button"
@@ -319,6 +325,11 @@ function ProgressDots({ index }: { index: number }) {
 function clampX(left: number, width: number): number {
   const max = window.innerWidth - width - 16;
   return Math.max(16, Math.min(left, max));
+}
+
+function clampY(top: number, height: number): number {
+  const max = window.innerHeight - height - 16;
+  return Math.max(16, Math.min(top, max));
 }
 
 function composeTransform(pos: {
