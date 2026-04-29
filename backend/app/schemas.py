@@ -365,10 +365,12 @@ class ImageUrlOut(BaseModel):
 class AdminUserOut(BaseModel):
     """User-Listen-Eintrag fuer Admin. Enthaelt Aggregate (Counts), aber
     keine Inhalte — Email + Handle als Identifikatoren reichen fuer die
-    UI-Liste."""
+    UI-Liste. `email: str` (nicht EmailStr), weil Legacy-Test-User mit
+    `.local`-TLDs sonst die Output-Validation sprengen — Identitaet liegt
+    bei Keycloak, hier ist es nur ein Display-Text."""
     model_config = CAMEL_OUT_CONFIG
     id: UUID
-    email: EmailStr
+    email: str
     handle: str | None
     is_disabled: bool
     preset_count: int
@@ -420,7 +422,7 @@ class FeedbackOut(BaseModel):
     model_config = CAMEL_OUT_CONFIG
     id: UUID
     user_id: UUID | None
-    user_email: EmailStr | None
+    user_email: str | None  # str statt EmailStr — siehe AdminUserOut
     kind: FeedbackKind
     message: str
     page: str | None
