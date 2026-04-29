@@ -51,3 +51,33 @@ export async function loginAsNewUser(page: Page): Promise<CreatedUser> {
 export async function cleanupUser(user: CreatedUser): Promise<void> {
   await deleteTestUser(user.id);
 }
+
+/**
+ * Holt einen Access-Token via ROPC (Direct Access Grant) — funktioniert
+ * weil der Test-Realm `directAccessGrantsEnabled=true` setzt. Damit
+ * koennen E2E-Tests Backend-API direkt callen, ohne die ganze
+ * UI-Interaktion durchzuspielen.
+ */
+const KEYCLOAK_URL = process.env.LUMEN_KEYCLOAK_URL ?? "http://localhost:18080";
+const REALM = "lumen";
+
+export async function apiTokenFor(user: CreatedUser): Promise<string> {
+  const body = new URLSearchParams({
+    grant_type: "password",
+    client_id: "lumen-frontend",
+    username: user.username,
+    password: user.password,
+    scope: "openid",
+  });
+  const res = await fetch(
+    `${KEYCLOAK_URL}/realms/${REALM}/protocol/openid-connect/token`,
+    { method: "POST", body },
+  );
+  if (!res.ok) {
+    throw new Error(
+      `apiTokenFor fehlgeschlagen: ${res.status} ${await res.text()}`,
+    );
+  }
+  const data = (await res.json()) as { access_token: string };
+  return data.access_token;
+}
