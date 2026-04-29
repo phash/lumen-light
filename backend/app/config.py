@@ -12,6 +12,12 @@ class Settings(BaseSettings):
     keycloak_audience: str = "lumen-api"
     jwk_cache_seconds: int = 600
 
+    # Service-Account-Credentials fuer Admin-API-Calls (DSGVO Art. 17:
+    # DELETE /me loescht den KC-User mit). Leer = nicht konfiguriert,
+    # KC-Account bleibt stehen (Datenschutz-Hinweis im UI).
+    keycloak_admin_client_id: str = ""
+    keycloak_admin_client_secret: str = ""
+
     # Garage S3 (siehe ADR-011) — Endpoints fuer Production via .env;
     # in Tests werden diese durch eine MinIO-Container-Fixture ueberschrieben.
     garage_s3_endpoint: str = "http://localhost:3900"

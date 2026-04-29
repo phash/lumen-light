@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
 from app.database import get_db
+from app.keycloak_admin import delete_user as kc_delete_user
 from app.models import Image, Preset, PresetReport, User
 from app.rate_limit import limiter
 from app.schemas import (
@@ -85,9 +86,11 @@ async def delete_me(
     1. Alle S3-Objekte des Users (Best-Effort, Storage-Fehler werden
        protokolliert aber nicht eskaliert — die DB-Row geht trotzdem weg).
     2. DB-Cascade entfernt presets+images.
-    3. Der Keycloak-Account selbst wird hier NICHT geloescht — der User
-       muss das in seinem Account-Self-Service-UI tun. Folgeschritt fuer
-       full DSGVO-Compliance: Admin-API-Call gegen Keycloak.
+    3. Keycloak-Account via Admin-API loeschen (Service-Account, falls
+       konfiguriert). Best-effort: ein KC-Ausfall schluckt den /me-DELETE
+       NICHT — App-Daten gehen trotzdem weg, KC-Account bleibt nur als
+       Reststand stehen (Logger-WARNING). Wenn Service-Account nicht
+       konfiguriert ist, wird der KC-Schritt uebersprungen.
     """
     image_keys_result = await db.execute(
         select(Image.bucket_key).where(Image.user_id == user.id)
@@ -102,8 +105,18 @@ async def delete_me(
             # at this scale; periodic GC sweeps it eventually.
             pass
 
+    keycloak_sub = user.keycloak_sub
     await db.delete(user)
     await db.commit()
+
+    # Erst nach erfolgreichem App-Cleanup den KC-Account abraeumen.
+    # Reihenfolge: wenn KC zwischendrin abstuerzt, ist die App-Tabelle
+    # leer und der naechste Login provisioniert sauber (oder wird
+    # zumindest nicht verwirrt). Andere Reihenfolge wuerde einen
+    # KC-Token erlauben, dem keine App-Row mehr gegenueber steht
+    # (das gleiche, was der bisherige Code ohnehin produziert hat —
+    # also kein Regress).
+    kc_delete_user(keycloak_sub)
 
 
 # ----- DSGVO Art. 15 + 20 (Auskunft + Datenuebertragbarkeit) -----

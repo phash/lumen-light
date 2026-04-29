@@ -198,7 +198,12 @@ gesetzt — pytest läuft sonst gegen 429er.
 - `LUMEN_ENV=production` (in `docker-compose.prod.yml` gesetzt) blendet `/docs`, `/openapi.json`, `/redoc` aus.
 - `LUMEN_RATELIMIT_STORAGE=redis://lumen-redis:6379/0` schaltet slowapi auf gemeinsamen Counter ueber alle Worker. Default `memory://` = single-worker-only.
 - `LUMEN_RATELIMIT_DISABLED=1` schaltet slowapi komplett aus (Backend-Tests).
+- `KEYCLOAK_ADMIN_CLIENT_ID` + `KEYCLOAK_ADMIN_CLIENT_SECRET` aktivieren den Service-Account-Pfad in `delete_me`. Leer = KC-Account bleibt nach `DELETE /me` stehen (Best-effort, kein 5xx).
 - Service-Worker registriert nur in PROD-Build (`import.meta.env.PROD`); Dev frisst sonst den Vite-Hot-Reload.
+
+### Janitor-Cron (Production)
+
+`python -m scripts.janitor [TTL_MINUTES]` raeumt pending Uploads aelter als TTL aus DB+S3. Empfohlen alle 5 min im Production-Cluster. Stdout = einzeilige JSON-Statistik fuer Cron-Logging.
 
 ## Production-Cluster
 

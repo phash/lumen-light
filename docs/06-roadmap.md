@@ -90,8 +90,8 @@ Recherche-Output siehe `docs/superpowers/specs/2026-04-28-phase-g-pro-correction
 - Real-Browser-Smoke-Tests fuer die Touch-Logik (jsdom kann keine echten Pointer-Events) — Playwright-Setup steht aus.
 
 **Sicherheit/DSGVO (vor Multi-Tenant-Live):**
-- Pre-Signed-POST mit Content-Length-Range — heute heuristischer Schutz via HEAD+Cleanup. Pflicht-Folge-Schritt: kleiner Janitor-Cron, der `images.upload_state='pending' AND created_at < now()-15min` plus zugehörige S3-Objekte löscht.
-- DELETE /me Keycloak-Admin-API-Aufruf — heute werden nur App-Daten gelöscht, der KC-Account bleibt; Datenschutz-Hinweis ist drin. Sauberer Fix: Service-Account-Setup im Realm + Admin-API-Call.
+- ~~Pre-Signed-POST-Janitor-Cron~~ ✓ erledigt — `app/janitor.py` + `scripts/janitor.py` (CLI), 4 Tests. Cron-Eintrag empfohlen: alle 5 min `python -m scripts.janitor`.
+- ~~DELETE /me Keycloak-Admin-API-Aufruf~~ ✓ erledigt — `app/keycloak_admin.py` mit Service-Account-Client (Client-Credentials-Grant). Konfiguriert via `KEYCLOAK_ADMIN_CLIENT_ID` + `KEYCLOAK_ADMIN_CLIENT_SECRET`. Best-effort: KC-Ausfall blockiert App-Cleanup nicht.
 - E2E-Test für Marketplace — Stack-Compose-Setup ausstehend.
 
 **Stretch-Features (Backlog, nach Beta):**
