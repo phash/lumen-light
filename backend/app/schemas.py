@@ -110,6 +110,10 @@ class Adjustments(BaseModel):
     # Mittelwert der noch nicht clipped Channels. 0 = aus, 1 = volles
     # Recovery. Inspiriert von RawTherapee's HLRecovery_blend.
     highlightRecovery: float = Field(default=0, ge=0, le=1)  # noqa: N815
+    # Phase G2: Local Contrast / Clarity. Unsharp-Mask im Y-Kanal mit
+    # 5x5-Gauss-Kernel. Negative Werte = Soften. Inspiriert von
+    # RawTherapee's iplocalcontrast.cc.
+    localContrast: float = Field(default=0, ge=-1, le=1)  # noqa: N815
     # null = HSL inaktiv. Spart 24 Felder im JSONB fuer alte Presets.
     hsl: HslAdjustments | None = None
     # null = Tonkurve inaktiv (Identitaet). Wireformat camelCase wie

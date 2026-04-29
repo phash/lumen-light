@@ -37,6 +37,7 @@ uniform float u_saturation;
 uniform float u_sharpness;
 uniform float u_noiseReduction;
 uniform float u_highlightRecovery;
+uniform float u_localContrast;
 uniform float u_bypass;
 uniform float u_lensDistortion;
 uniform float u_lensVignette;
@@ -77,6 +78,7 @@ out vec4 outColor;
 const float DISTORTION_GAIN = 0.4;
 const float VIGNETTE_GAIN = 2.0;
 const float TCA_GAIN = 0.05;
+const float LOCAL_CONTRAST_GAIN = 0.8;
 
 float computeLinearMaskN(int i, vec2 uv) {
   vec2 d = u_linMaskP2[i] - u_linMaskP1[i];
@@ -320,6 +322,37 @@ void main() {
     vec3 ce = texture(u_tex, src_uv + vec2( px.x, 0.0)).rgb;
     vec3 hf = src.rgb - (cn + cs + cw + ce) * 0.25;
     c = clamp(c + hf * u_sharpness * 1.5, 0.0, 1.0);
+  }
+
+  // 7e. Local Contrast / Clarity (RawTherapee iplocalcontrast.cc inspiriert):
+  // Unsharp-Mask im Y-Kanal mit 5x5-Gauss (sigma~1.5px), Skalierung als
+  // Y-Verhaeltnis auf RGB anwenden -> kein Color-Shift. Negativ = Soft-Look.
+  // 25 Texture-Reads — nur aktiv, wenn Slider deutlich != 0.
+  if (abs(u_localContrast) > 0.001) {
+    float yBlur = 0.0;
+    float wsum = 0.0;
+    for (int oy = -2; oy <= 2; oy++) {
+      for (int ox = -2; ox <= 2; ox++) {
+        vec2 off = vec2(float(ox), float(oy)) * px;
+        float r2 = float(ox * ox + oy * oy);
+        float w = exp(-r2 / 4.5);
+        vec3 sn = texture(u_tex, src_uv + off).rgb;
+        yBlur += luminance(sn) * w;
+        wsum += w;
+      }
+    }
+    yBlur /= max(wsum, 1e-4);
+    float ySrc = luminance(src.rgb);
+    float deltaY = ySrc - yBlur;
+    float gain = u_localContrast * LOCAL_CONTRAST_GAIN;
+    float yTarget = ySrc + deltaY * gain;
+    float yCurr = luminance(c);
+    if (yCurr > 1e-4 && yTarget > 0.0) {
+      // Wir wenden das Verhaeltnis auf c an, damit das aktuelle
+      // Helligkeits-Niveau (nach Tone, Curve usw.) erhalten bleibt.
+      float ratio = (yCurr + deltaY * gain) / yCurr;
+      c = clamp(c * ratio, 0.0, 1.0);
+    }
   }
 
   // 8. Vignette (radial, am Ende der Pipeline)

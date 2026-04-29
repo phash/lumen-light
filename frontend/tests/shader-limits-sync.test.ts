@@ -11,6 +11,7 @@ import {
   HSL_HUE_GAIN,
   HSL_LUM_GAIN,
   HSL_SIGMA,
+  LOCAL_CONTRAST_GAIN,
 } from "../src/editor/adjustments";
 import { DISTORTION_GAIN, TCA_GAIN, VIGNETTE_GAIN } from "../src/editor/lens";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "../src/editor/mask";
@@ -69,5 +70,11 @@ describe("Shader-Limits-Sync", () => {
     const m = FRAG_SRC.match(/const float HSL_LUM_GAIN = ([\d.]+)/);
     expect(m).not.toBeNull();
     expect(Number(m![1])).toBeCloseTo(HSL_LUM_GAIN, 5);
+  });
+
+  it("LOCAL_CONTRAST_GAIN in FRAG_SRC matched adjustments.ts", () => {
+    const m = FRAG_SRC.match(/const float LOCAL_CONTRAST_GAIN = ([\d.]+)/);
+    expect(m).not.toBeNull();
+    expect(Number(m![1])).toBeCloseTo(LOCAL_CONTRAST_GAIN, 5);
   });
 });

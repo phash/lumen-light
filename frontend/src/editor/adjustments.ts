@@ -18,7 +18,8 @@ export type AdjustmentKey =
   | "saturation"
   | "sharpness"
   | "noiseReduction"
-  | "highlightRecovery";
+  | "highlightRecovery"
+  | "localContrast";
 
 export type ScalarAdjustments = Record<AdjustmentKey, number>;
 
@@ -45,6 +46,11 @@ export type HslAxis = "hue" | "saturation" | "luminance";
 export const HSL_SIGMA = 0.05;
 export const HSL_HUE_GAIN = 0.1;
 export const HSL_LUM_GAIN = 0.3;
+
+// Local-Contrast-Shader-Konstante (Phase G2). Multiplikator zwischen
+// Slider-Wert und tatsaechlich angewandter Unsharp-Verstaerkung. Sync-Test
+// pinned das gegen den GLSL-Literal-Wert in shaders.ts.
+export const LOCAL_CONTRAST_GAIN = 0.8;
 
 export interface HslAdjustments {
   readonly hue: Record<HslChannel, number>;
@@ -115,6 +121,8 @@ export const ADJUSTMENTS: ReadonlyArray<AdjustmentDefinition> = [
     tooltip: "Unsharp-Mask. Hebt Kanten an. Mit Bedacht — Halos bei zu viel." },
   { key: "noiseReduction", label: "Rauschen",   group: "Detail", min: 0, max: 1, step: 0.01, default: 0,
     tooltip: "Bilateral-Filter glaettet Rauschen, schont Kanten. Gut fuer ISO-hohe Aufnahmen." },
+  { key: "localContrast",  label: "Klarheit",   group: "Detail", min: -1, max: 1, step: 0.01, default: 0,
+    tooltip: "Mid-Frequenz-Kontrast. Positiv hebt Hauttextur und Wolkenstruktur, negativ glaettet (Soft-Look). RawTherapee-Clarity-aequivalent." },
 ] as const;
 
 const ADJUSTMENT_BY_KEY: ReadonlyMap<AdjustmentKey, AdjustmentDefinition> = new Map(

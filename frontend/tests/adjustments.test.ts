@@ -14,10 +14,10 @@ import {
 } from "../src/editor/adjustments";
 
 describe("adjustments definitions", () => {
-  it("hat 13 Adjustments mit eindeutigen keys", () => {
-    expect(ADJUSTMENTS).toHaveLength(13);
+  it("hat 14 Adjustments mit eindeutigen keys", () => {
+    expect(ADJUSTMENTS).toHaveLength(14);
     const keys = new Set(ADJUSTMENTS.map((a) => a.key));
-    expect(keys.size).toBe(13);
+    expect(keys.size).toBe(14);
   });
 
   it("ranges: exposure -5..+5, einseitig-positive 0..+1, Rest -1..+1", () => {
@@ -118,10 +118,10 @@ describe("formatAdjustmentValue", () => {
 });
 
 describe("adjustmentsByGroup", () => {
-  it("Licht=7, Farbe=4, Detail=2", () => {
+  it("Licht=7, Farbe=4, Detail=3", () => {
     const groups = adjustmentsByGroup();
     expect(groups.get("Licht")).toHaveLength(7);
     expect(groups.get("Farbe")).toHaveLength(4);
-    expect(groups.get("Detail")).toHaveLength(2);
+    expect(groups.get("Detail")).toHaveLength(3);
   });
 });

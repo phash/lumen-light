@@ -19,7 +19,7 @@ SCALAR_FIELDS = (
     "whites", "blacks", "temperature", "tint",
     "vibrance", "saturation",
     "sharpness", "noiseReduction",
-    "highlightRecovery",
+    "highlightRecovery", "localContrast",
 )
 
 

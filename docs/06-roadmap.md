@@ -76,7 +76,7 @@ Recherche-Output siehe `docs/superpowers/specs/2026-04-28-phase-g-pro-correction
 | Item | Aufgabe | Status |
 |---|---|---|
 | G1 | Highlight Recovery Blend-Modus (geclippte Channels auf unclipped-Mittel pullen) | ✓ |
-| G2 | Local Contrast / Clarity (Unsharp-Mask im Y-Kanal mit asymm Gain) | ⏳ offen |
+| G2 | Local Contrast / Clarity (Unsharp-Mask im Y-Kanal, 5x5-Gauss) | ✓ |
 | G3 | TCA-Korrektur (per-Channel-Distortion fuer R/B) | ✓ |
 | G4 | Lensfun-DB-Migration mit Stuetzstellen-Interpolation | ⏸ Backlog |
 
