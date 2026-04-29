@@ -37,6 +37,16 @@ export default function FeedbackDialog({ open, onClose }: Props) {
     }
   }, [open]);
 
+  // Esc-Close fuer A11y. Mounted nur wenn Dialog offen.
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const submit = async () => {
@@ -72,6 +82,9 @@ export default function FeedbackDialog({ open, onClose }: Props) {
   return (
     <div
       data-testid="feedback-dialog"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="feedback-dialog-title"
       className="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-4"
       onClick={onClose}
     >
@@ -80,7 +93,7 @@ export default function FeedbackDialog({ open, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
-          <h2 className="text-stone-200">Feedback senden</h2>
+          <h2 id="feedback-dialog-title" className="text-stone-200">Feedback senden</h2>
           <button
             type="button"
             data-testid="feedback-close"

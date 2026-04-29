@@ -114,6 +114,125 @@ _DEFAULT_PRESETS: list[dict] = [
             "vibrance": 0.30, "saturation": 0.05,
         },
     },
+    # --- Erweiterte Genre-Presets (Phase G+ / Onboarding-Wave) ---
+    {
+        # Insekten/Bluete: Klarheit fuer Mikro-Texturen, leichter Saettigungsboost
+        # auf Bluetenfarben, Schaerfen im Detail-Bereich.
+        "name": "Macro",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.15, "highlights": -0.15, "shadows": 0.10,
+            "whites": 0, "blacks": -0.05, "temperature": 0, "tint": 0,
+            "vibrance": 0.20, "saturation": 0,
+            "sharpness": 0.30, "noiseReduction": 0.10,
+            "highlightRecovery": 0, "localContrast": 0.30,
+        },
+    },
+    {
+        # Sterne/Milchstrasse: Schatten oeffnen ohne Rauschen, leicht kuehl,
+        # Highlights eindaempfen. Erwartet langes Belichten — wir setzen
+        # Belichtung neutral, der Fotograf justiert nach.
+        "name": "Astro",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.30, "highlights": -0.40, "shadows": 0.50,
+            "whites": -0.10, "blacks": -0.15, "temperature": -0.15, "tint": -0.05,
+            "vibrance": 0.25, "saturation": 0,
+            "sharpness": 0, "noiseReduction": 0.40,
+            "highlightRecovery": 0, "localContrast": 0.20,
+        },
+    },
+    {
+        # Speisen: warm + appetitlich, Saettigung nur leicht (sonst Plastik-
+        # Look), Klarheit gibt Textur (Brot, Soße).
+        "name": "Food",
+        "adjustments": {
+            "exposure": 0.10, "contrast": 0.15, "highlights": -0.20, "shadows": 0.20,
+            "whites": 0.05, "blacks": -0.05, "temperature": 0.10, "tint": 0,
+            "vibrance": 0.30, "saturation": 0.05,
+            "sharpness": 0.10, "noiseReduction": 0,
+            "highlightRecovery": 0.20, "localContrast": 0.20,
+        },
+    },
+    {
+        # Hochzeit: weiches Hautlicht, romantisch, Lichter retten fuer
+        # Brautkleid, Schatten oeffnen fuer Anzug.
+        "name": "Hochzeit",
+        "adjustments": {
+            "exposure": 0.05, "contrast": 0, "highlights": -0.30, "shadows": 0.25,
+            "whites": -0.10, "blacks": 0.05, "temperature": 0.05, "tint": 0,
+            "vibrance": 0.15, "saturation": 0,
+            "sharpness": 0, "noiseReduction": 0.10,
+            "highlightRecovery": 0.40, "localContrast": -0.10,
+        },
+    },
+    {
+        # Innen/Indoor: typisch Mischlicht. Etwas waermer, Schatten auf,
+        # leichte Rauschunterdrueckung als Default-Sicherheitsnetz.
+        "name": "Innen",
+        "adjustments": {
+            "exposure": 0.20, "contrast": 0.10, "highlights": -0.10, "shadows": 0.30,
+            "whites": 0, "blacks": -0.05, "temperature": 0.05, "tint": 0.05,
+            "vibrance": 0.10, "saturation": 0,
+            "sharpness": 0, "noiseReduction": 0.20,
+            "highlightRecovery": 0, "localContrast": 0,
+        },
+    },
+    {
+        # Konzert/Buehne: harte Mischlicht-Farben, kraeftiger Look, tiefes
+        # Schwarz fuer Bandhintergrund.
+        "name": "Konzert",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.40, "highlights": -0.30, "shadows": 0.05,
+            "whites": 0.10, "blacks": -0.30, "temperature": -0.05, "tint": 0,
+            "vibrance": 0.40, "saturation": 0.10,
+            "sharpness": 0.10, "noiseReduction": 0.20,
+            "highlightRecovery": 0.30, "localContrast": 0.20,
+        },
+    },
+    {
+        # Strand/Sommer: Sonne haerter, Hauttoene schuetzen, Wasser/Himmel pop.
+        "name": "Strand",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.15, "highlights": -0.30, "shadows": 0.10,
+            "whites": -0.10, "blacks": -0.05, "temperature": -0.05, "tint": 0,
+            "vibrance": 0.30, "saturation": 0,
+            "sharpness": 0.10, "noiseReduction": 0,
+            "highlightRecovery": 0.30, "localContrast": 0.10,
+        },
+    },
+    {
+        # Schnee/Winter: Weiss eindaempfen damit's nicht clipped, leicht kuehl
+        # fuer Authentizitaet, Schatten oeffnen damit Details bleiben.
+        "name": "Schnee",
+        "adjustments": {
+            "exposure": -0.15, "contrast": 0.10, "highlights": -0.20, "shadows": 0.20,
+            "whites": -0.25, "blacks": 0, "temperature": -0.10, "tint": -0.05,
+            "vibrance": 0.10, "saturation": 0,
+            "sharpness": 0.05, "noiseReduction": 0.10,
+            "highlightRecovery": 0.40, "localContrast": 0.10,
+        },
+    },
+    {
+        # Herbstfarben: Warme Saettigung, Mid-Kontrast, Klarheit fuer Laub.
+        "name": "Herbst",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.20, "highlights": -0.20, "shadows": 0.20,
+            "whites": 0, "blacks": -0.05, "temperature": 0.10, "tint": 0.05,
+            "vibrance": 0.40, "saturation": 0.10,
+            "sharpness": 0.10, "noiseReduction": 0,
+            "highlightRecovery": 0, "localContrast": 0.20,
+        },
+    },
+    {
+        # Architektur-Detail: Klarheit auf Texturen, leicht kuehl, harte Linien.
+        "name": "Architektur-Detail",
+        "adjustments": {
+            "exposure": 0, "contrast": 0.25, "highlights": -0.15, "shadows": 0.15,
+            "whites": 0.05, "blacks": -0.10, "temperature": -0.05, "tint": 0,
+            "vibrance": 0, "saturation": -0.05,
+            "sharpness": 0.20, "noiseReduction": 0,
+            "highlightRecovery": 0, "localContrast": 0.40,
+        },
+    },
 ]
 
 

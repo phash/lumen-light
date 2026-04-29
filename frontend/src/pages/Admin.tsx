@@ -324,6 +324,7 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
             key={value || "all"}
             type="button"
             onClick={() => setFilter(value as AdminFeedbackStatus | "")}
+            aria-pressed={filter === value}
             data-testid={`admin-feedback-filter-${value || "all"}`}
             className={`px-2 py-1 uppercase tracking-[0.2em] border ${
               filter === value

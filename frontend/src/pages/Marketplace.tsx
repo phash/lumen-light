@@ -19,27 +19,7 @@ import { useApi } from "../api/use-api";
 import { wireToMasks } from "../editor/maskSerializer";
 import { useEditorStore } from "../editor/store";
 
-const GENRE_LABEL: Record<PresetGenre, string> = {
-  portrait: "Portrait",
-  landscape: "Landschaft",
-  city: "Stadt",
-  nature: "Natur",
-  animals: "Tiere",
-  sports: "Sport",
-  blackandwhite: "Schwarzweiß",
-  other: "Sonstiges",
-};
-
-const ALL_GENRES: ReadonlyArray<PresetGenre> = [
-  "portrait",
-  "landscape",
-  "city",
-  "nature",
-  "animals",
-  "sports",
-  "blackandwhite",
-  "other",
-];
+import { ALL_GENRES, GENRE_LABEL } from "../editor/genreLabel";
 
 export default function Marketplace() {
   const api = useApi();
@@ -137,6 +117,7 @@ export default function Marketplace() {
           type="button"
           data-testid="marketplace-genre-all"
           onClick={() => setGenre("")}
+          aria-pressed={genre === ""}
           className={genreBtn(genre === "")}
         >
           Alle
@@ -147,6 +128,7 @@ export default function Marketplace() {
             type="button"
             data-testid={`marketplace-genre-${g}`}
             onClick={() => setGenre(g)}
+            aria-pressed={genre === g}
             className={genreBtn(genre === g)}
           >
             {GENRE_LABEL[g]}

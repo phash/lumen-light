@@ -12,6 +12,12 @@ import {
   isFaceDetectionConsented,
   setFaceDetectionConsent,
 } from "../editor/consent";
+import OnboardingTour from "../onboarding/OnboardingTour";
+import {
+  getOnboardingState,
+  resetOnboarding,
+  type OnboardingState,
+} from "../onboarding/state";
 
 export default function Account() {
   const api = useApi();
@@ -28,6 +34,10 @@ export default function Account() {
   const [faceConsent, setFaceConsent] = useState<boolean>(() =>
     isFaceDetectionConsented(),
   );
+  const [onboardingState, setOnboardingState] = useState<OnboardingState>(
+    () => getOnboardingState(),
+  );
+  const [tourOpen, setTourOpen] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -192,6 +202,29 @@ export default function Account() {
           </label>
         </section>
 
+        <section data-testid="account-tour">
+          <h2 className="text-stone-300 italic">Tour</h2>
+          <p className="mt-1 text-sm text-stone-500">
+            {onboardingState === "completed"
+              ? "Du hast die Tour abgeschlossen. Du kannst sie jederzeit erneut starten."
+              : onboardingState === "dismissed"
+                ? "Du hast die Tour uebersprungen. Wenn du sie doch sehen willst, hier:"
+                : "Die Editor-Tour zeigt dir die wichtigsten Werkzeuge in 60 Sekunden."}
+          </p>
+          <button
+            type="button"
+            data-testid="account-tour-restart"
+            onClick={() => {
+              resetOnboarding();
+              setOnboardingState("none");
+              setTourOpen(true);
+            }}
+            className="mt-3 px-4 py-1.5 text-xs uppercase tracking-[0.2em] border border-amber-300/40 text-amber-200 hover:border-amber-300"
+          >
+            Tour {onboardingState === "completed" ? "erneut " : ""}starten
+          </button>
+        </section>
+
         <section data-testid="account-profile">
           <h2 className="text-stone-300 italic">Profil</h2>
           <p className="mt-1 text-sm text-stone-500">
@@ -339,6 +372,15 @@ export default function Account() {
           )}
         </section>
       </div>
+
+      {tourOpen && (
+        <OnboardingTour
+          onClose={() => {
+            setTourOpen(false);
+            setOnboardingState(getOnboardingState());
+          }}
+        />
+      )}
     </section>
   );
 }

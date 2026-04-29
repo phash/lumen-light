@@ -1,5 +1,8 @@
 import { useCallback, useRef, useState } from "react";
 
+import OnboardingTour from "../onboarding/OnboardingTour";
+import { getOnboardingState } from "../onboarding/state";
+
 import { useApi } from "../api/use-api";
 import { type CanvasHandle } from "../editor/Canvas";
 import EditorBanners from "../editor/EditorBanners";
@@ -56,6 +59,13 @@ export default function Editor() {
   const [exporting, setExporting] = useState(false);
   const [decoding, setDecoding] = useState(false);
   const [cameraInfo, setCameraInfo] = useState<string | null>(null);
+  // Auto-Start der Tour, wenn der User noch nie eine Entscheidung
+  // getroffen hat. Lazy-init: kein Effect, kein Re-Render-Cascade.
+  // `dismissed` und `completed` blocken die Tour; der User kann sie aber
+  // im Account-Bereich wieder anwerfen.
+  const [onboardingOpen, setOnboardingOpen] = useState(
+    () => getOnboardingState() === "none",
+  );
   const [imageDims, setImageDims] = useState<{ width: number; height: number } | null>(null);
   const [cropMode, setCropMode] = useState(false);
   const [aspect, setAspect] = useState<AspectRatio>("free");
@@ -734,6 +744,10 @@ export default function Editor() {
         onToneCurveReset={resetToneCurve}
         onResetAll={resetAll}
       />
+
+      {onboardingOpen && (
+        <OnboardingTour onClose={() => setOnboardingOpen(false)} />
+      )}
     </section>
   );
 }

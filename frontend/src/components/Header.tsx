@@ -155,6 +155,37 @@ export default function Header() {
               {label}
             </NavLink>
           ))}
+          {auth.isAuthenticated && (
+            <>
+              <div className="border-t border-stone-800 my-1" />
+              <span className="py-1 text-xs text-stone-500">
+                {auth.user?.profile.email ?? auth.user?.profile.preferred_username}
+              </span>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(false);
+                  setFeedbackOpenCount((c) => c + 1);
+                  setFeedbackOpen(true);
+                }}
+                data-testid="header-mobile-feedback"
+                className="text-left py-1.5 text-stone-400 hover:text-amber-200"
+              >
+                Feedback
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setMobileOpen(false);
+                  onLogout();
+                }}
+                data-testid="header-mobile-logout"
+                className="text-left py-1.5 text-stone-400 hover:text-amber-200"
+              >
+                Logout
+              </button>
+            </>
+          )}
         </div>
       )}
     </header>

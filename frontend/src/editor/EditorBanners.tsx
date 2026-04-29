@@ -3,6 +3,7 @@
  * Camera-Info. Stateless — alle vier Banner sind absolut positioniert
  * relativ zum Viewport-Container.
  */
+import { genreLabel } from "./genreLabel";
 import type { Genre } from "./suggestPreset";
 
 interface Props {
@@ -52,7 +53,7 @@ export default function EditorBanners({
           className="absolute top-16 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 bg-stone-900/90 border border-amber-300/50 backdrop-blur"
         >
           <span className="text-sm text-stone-200">
-            Sieht aus wie <span className="text-amber-200">{suggestedGenre}</span> — Preset anwenden?
+            Sieht aus wie <span className="text-amber-200">{genreLabel(suggestedGenre)}</span> — Preset anwenden?
           </span>
           <button
             type="button"
