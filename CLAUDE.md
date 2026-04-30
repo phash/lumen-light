@@ -97,6 +97,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `frontend/src/auth/useIsAdmin.ts` | Realm-/Resource-Access-Roles aus dem OIDC-Profile. `RequireAdmin` schuetzt `/admin` |
 | `frontend/src/pages/Admin.tsx` | Tabs Users + Feedback, Stats-Strip oben |
 | `frontend/src/components/FeedbackDialog.tsx` | Header-Button-getriggert, Honeypot a11y/visuell versteckt |
+| `frontend/e2e/{auth,keycloak,api}-helper.ts` | E2E-Helpers: `loginAsNewUser`, `assignAdminRole`, `apiTokenFor` (ROPC), `seedPublishedPreset`. **Auth-Tests brauchen `await context.clearCookies()` in `beforeEach`** — KC-Session leakt sonst zwischen Tests. Realm-Roles VOR erstem Login zuweisen (Token-Roles-Liste ist fix bis Cookie-Clear + Re-Login). |
 | `backend/app/routers/marketplace.py` | F1: 7 Endpunkte (list, detail, apply, fork, report, profile, published-presets), Atomic-Increment, Auto-Hide bei 3 Reports, Cursor-Validation MAX_CURSOR_OFFSET=10000 |
 | `backend/app/schemas.py` | `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` — alle Wire-Keys camelCase, Eingang akzeptiert beide |
 | `infra/keycloak/lumen-realm.json` | Dev-Realm: ROPC + verifyEmail off (Tests). Prod nutzt `lumen-realm.prod.json` (gehaertet) |
@@ -190,6 +191,29 @@ gesetzt — pytest läuft sonst gegen 429er.
 - **WebGL-Compile-Time**: bei Shader-Änderungen kann der Renderer
   beim ersten Image-Load crashen. Browser-Devtools-Console gibt
   `WebGLRendererError` mit GLSL-Log aus.
+- **Pydantic EmailStr und Test-User**: `EmailStr` lehnt special-use-TLDs
+  (`.local`, `.test`, `.invalid`) ab. Wenn Legacy-Test-User mit
+  `@test.local` in der DB stehen, bricht Output-Validation. Fix: `str`
+  statt `EmailStr` in Out-Schemas (z.B. `AdminUserOut.email`,
+  `FeedbackOut.userEmail`); Validation am Token-Decode reicht.
+- **Keycloak-Realm-Roles im access_token**: `realm_access.roles` und
+  `resource_access.<client>.roles` stehen im **Access-Token**, nicht im
+  ID-Token. `auth.user.profile` (oidc-context) ist der ID-Token —
+  Frontend-Role-Checks muessen `auth.user.access_token` decoden (siehe
+  `useIsAdmin.ts`). Backend dekodiert ohnehin den access_token, also
+  kein Drift.
+- **react-hooks/set-state-in-effect**: ESLint blockt `setState` im
+  `useEffect`-Body. Ersatz: lazy `useState(() => init())`, `useMemo`
+  fuer derived state, oder Parent-Unmount via `{open && <X/>}` statt
+  `open`-Prop. Beispiel: `OnboardingTour` wird vom Editor unmountet
+  statt intern via `open`-Prop reset.
+- **JSX + deutsche „..."-Quotes**: ASCII-`"` als Closing-Quote
+  terminiert JS-Strings. In JSX-Text geht's, in JS-String-Literalen
+  nutze U+201C (`"`) oder ASCII-single-quotes als Workaround.
+- **Overlay-pointer-events**: Vollbild-Wrapper (Tour, Spotlight)
+  muessen `pointer-events: none` sein und nur die Tooltip-/Modal-
+  Karten `pointer-events: auto` setzen — sonst blockiert der Wrapper
+  Klicks aufs hervorgehobene Target.
 
 ## Workflow
 
@@ -198,6 +222,15 @@ gesetzt — pytest läuft sonst gegen 429er.
 - **Reviews**: Code/Security/DSGVO/UX-Reviews dispatched parallel via Agent-Tool, Findings in einem zentralen Plan zusammengeführt.
 - **Vor Push** an Production-Stack: `pnpm build && pnpm lint && pnpm test && pnpm exec tsc -b --noEmit` und `pytest -q` müssen grün.
 - **Repo-Setup**: `gh repo create lumen-light --private --source . --push --description "..."` macht Init+Push in einem Schritt.
+
+### Lokales Stack-Hochfahren
+
+- `docker ps --filter "name=postgres"` checken, ob Port 5433 frei ist.
+  Konflikt mit `aum-postgres-dev` (anderes Projekt) ist haeufig:
+  `docker stop aum-postgres-dev` plus `docker compose -f deployment/docker-compose.dev.yml up -d --force-recreate postgres` repariert verlorene Port-Bindings.
+- **Backend-uvicorn ohne `--reload`**: nach Schema-Aenderungen
+  manuell neu starten, sonst alte OpenAPI/Endpoints. Quick-Check:
+  `curl -s localhost:8000/openapi.json | python3 -c "import sys,json; print(sorted(json.load(sys.stdin)['paths']))"`.
 
 ### Env-Toggles
 
