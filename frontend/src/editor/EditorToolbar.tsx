@@ -84,7 +84,7 @@ export default function EditorToolbar({
           className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
             bypass ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
           }`}
-          title="Druecken & halten zeigt Original (Shortcut: \\)"
+          title="Drücken & halten zeigt Original (Shortcut: \\)"
           aria-label="Original anzeigen (halten)"
         >
           <svg className="w-4 h-4 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -117,7 +117,7 @@ export default function EditorToolbar({
           data-testid="editor-auto-wb"
           onClick={onAutoWb}
           className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200"
-          title="Auto-Weissabgleich (Gray-World)"
+          title="Auto-Weißabgleich (Gray-World)"
         >
           Auto-WB
         </button>
@@ -142,7 +142,7 @@ export default function EditorToolbar({
           className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
             wbPickerActive ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
           }`}
-          title="Klick auf neutralen Bildbereich setzt Weissabgleich"
+          title="Klick auf neutralen Bildbereich setzt Weißabgleich"
         >
           WB-Picker
         </button>
@@ -152,7 +152,7 @@ export default function EditorToolbar({
           onClick={onResetView}
           disabled={!canResetView}
           className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Zoom + Pan zuruecksetzen"
+          title="Zoom + Pan zurücksetzen"
         >
           {Math.round(zoom * 100)}%
         </button>
@@ -162,8 +162,8 @@ export default function EditorToolbar({
           onClick={onUndo}
           disabled={!canUndo}
           className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Rueckgaengig (Cmd+Z)"
-          aria-label="Rueckgaengig"
+          title="Rückgängig (Cmd+Z)"
+          aria-label="Rückgängig"
         >
           ↶
         </button>
@@ -188,7 +188,7 @@ export default function EditorToolbar({
           disabled={!canAddLinear}
           onClick={onAddLinear}
           className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Linearen Verlaufsfilter hinzufuegen"
+          title="Linearen Verlaufsfilter hinzufügen"
         >
           + Verlauf
         </button>
@@ -198,7 +198,7 @@ export default function EditorToolbar({
           disabled={!canAddRadial}
           onClick={onAddRadial}
           className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Elliptische Radialmaske hinzufuegen"
+          title="Elliptische Radialmaske hinzufügen"
         >
           + Radial
         </button>
@@ -211,8 +211,8 @@ export default function EditorToolbar({
           data-testid="editor-help"
           onClick={onShowHelp}
           className="w-9 h-9 text-base bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
-          title="Tastenkuerzel anzeigen (?)"
-          aria-label="Hilfe / Tastenkuerzel"
+          title="Tastenkürzel anzeigen (?)"
+          aria-label="Hilfe / Tastenkürzel"
         >
           ?
         </button>
@@ -229,7 +229,7 @@ export default function EditorToolbar({
           to="/marketplace"
           data-testid="editor-marketplace-link"
           className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-stone-900/80 backdrop-blur border border-stone-700 hover:border-amber-300/40 text-stone-300"
-          title="Community-Presets durchstoebern"
+          title="Community-Presets durchstöbern"
         >
           Marketplace
         </Link>

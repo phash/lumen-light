@@ -115,7 +115,7 @@ export default function Account() {
       setPublished((list) => list.filter((x) => x.id !== presetId));
     } catch (err) {
       setProfileFeedback(
-        err instanceof Error ? `${name}: ${err.message}` : "Zurueckziehen fehlgeschlagen",
+        err instanceof Error ? `${name}: ${err.message}` : "Zurückziehen fehlgeschlagen",
       );
     }
   };
@@ -152,7 +152,7 @@ export default function Account() {
       await auth.signoutRedirect();
     } catch (err) {
       setBusy(false);
-      setError(err instanceof Error ? err.message : "Loeschen fehlgeschlagen");
+      setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
     }
   };
 
@@ -176,15 +176,15 @@ export default function Account() {
           <h2 className="text-stone-300 italic">Smart-Preset-Vorschlag</h2>
           <p className="mt-1 text-sm text-stone-500">
             Beim Laden eines Bildes versucht Lumen, ein passendes Preset-
-            Genre vorzuschlagen (Portrait, Landschaft, Sport…). Fuer die
+            Genre vorzuschlagen (Portrait, Landschaft, Sport…). Für die
             Portrait-Erkennung wird einmalig pro Browser-Profil ein
             Modell von Google&apos;s TensorFlow-CDN geladen — dabei werden
             deine IP-Adresse und User-Agent an Google in den USA
-            uebermittelt. Die eigentliche Erkennung laeuft danach lokal
+            übermittelt. Die eigentliche Erkennung läuft danach lokal
             in deinem Browser; Bilder verlassen deinen Rechner nicht.
             <span className="block mt-2 text-stone-400">
               Default ist deaktiviert. Mit dem Toggle gibst du
-              ausdrueckliche Einwilligung im Sinne von Art. 49 Abs. 1
+              ausdrückliche Einwilligung im Sinne von Art. 49 Abs. 1
               lit. a DSGVO.
             </span>
           </p>
@@ -208,7 +208,7 @@ export default function Account() {
             {onboardingState === "completed"
               ? "Du hast die Tour abgeschlossen. Du kannst sie jederzeit erneut starten."
               : onboardingState === "dismissed"
-                ? "Du hast die Tour uebersprungen. Wenn du sie doch sehen willst, hier:"
+                ? "Du hast die Tour übersprungen. Wenn du sie doch sehen willst, hier:"
                 : "Die Editor-Tour zeigt dir die wichtigsten Werkzeuge in 60 Sekunden."}
           </p>
           <button
@@ -348,7 +348,7 @@ export default function Account() {
           ) : (
             <div className="mt-3 space-y-2">
               <p className="text-sm text-red-400">
-                Wirklich alle Daten loeschen? Das laesst sich nicht rueckgaengig machen.
+                Wirklich alle Daten löschen? Das lässt sich nicht rückgängig machen.
               </p>
               <div className="flex gap-2">
                 <button
@@ -358,7 +358,7 @@ export default function Account() {
                   disabled={busy}
                   className="px-4 py-2 text-xs uppercase tracking-[0.2em] bg-red-500/20 border border-red-500 text-red-300 hover:bg-red-500/30 disabled:opacity-40"
                 >
-                  {busy ? "Loesche…" : "Ja, alles loeschen"}
+                  {busy ? "Lösche…" : "Ja, alles löschen"}
                 </button>
                 <button
                   type="button"

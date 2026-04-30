@@ -192,7 +192,7 @@ export default function EditorSidebar({
                       onRemoveMask(m.id);
                     }}
                     className="text-stone-500 hover:text-red-400 px-1"
-                    aria-label="Maske loeschen"
+                    aria-label="Maske löschen"
                   >
                     ✕
                   </button>

@@ -35,7 +35,7 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
     title: "Willkommen bei Lumen",
     body:
       "Lumen ist dein Browser-Foto-Editor. Wir zeigen dir in 60 Sekunden " +
-      "die wichtigsten Werkzeuge — du kannst die Tour jederzeit ueberspringen.",
+      "die wichtigsten Werkzeuge — du kannst die Tour jederzeit überspringen.",
   },
   {
     id: "load-image",
@@ -46,7 +46,7 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
     title: "1. Bild laden",
     body:
       "Klick auf 'Beispielbild laden' — wir starten mit einem Demobild, damit du " +
-      "sofort loslegen kannst. Spaeter ziehst du eigene Bilder direkt rein, " +
+      "sofort loslegen kannst. Später ziehst du eigene Bilder direkt rein, " +
       "auch RAW (CR2/NEF/ARW…).",
   },
   {
@@ -68,8 +68,8 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
     title: "3. Slider feinjustieren",
     body:
       "Hier sind alle Korrekturen — Belichtung, Kontrast, Farben, Detail. " +
-      "Hover auf den Namen zeigt eine Erklaerung. Doppelklick auf einen " +
-      "Slider setzt ihn zurueck.",
+      "Hover auf den Namen zeigt eine Erklärung. Doppelklick auf einen " +
+      "Slider setzt ihn zurück.",
   },
   {
     id: "bypass",
@@ -78,8 +78,8 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
     placement: "top",
     title: "4. Vorher / Nachher",
     body:
-      "Bypass-Button gedrueckt halten zeigt das Original. Tastenkuerzel: " +
-      "B. Daneben gibt's einen Compare-Split-Slider fuer den Side-by-Side-Blick.",
+      "Bypass-Button gedrückt halten zeigt das Original. Tastenkürzel: " +
+      "B. Daneben gibt's einen Compare-Split-Slider für den Side-by-Side-Blick.",
   },
   {
     id: "crop",
@@ -88,8 +88,8 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
     placement: "top",
     title: "5. Beschneiden",
     body:
-      "Beschneiden, drehen, Auto-Begradigung — alles hier (Tastenkuerzel: R). " +
-      "Du editierst in voller Aufloesung weiter, der Crop wird nur fuer den " +
+      "Beschneiden, drehen, Auto-Begradigung — alles hier (Tastenkürzel: R). " +
+      "Du editierst in voller Auflösung weiter, der Crop wird nur für den " +
       "Export angewendet.",
   },
   {
@@ -110,16 +110,16 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
     placement: "top",
     title: "7. Exportieren",
     body:
-      "Tastenkuerzel: E. Format und Groesse waehlbar — JPEG fuer Web, PNG " +
-      "fuer Druck. Der Crop wird hier angewendet, das Original bleibt " +
-      "unveraendert in deiner Bibliothek.",
+      "Tastenkürzel: E. Format und Größe wählbar — JPEG für Web, PNG " +
+      "für Druck. Der Crop wird hier angewendet, das Original bleibt " +
+      "unverändert in deiner Bibliothek.",
   },
   {
     id: "done",
     kind: "modal",
     title: "Fertig — viel Spass!",
     body:
-      "Im Header findest du den Marketplace fuer geteilte Presets, und " +
+      "Im Header findest du den Marketplace für geteilte Presets, und " +
       "den Feedback-Button oben rechts, falls etwas hakt. Die Tour kannst " +
       "du jederzeit aus dem Account-Bereich neu starten.",
   },

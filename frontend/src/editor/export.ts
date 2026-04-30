@@ -58,7 +58,7 @@ export async function exportCanvas(
     off.height = Math.max(1, Math.round(canvas.height * scale));
     const ctx = off.getContext("2d");
     if (!ctx) {
-      throw new Error("Kein 2D-Context fuer Skalierung verfuegbar");
+      throw new Error("Kein 2D-Context für Skalierung verfügbar");
     }
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = "high";

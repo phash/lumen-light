@@ -49,19 +49,19 @@ export default function Landing() {
           />
           <Feature
             title="Lokale Anpassungen"
-            body="Bis zu 4 lineare Verlaufsfilter und 4 Radialmasken pro Bild — Belichtung, Kontrast, Saettigung, Temperatur lokal pro Bereich."
+            body="Bis zu 4 lineare Verlaufsfilter und 4 Radialmasken pro Bild — Belichtung, Kontrast, Sättigung, Temperatur lokal pro Bereich."
           />
           <Feature
             title="Auto-Tone & Auto-WB"
-            body="Ein Klick — Histogramm-Analyse setzt Belichtung, Whites/Blacks, Kontrast und Weissabgleich auf vernuenftige Werte. Gut fuer flaue Out-of-Camera-RAWs."
+            body="Ein Klick — Histogramm-Analyse setzt Belichtung, Whites/Blacks, Kontrast und Weißabgleich auf vernünftige Werte. Gut für flaue Out-of-Camera-RAWs."
           />
           <Feature
             title="Genre-Presets"
-            body="Portrait, Landschaft, Stadt, Natur, Tiere, Sport — moderate Voreinstellungen, die den Bild-Charakter unterstreichen, ohne zu uebertreiben."
+            body="Portrait, Landschaft, Stadt, Natur, Tiere, Sport — moderate Voreinstellungen, die den Bild-Charakter unterstreichen, ohne zu übertreiben."
           />
           <Feature
             title="Eigene Daten"
-            body="Selbsthosted: Postgres + S3-kompatibles Garage. Keycloak fuer Login. Daten bleiben in deiner Hand — DELETE-/me und JSON-Export integriert."
+            body="Selbsthosted: Postgres + S3-kompatibles Garage. Keycloak für Login. Daten bleiben in deiner Hand — DELETE-/me und JSON-Export integriert."
           />
         </div>
       </div>

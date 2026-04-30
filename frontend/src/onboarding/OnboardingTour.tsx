@@ -185,7 +185,7 @@ export default function OnboardingTour({ onClose }: Props) {
                   onClick={handleSkip}
                   className="px-3 py-1.5 uppercase tracking-[0.2em] text-stone-500 hover:text-stone-300"
                 >
-                  Spaeter
+                  Später
                 </button>
                 <button
                   type="button"
@@ -252,7 +252,7 @@ export default function OnboardingTour({ onClose }: Props) {
                   type="button"
                   data-testid="onboarding-skip"
                   onClick={handleSkip}
-                  aria-label="Tour ueberspringen"
+                  aria-label="Tour überspringen"
                   className="text-stone-500 hover:text-stone-200 -mt-1 -mr-1 px-1"
                 >
                   ✕
@@ -264,7 +264,7 @@ export default function OnboardingTour({ onClose }: Props) {
                   data-testid="onboarding-waiting"
                   className="mt-2 text-xs text-stone-500 italic"
                 >
-                  Warte auf den naechsten Schritt …
+                  Warte auf den nächsten Schritt …
                 </p>
               )}
               <div className="mt-4 flex items-center justify-between">
@@ -277,7 +277,7 @@ export default function OnboardingTour({ onClose }: Props) {
                       onClick={handlePrev}
                       className="px-2 py-1 uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200"
                     >
-                      Zurueck
+                      Zurück
                     </button>
                   )}
                   <button

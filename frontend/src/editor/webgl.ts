@@ -200,7 +200,7 @@ export class Renderer {
     });
     if (!gl) {
       throw new WebGLRendererError(
-        "WebGL2 nicht verfuegbar — Browser-Support pruefen.",
+        "WebGL2 nicht verfügbar — Browser-Support prüfen.",
       );
     }
     this.gl = gl;

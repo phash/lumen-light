@@ -98,7 +98,7 @@ export default function FeedbackDialog({ open, onClose }: Props) {
             type="button"
             data-testid="feedback-close"
             onClick={onClose}
-            aria-label="Schliessen"
+            aria-label="Schließen"
             className="text-stone-500 hover:text-stone-200"
           >
             ✕

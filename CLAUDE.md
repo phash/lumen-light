@@ -123,6 +123,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 - **Backend Python**: Pydantic 2 mit `model_config = ConfigDict(extra="forbid")` auf In-Schemas. SQLAlchemy 2 declarative (Mapped[]). Typing strikt. Tests mit testcontainers, function-scope-Engine + SAVEPOINT-Rollback.
 - **Frontend TS**: kein `any`, kein non-null assertion ohne Grund. ESLint mit `react-hooks/refs` und `no-unsafe-*`. Imports sortiert (lokal alphabetisch nach Modul). Comments deutsch ohne Umlaute.
 - **Tests**: Beschreibung in deutsch ohne Umlaute (z.B. „Belichtung wird geklemmt"). `data-testid` ist die stabile Test-API.
+- **UI-Strings (User-sichtbar) MIT echten Umlauten** — `ä`, `ö`, `ü`, `ß`, `Ä`, `Ö`, `Ü`. Betrifft JSX-Text, `title=`, `aria-label`, `placeholder`, Toast-Texts, Error-Messages an User. Code-Comments und Test-Beschreibungen bleiben ohne Umlaute. Faustregel: Wenn der String im Browser angezeigt wird, gehoeren echte Umlaute rein.
 
 ## Wireformat
 

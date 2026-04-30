@@ -154,10 +154,10 @@ export default function PresetDialog({
 
   const validatePublish = (): string | null => {
     if (!publish.enabled) return null;
-    if (publish.genre === "") return "Genre auswaehlen.";
+    if (publish.genre === "") return "Genre auswählen.";
     if (publish.description.trim().length < 10) return "Beschreibung mind. 10 Zeichen.";
     if (publish.description.length > 500) return "Beschreibung max. 500 Zeichen.";
-    if (publish.previewImageId === "") return "Vorschaubild auswaehlen.";
+    if (publish.previewImageId === "") return "Vorschaubild auswählen.";
     return null;
   };
 
@@ -251,7 +251,7 @@ export default function PresetDialog({
             data-testid="preset-close"
             onClick={onClose}
             className="text-stone-500 hover:text-stone-200"
-            aria-label="Schliessen"
+            aria-label="Schließen"
           >
             ✕
           </button>

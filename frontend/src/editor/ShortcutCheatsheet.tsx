@@ -15,16 +15,16 @@ const SHORTCUTS: ReadonlyArray<{
   {
     group: "Bild",
     items: [
-      { keys: "Cmd/Ctrl + O", desc: "Datei oeffnen" },
+      { keys: "Cmd/Ctrl + O", desc: "Datei öffnen" },
       { keys: "Cmd/Ctrl + E", desc: "Exportieren" },
-      { keys: "0", desc: "Alle Slider zuruecksetzen" },
-      { keys: "\\", desc: "Original anzeigen (gedrueckt halten)" },
+      { keys: "0", desc: "Alle Slider zurücksetzen" },
+      { keys: "\\", desc: "Original anzeigen (gedrückt halten)" },
     ],
   },
   {
     group: "Bearbeiten",
     items: [
-      { keys: "Cmd/Ctrl + Z", desc: "Rueckgaengig" },
+      { keys: "Cmd/Ctrl + Z", desc: "Rückgängig" },
       { keys: "Cmd/Ctrl + Shift + Z", desc: "Wiederherstellen" },
       { keys: "Cmd/Ctrl + Y", desc: "Wiederherstellen (Win)" },
     ],
@@ -39,8 +39,8 @@ const SHORTCUTS: ReadonlyArray<{
   {
     group: "Slider",
     items: [
-      { keys: "Doppelklick", desc: "Slider auf Default zuruecksetzen" },
-      { keys: "Mausrad ueber Bild", desc: "Zoom" },
+      { keys: "Doppelklick", desc: "Slider auf Default zurücksetzen" },
+      { keys: "Mausrad über Bild", desc: "Zoom" },
       { keys: "Drag im Bild", desc: "Pan" },
     ],
   },
@@ -65,13 +65,13 @@ export default function ShortcutCheatsheet({ open, onClose }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
-          <h2 className="text-stone-200">Tastenkuerzel</h2>
+          <h2 className="text-stone-200">Tastenkürzel</h2>
           <button
             type="button"
             data-testid="shortcut-close"
             onClick={onClose}
             className="text-stone-500 hover:text-stone-200"
-            aria-label="Schliessen"
+            aria-label="Schließen"
           >
             ✕
           </button>

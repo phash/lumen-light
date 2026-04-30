@@ -45,7 +45,7 @@ export default function Admin() {
     >
       <h1 className="text-3xl">Admin</h1>
       <p className="mt-2 text-sm text-stone-500">
-        Nutzerverwaltung und Feedback-Inbox. Aenderungen wirken sofort.
+        Nutzerverwaltung und Feedback-Inbox. Änderungen wirken sofort.
       </p>
 
       {stats && (
@@ -346,7 +346,7 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
       )}
       {items.length === 0 ? (
         <p className="text-stone-500 text-sm py-6 text-center">
-          Keine Eintraege fuer diesen Filter.
+          Keine Einträge für diesen Filter.
         </p>
       ) : (
         <ul className="space-y-3">
@@ -444,7 +444,7 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
                     >
                       {it.adminNotes
                         ? `Notiz: ${it.adminNotes}`
-                        : "+ Notiz hinzufuegen"}
+                        : "+ Notiz hinzufügen"}
                     </button>
                   )}
                 </div>

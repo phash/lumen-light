@@ -108,7 +108,7 @@ export default function Marketplace() {
     <section data-testid="page-marketplace" className="px-8 py-8 max-w-6xl mx-auto">
       <h1 className="text-3xl text-stone-100">Marketplace</h1>
       <p className="mt-2 text-sm text-stone-500">
-        Oeffentliche Presets aus der Community — anwenden, in eigene Bibliothek
+        Öffentliche Presets aus der Community — anwenden, in eigene Bibliothek
         kopieren oder melden.
       </p>
 
@@ -264,7 +264,7 @@ export default function Marketplace() {
         });
       if (dirty) {
         const ok = window.confirm(
-          "Aktuelle Bearbeitung wird durch das Marketplace-Preset ueberschrieben. Fortfahren?",
+          "Aktuelle Bearbeitung wird durch das Marketplace-Preset überschrieben. Fortfahren?",
         );
         if (!ok) return;
       }

@@ -109,7 +109,7 @@ export default function Library() {
             onChange={(e) => setStripExif(e.target.checked)}
             className="accent-amber-300"
           />
-          EXIF/GPS aus JPEG entfernen (RAW behaelt Metadaten)
+          EXIF/GPS aus JPEG entfernen (RAW behält Metadaten)
         </label>
         {uploading && (
           <p data-testid="upload-pending" className="mt-2 text-amber-200/80">
