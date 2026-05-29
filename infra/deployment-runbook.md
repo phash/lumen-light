@@ -1,14 +1,31 @@
-# Lumen · light — Initiales Deployment auf MRD Production Cluster
+# Lumen · light — Deployment auf MRD Production Cluster
 
-**Stand:** 2026-04-27 — Iteration 7 abgeschlossen.
+**Stand:** 2026-05-29 — self-contained Stack.
 
-**Wer macht das?** Manuel selbst auf dem VPS (`82.165.40.140`). Claude deployed nicht eigenständig (Cluster-Conventions).
+> **Wichtig (Topologie-Korrektur):** Der Cluster hat KEIN shared Keycloak und
+> KEIN shared Garage — jedes Projekt bringt seine eigenen mit. Lumen läuft
+> daher **self-contained** unter EINER Domain `lumen.mr-development.de`:
+> SPA + `/api` (FastAPI) + `/auth` (eigenes Keycloak, `KC_HTTP_RELATIVE_PATH=/auth`)
+> + `/lumen-images` (eigenes MinIO, S3, same-origin Pre-Signed-URLs).
+> Der gesamte Ablauf unten ist in **`deployment/deploy.sh`** automatisiert
+> (idempotent), Backups in **`deployment/backup.sh`**. Die Abschnitte 2/3
+> (shared KC/Garage) sind historisch und entfallen — siehe stattdessen die
+> Services `lumen-keycloak` + `lumen-minio` in `docker-compose.prod.yml`.
 
 **Voraussetzungen:**
-- VPS läuft, `caddy-proxy`-Network existiert.
-- Cluster-shared Keycloak und Garage laufen.
-- DNS `lumen.mr-development.de` zeigt auf den VPS.
-- SSH-Zugang `musikersuche@82.165.40.140`.
+- VPS läuft, `caddy-proxy`-Network + `caddy-proxy`-Container existieren.
+- DNS `lumen.mr-development.de` zeigt auf den VPS (✓ vorhanden).
+- SSH-Zugang `musikersuche@musikersuche.org` (= 82.165.40.140).
+- Mailserver-Account `noreply-lumen@mr-development.de` (für Keycloak-SMTP).
+
+**Schnellweg (empfohlen):**
+```bash
+ssh musikersuche@musikersuche.org
+cd /opt && git clone https://github.com/phash/lumen-light.git lumen && cd lumen
+cp deployment/.env.example deployment/.env   # Secrets ausfüllen!
+#   cat > deployment/config.prod.js  (liegt schon im Repo, ggf. Domain prüfen)
+bash deployment/deploy.sh
+```
 
 ---
 

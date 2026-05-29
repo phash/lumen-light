@@ -20,6 +20,8 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - lumen-db-data:/var/lib/postgresql/data
+      # Legt beim Erst-Init zusaetzlich die 'keycloak'-DB an (fuer lumen-keycloak).
+      - ./initdb:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
       interval: 5s
@@ -58,6 +60,82 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # Keycloak (self-contained — kein Cluster-Shared vorhanden). Laeuft unter
+  # /auth derselben Domain (KC_HTTP_RELATIVE_PATH), Realm 'lumen' wird beim
+  # Start importiert. KC-Tabellen in eigener DB 'keycloak' derselben Postgres.
+  lumen-keycloak:
+    image: quay.io/keycloak/keycloak:26.1
+    container_name: lumen-keycloak
+    restart: unless-stopped
+    command: ["start", "--import-realm"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: "jdbc:postgresql://lumen-db:5432/keycloak"
+      KC_DB_USERNAME: ${POSTGRES_USER}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
+      KEYCLOAK_ADMIN: ${KC_ADMIN_USER}
+      KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      KC_HTTP_ENABLED: "true"
+      KC_HTTP_RELATIVE_PATH: /auth
+      KC_HOSTNAME: ${KC_HOSTNAME}
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
+      KC_PROXY_HEADERS: xforwarded
+      KC_HEALTH_ENABLED: "true"
+    volumes:
+      - ../infra/keycloak/lumen-realm.prod.json:/opt/keycloak/data/import/lumen-realm.json:ro
+    depends_on:
+      lumen-db:
+        condition: service_healthy
+    networks:
+      - lumen-internal
+      - caddy-proxy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  # S3-Storage (MinIO, S3-kompatibel). Same-Origin zur SPA (ueber Caddy
+  # /lumen-images), daher kein CORS noetig — CORS-Origin trotzdem defensiv
+  # gesetzt. Bucket-Anlage via lumen-minio-init.
+  lumen-minio:
+    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: lumen-minio
+    restart: unless-stopped
+    command: ["server", "/data"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      MINIO_API_CORS_ALLOW_ORIGIN: ${CORS_ORIGIN}
+    volumes:
+      - lumen-minio-data:/data
+    networks:
+      - lumen-internal
+      - caddy-proxy
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  lumen-minio-init:
+    image: minio/mc:RELEASE.2024-11-17T19-35-25Z
+    depends_on:
+      - lumen-minio
+    entrypoint:
+      - /bin/sh
+      - -c
+      - >
+        until mc alias set local http://lumen-minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do
+          echo "warte auf MinIO..."; sleep 2;
+        done;
+        mc mb --ignore-existing local/${GARAGE_S3_BUCKET};
+        mc anonymous set none local/${GARAGE_S3_BUCKET};
+        echo "Bucket ${GARAGE_S3_BUCKET} bereit.";
+    networks:
+      - lumen-internal
+    restart: "no"
+
   lumen-api:
     build:
       context: ../backend
@@ -70,6 +148,8 @@ services:
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
       JWK_CACHE_SECONDS: ${JWK_CACHE_SECONDS:-600}
       GARAGE_S3_ENDPOINT: ${GARAGE_S3_ENDPOINT}
+      # Oeffentliche Basis-URL fuer Pre-Signed-URLs (Browser via Caddy /lumen-images).
+      GARAGE_S3_PUBLIC_ENDPOINT: ${GARAGE_S3_PUBLIC_ENDPOINT}
       GARAGE_S3_REGION: ${GARAGE_S3_REGION}
       GARAGE_S3_BUCKET: ${GARAGE_S3_BUCKET}
       GARAGE_S3_ACCESS_KEY_ID: ${GARAGE_S3_ACCESS_KEY_ID}
@@ -120,3 +200,4 @@ networks:
 volumes:
   lumen-db-data:
   lumen-redis-data:
+  lumen-minio-data:

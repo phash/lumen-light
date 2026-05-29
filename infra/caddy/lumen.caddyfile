@@ -1,55 +1,53 @@
-# Caddyfile-Snippet fuer Lumen — in /opt/caddyserver/Caddyfile einfuegen.
+# Lumen · light — Block fuer /opt/caddyserver/Caddyfile.
 #
-# Voraussetzungen:
-#   - lumen-api und lumen-web sind im caddy-proxy-Network mit den Aliasen
-#     'lumen-api' und 'lumen-web' verbunden (siehe infra/deployment-runbook.md)
-#   - DNS-A-Record lumen.mr-development.de zeigt auf den VPS
+# Single-Domain-Topologie (kein Cluster-Shared Keycloak/Garage vorhanden):
+#   lumen.mr-development.de
+#     /api/*          -> lumen-api:4100      (FastAPI)
+#     /auth/*         -> lumen-keycloak:8080 (Keycloak, KC_HTTP_RELATIVE_PATH=/auth)
+#     /lumen-images/* -> lumen-minio:9000    (S3, Pre-Signed PUT/GET, same-origin)
+#     /*              -> lumen-web:80         (React-SPA via nginx)
+#
+# Voraussetzung: lumen-api/-web/-keycloak/-minio sind im caddy-proxy-Netz.
+# DNS-A-Record lumen.mr-development.de zeigt bereits auf den VPS.
 
 lumen.mr-development.de {
     encode gzip zstd
+    import security_headers
 
-    # API-Pfade gehen ans Backend (FastAPI). /docs|/openapi.json|/redoc
-    # werden vom Backend in Production via LUMEN_ENV=production
-    # ausgeblendet — wir matchen sie hier trotzdem, falls der Toggle
-    # nicht greift (Defense-in-Depth).
+    # API -> FastAPI
     @api path /api/*
     handle @api {
         reverse_proxy lumen-api:4100
     }
 
-    # Schema-Disclosure-Pfade in Production hart blocken.
+    # Keycloak unter /auth (eigener Realm-Server). KC setzt eigene Header/CSP
+    # fuer seine Login-Seiten — wir ueberschreiben sie hier bewusst NICHT.
+    @auth path /auth/*
+    handle @auth {
+        reverse_proxy lumen-keycloak:8080
+    }
+
+    # S3 (MinIO). Pre-Signed PUT/GET laufen same-origin ueber diesen Pfad
+    # (kein CORS noetig). Path-Style: erster Pfadteil = Bucket 'lumen-images'.
+    # Caddy reicht den Original-Host (lumen.mr-development.de) weiter, daher
+    # bleibt die SigV4-Signatur gueltig. Kein request_body-Limit -> grosse
+    # Bild-Uploads (bis 200 MB) streamen durch.
+    @s3 path /lumen-images/*
+    handle @s3 {
+        reverse_proxy lumen-minio:9000
+    }
+
+    # Schema-Disclosure hart blocken (Defense-in-Depth zum LUMEN_ENV-Toggle).
     @docs path /docs /docs/* /openapi.json /redoc /redoc/*
     handle @docs {
         respond "Not found" 404
     }
 
-    # Alles andere: statisches Frontend (nginx)
+    # SPA (nginx) — strikte CSP NUR fuer die App-Antworten (nicht /auth).
     handle {
+        header {
+            Content-Security-Policy "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+        }
         reverse_proxy lumen-web:80
     }
-
-    # Sicherheits-Header (Defense-in-Depth zur React-Default-Escape).
-    #
-    # CSP-Quellen:
-    #   - default 'self': alles vom selben Origin
-    #   - img-src zusaetzlich blob: + data: (Editor/Export-Dialog erzeugt
-    #     Blob-URLs via createObjectURL fuer Preview/Compare/Export)
-    #   - connect-src auth.mr-development.de (Keycloak), tfhub.dev +
-    #     storage.googleapis.com (TF.js-Modell-Weights, opt-in via
-    #     Smart-Suggestion-Toggle), und der Backend-API-Pfad
-    #   - script-src nur 'self' — kein eval, keine inline scripts
-    #   - style-src 'unsafe-inline' fuer Tailwind-Dynamic + React style={}
-    #   - frame-ancestors 'none' — kein Embedding via iframe
-    header {
-        Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
-        X-Content-Type-Options "nosniff"
-        X-Frame-Options "DENY"
-        Referrer-Policy "strict-origin-when-cross-origin"
-        Permissions-Policy "geolocation=(), camera=(), microphone=(), payment=()"
-        Content-Security-Policy "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://auth.mr-development.de https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
-    }
-
-    # Rate-Limit fuer /api/v1/images (POST init) — siehe API-Spec
-    # Caddy hat kein eingebautes rate_limit; nutzt das im Cluster
-    # bereits konfigurierte Plugin oder verzichtet bewusst.
 }

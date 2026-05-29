@@ -2,8 +2,11 @@
 FROM node:22-alpine AS build
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci
+# Projekt nutzt pnpm (pnpm-lock.yaml ist Single Source of Truth, npm-Lockfile
+# wurde entfernt). pnpm 9 passt zur Lockfile-Version 9.0 + zur CI.
+RUN npm install -g pnpm@9
+COPY package.json pnpm-lock.yaml ./
+RUN pnpm install --frozen-lockfile
 
 COPY . .
 
@@ -17,7 +20,7 @@ ENV VITE_KEYCLOAK_AUTHORITY=$VITE_KEYCLOAK_AUTHORITY \
     VITE_KEYCLOAK_CLIENT_ID=$VITE_KEYCLOAK_CLIENT_ID \
     VITE_API_BASE=$VITE_API_BASE
 
-RUN npm run build
+RUN pnpm build
 
 # Run-Stage
 FROM nginx:1.27-alpine

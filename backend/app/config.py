@@ -21,6 +21,11 @@ class Settings(BaseSettings):
     # Garage S3 (siehe ADR-011) — Endpoints fuer Production via .env;
     # in Tests werden diese durch eine MinIO-Container-Fixture ueberschrieben.
     garage_s3_endpoint: str = "http://localhost:3900"
+    # Oeffentliche S3-Basis-URL fuer Pre-Signed-URLs (browser-erreichbar).
+    # Leer = identisch mit garage_s3_endpoint (dev/single-host). In Production
+    # hinter einem Reverse-Proxy: interner Endpoint fuer head/delete, oeffentlicher
+    # fuer das Signieren der Browser-URLs (SigV4 wird ueber diesen Host berechnet).
+    garage_s3_public_endpoint: str = ""
     garage_s3_region: str = "garage"
     garage_s3_bucket: str = "lumen-images"
     garage_s3_access_key_id: str = ""

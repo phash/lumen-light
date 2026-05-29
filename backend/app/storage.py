@@ -22,12 +22,25 @@ class ObjectNotFound(Exception):
 class StorageService:
     def __init__(self, settings: Settings) -> None:
         self._settings = settings
-        self._client = boto3.client(
+        self._client = self._make_client(settings.garage_s3_endpoint)
+        # Pre-Signed-URLs muessen fuer den Host signiert werden, den der Browser
+        # erreicht. Hinter einem Reverse-Proxy ist das der oeffentliche Endpoint;
+        # head/delete laufen weiter intern (self._client). Signieren ist reine
+        # Krypto (kein Netzwerk), daher kostet der zweite Client nichts zur Laufzeit.
+        public = settings.garage_s3_public_endpoint or settings.garage_s3_endpoint
+        self._presign_client = (
+            self._client
+            if public == settings.garage_s3_endpoint
+            else self._make_client(public)
+        )
+
+    def _make_client(self, endpoint: str):
+        return boto3.client(
             "s3",
-            endpoint_url=settings.garage_s3_endpoint,
-            region_name=settings.garage_s3_region,
-            aws_access_key_id=settings.garage_s3_access_key_id,
-            aws_secret_access_key=settings.garage_s3_secret_access_key,
+            endpoint_url=endpoint,
+            region_name=self._settings.garage_s3_region,
+            aws_access_key_id=self._settings.garage_s3_access_key_id,
+            aws_secret_access_key=self._settings.garage_s3_secret_access_key,
             config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
         )
 
@@ -40,7 +53,7 @@ class StorageService:
         return f"{user_id}/originals/{image_id}"
 
     def presign_put(self, key: str, content_type: str) -> tuple[str, int]:
-        url = self._client.generate_presigned_url(
+        url = self._presign_client.generate_presigned_url(
             "put_object",
             Params={
                 "Bucket": self.bucket,
@@ -52,7 +65,7 @@ class StorageService:
         return url, self._settings.presigned_url_expires_in
 
     def presign_get(self, key: str) -> tuple[str, int]:
-        url = self._client.generate_presigned_url(
+        url = self._presign_client.generate_presigned_url(
             "get_object",
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=self._settings.presigned_url_expires_in,
