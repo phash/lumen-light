@@ -176,8 +176,10 @@ services:
 
   lumen-web:
     build:
-      context: ../frontend
-      dockerfile: Dockerfile
+      # Repo-Root als Context: das Frontend importiert infra/lensfun/profiles.json
+      # (Geschwister-Verzeichnis) — siehe frontend/Dockerfile.
+      context: ..
+      dockerfile: frontend/Dockerfile
     container_name: lumen-web
     restart: unless-stopped
     volumes:

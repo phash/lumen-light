@@ -1,0 +1,19 @@
+# Build-Context-Hygiene fuer den lumen-web-Build (context = Repo-Root).
+# Haelt grosse/irrelevante Pfade aus dem Docker-Build-Context.
+**/node_modules
+**/.venv
+.git
+.github
+**/dist
+**/test-results
+**/playwright-report
+**/.vite
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.coverage
+backend/schemas
+docs
+diagramme
+*.log
+Bildschirmfoto*.png
