@@ -48,3 +48,11 @@ Thumbs.db
 
 # Random Screenshots im Repo-Root (versehentlich abgelegt)
 /Bildschirmfoto_*.png
+
+# npm lockfile — Projekt nutzt pnpm (pnpm-lock.yaml). Verhindert Drift.
+frontend/package-lock.json
+package-lock.json
+
+# pytest-cov Artefakt
+.coverage
+backend/.coverage

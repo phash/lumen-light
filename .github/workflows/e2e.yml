@@ -1,0 +1,123 @@
+name: E2E (nightly)
+
+# Playwright-E2E gegen den KOMPLETTEN Dev-Stack (Postgres + Keycloak + MinIO
+# + Backend + Frontend). Laeuft bewusst NICHT pro PR (Stack-Boot dauert ~2-3
+# min), sondern nachts per cron + jederzeit manuell via workflow_dispatch.
+# Codifiziert die in CLAUDE.md dokumentierte lokale E2E-Recipe.
+#
+# Hinweis: alle Werte sind Konstanten/Dev-Defaults (kein Prod-Secret, keine
+# nutzergesteuerten Event-Inputs in run-Commands -> keine Injection-Flaeche).
+# Bei der ersten realen Ausfuehrung auf dem Runner ggf. Timeouts nachjustieren.
+
+on:
+  schedule:
+    - cron: "0 3 * * *" # taeglich 03:00 UTC
+  workflow_dispatch:
+
+jobs:
+  e2e:
+    name: Playwright E2E
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Dev-Stack hochfahren (PG + Keycloak + MinIO)
+        run: docker compose -f deployment/docker-compose.dev.yml up -d
+
+      - name: Auf Keycloak /health/ready warten
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fs http://localhost:19000/health/ready >/dev/null; then
+              echo "Keycloak ready"; exit 0
+            fi
+            sleep 3
+          done
+          echo "Keycloak nicht ready"; docker compose -f deployment/docker-compose.dev.yml logs keycloak; exit 1
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Backend installieren + Migration
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://lumen:lumen@localhost:5433/lumen
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install --upgrade pip
+          .venv/bin/pip install -r requirements.txt
+          .venv/bin/alembic upgrade head
+
+      - name: Backend starten + warten
+        working-directory: backend
+        env:
+          DATABASE_URL: postgresql+asyncpg://lumen:lumen@localhost:5433/lumen
+          KEYCLOAK_ISSUER: http://localhost:18080/realms/lumen
+          KEYCLOAK_AUDIENCE: lumen-api
+          GARAGE_S3_ENDPOINT: http://localhost:9000
+          GARAGE_S3_REGION: us-east-1
+          GARAGE_S3_BUCKET: lumen-images
+          GARAGE_S3_ACCESS_KEY_ID: minioadmin
+          GARAGE_S3_SECRET_ACCESS_KEY: minioadmin
+          CORS_ORIGIN: http://localhost:5173
+        run: |
+          nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > backend.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:8000/api/v1/health >/dev/null; then
+              echo "Backend ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Backend nicht ready"; cat backend.log; exit 1
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+
+      - name: Frontend installieren
+        working-directory: frontend
+        run: pnpm install --frozen-lockfile
+
+      - name: Playwright-Browser installieren
+        working-directory: frontend
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Frontend Dev-Server starten + warten
+        working-directory: frontend
+        env:
+          VITE_KEYCLOAK_AUTHORITY: http://localhost:18080/realms/lumen
+          VITE_KEYCLOAK_CLIENT_ID: lumen-frontend
+          VITE_API_BASE: http://localhost:8000/api/v1
+        run: |
+          nohup pnpm dev --host 127.0.0.1 --port 5173 > vite.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -fs http://localhost:5173 >/dev/null; then
+              echo "Frontend ready"; exit 0
+            fi
+            sleep 2
+          done
+          echo "Frontend nicht ready"; cat vite.log; exit 1
+
+      - name: Playwright E2E
+        working-directory: frontend
+        env:
+          CI: "true"
+          LUMEN_BASE_URL: http://localhost:5173
+        run: pnpm exec playwright test
+
+      - name: Playwright-Report als Artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 7

@@ -1,9 +1,11 @@
 name: CI
 
 # Pflicht-Checks pro PR + push auf main:
-#   - Frontend: lint, typecheck, vitest, build
-#   - Backend:  pytest (mit testcontainers fuer Postgres + MinIO + Keycloak).
-# E2E (Playwright) laeuft als nightly cron, nicht in jedem PR-Run.
+#   - Frontend: lint, typecheck, vitest (mit Coverage), build
+#   - Backend:  pytest (mit testcontainers fuer Postgres + MinIO + Keycloak,
+#               inkl. Coverage-Report).
+# E2E (Playwright) laeuft NICHT hier (Stack-Boot dauert) — siehe die eigene
+# Workflow-Datei .github/workflows/e2e.yml (nightly cron + workflow_dispatch).
 #
 # Sicherheitshinweis: keine Verwendung von nutzergesteuerten Inputs
 # (issue-titles, PR-bodies etc.) in run-Commands — alle Werte sind
@@ -14,6 +16,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
+  workflow_dispatch:
 
 jobs:
   frontend:
@@ -45,8 +48,8 @@ jobs:
       - name: Typecheck
         run: pnpm exec tsc -b --noEmit
 
-      - name: Tests
-        run: pnpm test
+      - name: Tests (mit Coverage)
+        run: pnpm run test:coverage
 
       - name: Build
         run: pnpm build
@@ -75,7 +78,7 @@ jobs:
           .venv/bin/pip install --upgrade pip
           .venv/bin/pip install -r requirements.txt -r requirements-dev.txt
 
-      - name: pytest
-        run: .venv/bin/pytest -q
+      - name: pytest (mit Coverage)
+        run: .venv/bin/pytest -q --cov=app --cov-report=term-missing
         env:
           TESTCONTAINERS_RYUK_DISABLED: "true"
