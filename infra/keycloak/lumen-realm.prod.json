@@ -1,6 +1,13 @@
 {
   "realm": "lumen",
   "enabled": true,
+  "displayName": "Lumen · light",
+  "displayNameHtml": "Lumen · light",
+  "loginTheme": "lumen",
+  "emailTheme": "lumen",
+  "internationalizationEnabled": true,
+  "defaultLocale": "de",
+  "supportedLocales": ["de", "en"],
   "registrationAllowed": true,
   "registrationEmailAsUsername": true,
   "verifyEmail": true,

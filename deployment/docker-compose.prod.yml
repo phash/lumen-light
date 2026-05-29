@@ -83,6 +83,8 @@ services:
       KC_HEALTH_ENABLED: "true"
     volumes:
       - ../infra/keycloak/lumen-realm.prod.json:/opt/keycloak/data/import/lumen-realm.json:ro
+      # Custom-Theme (Login + Email) im Lumen-Design.
+      - ../infra/keycloak/themes/lumen:/opt/keycloak/themes/lumen:ro
     depends_on:
       lumen-db:
         condition: service_healthy

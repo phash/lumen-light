@@ -1,0 +1,98 @@
+/* Lumen · light — Keycloak-Login im Look der App (dark stone + amber).
+   Overrides ueber das Parent-Theme 'keycloak'. Bewusst mit !important +
+   breiten Selektoren (klassische .form-control/.btn-primary UND PatternFly-
+   v5-Klassen), damit es robust ueber KC-Versionen greift. */
+:root {
+  --lm-bg: #0c0a09;        /* stone-950 */
+  --lm-card: #1c1917;      /* stone-900 */
+  --lm-border: #44403c;    /* stone-700 */
+  --lm-text: #e7e5e4;      /* stone-200 */
+  --lm-muted: #a8a29e;     /* stone-400 */
+  --lm-amber: #fcd34d;     /* amber-300 */
+  --lm-amber-soft: #fde68a;/* amber-200 */
+}
+
+html, body, body.login-pf, .login-pf, .login-pf-page {
+  background: var(--lm-bg) !important;
+  color: var(--lm-text) !important;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif !important;
+}
+
+/* Kopfbereich: zeigt realm.displayNameHtml ("Lumen · light") */
+#kc-header, #kc-header-wrapper {
+  color: var(--lm-text) !important;
+  font-size: 1.9rem !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.01em !important;
+  padding-bottom: 1.2rem !important;
+}
+
+/* Login-Karte */
+.card-pf, #kc-content-wrapper .card-pf, .pf-v5-c-card, #kc-content {
+  background: var(--lm-card) !important;
+  border: 1px solid var(--lm-border) !important;
+  border-radius: 12px !important;
+  box-shadow: 0 12px 48px rgba(0, 0, 0, 0.55) !important;
+  color: var(--lm-text) !important;
+}
+#kc-page-title, h1, h2, label, .control-label, .pf-v5-c-form__label-text {
+  color: var(--lm-text) !important;
+}
+
+/* Eingabefelder */
+input.form-control, .pf-c-form-control, .pf-v5-c-form-control, .pf-v5-c-form-control input,
+input[type="text"], input[type="email"], input[type="password"], select, textarea {
+  background: var(--lm-bg) !important;
+  border: 1px solid var(--lm-border) !important;
+  color: var(--lm-text) !important;
+  border-radius: 6px !important;
+}
+input:focus, .pf-v5-c-form-control:focus-within {
+  border-color: var(--lm-amber) !important;
+  box-shadow: 0 0 0 1px var(--lm-amber) !important;
+  outline: none !important;
+}
+::placeholder { color: var(--lm-muted) !important; }
+
+/* Primaer-Button (Login/Absenden) — amber wie die App-CTAs */
+.btn-primary, input[type="submit"], button[type="submit"], #kc-login,
+.pf-c-button.pf-m-primary, .pf-v5-c-button.pf-m-primary {
+  background: rgba(253, 230, 138, 0.15) !important;
+  border: 1px solid var(--lm-amber) !important;
+  color: var(--lm-amber-soft) !important;
+  border-radius: 6px !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.18em !important;
+  font-size: 0.8rem !important;
+  font-weight: 600 !important;
+}
+.btn-primary:hover, #kc-login:hover, .pf-m-primary:hover {
+  background: rgba(253, 230, 138, 0.28) !important;
+}
+
+/* Sekundaer-Buttons / Default */
+.btn-default, .pf-m-secondary {
+  background: transparent !important;
+  border: 1px solid var(--lm-border) !important;
+  color: var(--lm-text) !important;
+}
+
+/* Links (Registrierung, Passwort vergessen, ...) */
+a, #kc-registration a, #kc-info a, .login-pf-page a {
+  color: var(--lm-amber-soft) !important;
+}
+a:hover { color: var(--lm-amber) !important; }
+
+/* Hinweise / Alerts */
+.alert, .pf-v5-c-alert {
+  background: var(--lm-card) !important;
+  border: 1px solid var(--lm-border) !important;
+  color: var(--lm-text) !important;
+}
+.alert-error, .pf-m-danger { border-color: #b91c1c !important; }
+.alert-success, .pf-m-success { border-color: #15803d !important; }
+
+/* Fuss / Sprachauswahl / Info */
+#kc-info, #kc-info-wrapper, #kc-locale, .pf-v5-c-login__main-footer-band {
+  color: var(--lm-muted) !important;
+}
