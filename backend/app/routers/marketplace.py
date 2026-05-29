@@ -1,9 +1,11 @@
 """Preset-Marketplace-Endpunkte (F1).
 
 Sicherheitsmodell:
-- Alle Routen brauchen einen authentifizierten User (current_user).
-  Anonymous-Browse ist explizit out-of-scope im MVP.
-- Apply, Fork und Report sind ratelimitiert.
+- Browsen (list + detail) ist OEFFENTLICH (kein current_user) — fuer SEO
+  und damit Interessenten Presets ohne Account ansehen koennen. Die
+  Responses enthalten keine user-spezifischen Felder.
+- Apply, Fork und Report brauchen weiterhin einen authentifizierten User
+  (current_user) und sind ratelimitiert.
 - Auto-Hide bei report_count >= 3 setzt das Preset still auf private
   zurueck — Creator-Nachricht kommt erst mit SMTP (Backlog).
 """
@@ -80,7 +82,6 @@ async def list_marketplace_presets(
     sort: str = Query(default="new", pattern=r"^(new|popular)$"),
     cursor: str | None = Query(default=None),
     limit: int = Query(default=PAGE_LIMIT_DEFAULT, ge=1, le=PAGE_LIMIT_MAX),
-    _user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
     storage: StorageService = Depends(get_storage),
 ) -> MarketplaceListOut:
@@ -150,9 +151,10 @@ async def _load_public_preset(
 
 
 @router.get("/presets/{preset_id}", response_model=MarketplaceDetailOut)
+@limiter.limit("120/minute")
 async def get_marketplace_preset(
+    request: Request,
     preset_id: UUID,
-    _user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
     storage: StorageService = Depends(get_storage),
 ) -> MarketplaceDetailOut:

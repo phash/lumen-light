@@ -7,7 +7,8 @@
  * Editor.
  */
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useAuth } from "react-oidc-context";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import {
   ApiError,
@@ -254,13 +255,26 @@ function DetailModal({
   onApplied: () => void;
 }) {
     const api = useApi();
+    const auth = useAuth();
+    const navigate = useNavigate();
+    const location = useLocation();
     const [busy, setBusy] = useState<"apply" | "fork" | "report" | null>(null);
     const [feedback, setFeedback] = useState<string | null>(null);
     const [reportReason, setReportReason] = useState("");
     const applyAdjustments = useEditorStore((s) => s.applyAdjustments);
     const applyMasks = useEditorStore((s) => s.applyMasks);
 
+    // Browsen ist oeffentlich; Aktionen brauchen ein Konto. Anonyme User
+    // werden zur Anmeldung geschickt (mit Rueck-Pfad wie in RequireAuth),
+    // statt einen 401 zu provozieren.
+    const requireLogin = (): boolean => {
+      if (auth.isAuthenticated) return false;
+      void navigate("/login", { state: { from: location } });
+      return true;
+    };
+
     const onApply = async () => {
+      if (requireLogin()) return;
       // Schutz vor unbeabsichtigtem Verlust: wenn der User aktuell
       // an einem Bild arbeitet, vor dem Ueberschreiben nachfragen.
       const current = useEditorStore.getState();
@@ -290,6 +304,7 @@ function DetailModal({
     };
 
     const onFork = async () => {
+      if (requireLogin()) return;
       setBusy("fork");
       try {
         await api.forkMarketplacePreset(detail.id);
@@ -302,6 +317,7 @@ function DetailModal({
     };
 
     const onReport = async () => {
+      if (requireLogin()) return;
       const reason = reportReason.trim();
       if (reason.length < 1) return;
       setBusy("report");
@@ -360,6 +376,16 @@ function DetailModal({
 
             {feedback && (
               <div className="text-xs text-amber-200">{feedback}</div>
+            )}
+
+            {!auth.isAuthenticated && (
+              <p
+                className="text-xs text-amber-200/80"
+                data-testid="marketplace-anon-hint"
+              >
+                Melde dich an, um dieses Preset anzuwenden, zu kopieren oder zu
+                melden.
+              </p>
             )}
 
             <div className="flex flex-wrap gap-2 pt-2">

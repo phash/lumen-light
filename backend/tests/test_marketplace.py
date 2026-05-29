@@ -385,3 +385,36 @@ async def test_published_presets_list(client, user_a):
     assert r.status_code == 200
     names = [p["name"] for p in r.json()]
     assert names == ["pub-1"]
+
+
+# ---------- Public Browse ohne Login (F7) ----------
+
+async def test_marketplace_list_public_without_auth(client, user_a):
+    """Liste ist ohne Authorization-Header oeffentlich lesbar (SEO + Browse)."""
+    await _create_public_preset(client, user_a["headers"], name="oeffentlich-1")
+    r = await client.get("/api/v1/marketplace/presets")
+    assert r.status_code == 200, r.text
+    names = [it["name"] for it in r.json()["items"]]
+    assert "oeffentlich-1" in names
+
+
+async def test_marketplace_detail_public_without_auth(client, user_a):
+    """Detail ist ohne Login oeffentlich lesbar."""
+    body = await _create_public_preset(client, user_a["headers"], name="detail-pub")
+    r = await client.get(f"/api/v1/marketplace/presets/{body['id']}")
+    assert r.status_code == 200, r.text
+    assert r.json()["name"] == "detail-pub"
+
+
+async def test_marketplace_apply_still_requires_auth(client, user_a):
+    """Anwenden bleibt gated — ohne Login 401."""
+    body = await _create_public_preset(client, user_a["headers"], name="apply-gated")
+    r = await client.post(f"/api/v1/marketplace/presets/{body['id']}/apply")
+    assert r.status_code == 401, r.text
+
+
+async def test_marketplace_fork_still_requires_auth(client, user_a):
+    """Forken bleibt gated — ohne Login 401."""
+    body = await _create_public_preset(client, user_a["headers"], name="fork-gated")
+    r = await client.post(f"/api/v1/marketplace/presets/{body['id']}/fork")
+    assert r.status_code == 401, r.text

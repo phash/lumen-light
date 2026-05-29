@@ -5,7 +5,7 @@ import reactHooks from "eslint-plugin-react-hooks";
 import globals from "globals";
 
 export default tseslint.config(
-  { ignores: ["dist", "node_modules", "public", "e2e", "playwright-report", "test-results"] },
+  { ignores: ["dist", "dist-ssr", "node_modules", "public", "e2e", "playwright-report", "test-results"] },
   js.configs.recommended,
   {
     files: ["**/*.{ts,tsx}"],
@@ -30,5 +30,6 @@ export default tseslint.config(
   {
     files: ["**/*.{js,mjs,cjs}"],
     ...tseslint.configs.disableTypeChecked,
+    languageOptions: { globals: { ...globals.node } },
   },
 );

@@ -42,10 +42,11 @@ export default function Datenschutz() {
           <span className="text-stone-200">Presets:</span> Bezeichnung +
           Slider-Werte + Maskendefinitionen. Inhaltlich keine PII.
           Wenn du ein Preset öffentlich machst, werden zusätzlich
-          Genre, Beschreibung und das von dir gewählte Vorschaubild
-          für alle authentifizierten Marketplace-Nutzer sichtbar.
-          Anwendungs- und Meldungs-Counter sind aggregiert; einzelne
-          Apply-Events werden nicht protokolliert.
+          Genre, Beschreibung, das von dir gewählte Vorschaubild sowie
+          dein Handle und deine Bio <span className="text-stone-200">öffentlich
+          sichtbar — auch für nicht angemeldete Besucher und für
+          Suchmaschinen/KI-Crawler</span>. Anwendungs- und Meldungs-Counter
+          sind aggregiert; einzelne Apply-Events werden nicht protokolliert.
         </li>
         <li>
           <span className="text-stone-200">Marketplace-Meldungen:</span>
@@ -106,12 +107,19 @@ export default function Datenschutz() {
       <p className="mt-3">
         Wenn du ein Preset im Marketplace veröffentlichst, sind das
         gewählte Vorschaubild, der Preset-Name, die Beschreibung,
-        Genre und dein Handle (falls gesetzt) für alle anderen
-        eingeloggten Lumen-Nutzer sichtbar. Email-Adresse bleibt immer
-        privat. Veröffentlichung ist Default deaktiviert und erfolgt
-        nur durch dein aktives Setzen des Toggles. Du kannst jedes
-        Preset jederzeit auf privat zurücksetzen
+        Genre, der Anwendungs-Zähler sowie dein Handle und deine Bio
+        (falls gesetzt){" "}
+        <span className="text-stone-200">
+          öffentlich sichtbar — auch ohne Anmeldung. Der Marketplace darf
+          von Suchmaschinen und KI-Crawlern erfasst und indexiert werden
+        </span>
+        . Email-Adresse bleibt immer privat. Veröffentlichung ist Default
+        deaktiviert und erfolgt nur durch dein aktives Setzen des Toggles.
+        Du kannst jedes Preset jederzeit auf privat zurücksetzen
         (<span className="text-amber-200">Account › Meine veröffentlichten Presets › Zurückziehen</span>).
+        Nach dem Zurückziehen kann es einige Zeit dauern, bis externe
+        Suchmaschinen-Caches den Eintrag entfernen; auf bereits erfolgte
+        Drittkopien haben wir keinen Einfluss.
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">4b. Reichweitenmessung (Matomo)</h2>

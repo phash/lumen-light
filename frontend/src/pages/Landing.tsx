@@ -27,11 +27,11 @@ export default function Landing() {
             {auth.isAuthenticated ? "Im Editor starten" : "Anmelden & starten"}
           </Link>
           <Link
-            to="/editor"
+            to={startHref}
             data-testid="landing-cta-demo"
             className="px-6 py-3 text-sm uppercase tracking-[0.2em] border border-stone-700 text-stone-300 hover:border-amber-300/40"
           >
-            Beispielbild ausprobieren
+            {auth.isAuthenticated ? "Beispielbild ausprobieren" : "Anmelden & ausprobieren"}
           </Link>
         </div>
       </div>
@@ -39,6 +39,7 @@ export default function Landing() {
       {/* Feature-Grid */}
       <div className="px-8 py-12 border-t border-stone-800/60">
         <div className="max-w-4xl mx-auto grid sm:grid-cols-2 lg:grid-cols-3 gap-x-8 gap-y-10">
+          <h2 className="col-span-full text-2xl text-stone-200">Was Lumen kann</h2>
           <Feature
             title="Alle wichtigen Slider"
             body="Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz, Temperatur, Tönung, Dynamik, Sättigung — die zehn klassischen Lightroom-Regler, vollstaendig im Browser via WebGL2."

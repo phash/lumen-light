@@ -346,9 +346,11 @@ export default function PresetDialog({
           {publish.enabled && (
             <div className="space-y-2 border border-stone-800 px-3 py-2 bg-stone-950/50">
               <p className="text-[10px] text-stone-500">
-                Vorschaubild, Beschreibung, Genre und dein Handle (sofern
-                gesetzt) werden fuer alle eingeloggten Lumen-Nutzer
-                sichtbar. Email bleibt privat.
+                Vorschaubild, Beschreibung, Genre sowie dein Handle und deine
+                Bio (sofern gesetzt) werden <strong>öffentlich sichtbar — auch
+                für nicht angemeldete Besucher und Suchmaschinen/KI-Crawler</strong>.
+                Email bleibt privat. Wähle ein Vorschaubild, das keine
+                erkennbaren Dritten ohne deren Einwilligung zeigt.
               </p>
               <select
                 value={publish.genre}

@@ -4,7 +4,6 @@
 User-agent: *
 Disallow: /editor
 Disallow: /library
-Disallow: /marketplace
 Disallow: /account
 Disallow: /admin
 Disallow: /callback

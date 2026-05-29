@@ -48,14 +48,10 @@ export default function App() {
                 </RequireAuth>
               }
             />
-            <Route
-              path="/marketplace"
-              element={
-                <RequireAuth>
-                  <Marketplace />
-                </RequireAuth>
-              }
-            />
+            {/* Marketplace ist oeffentlich browsebar (SEO + ohne Konto
+                stoebern). Aktionen wie Anwenden/Forken/Melden gaten selbst
+                via Login-Redirect. */}
+            <Route path="/marketplace" element={<Marketplace />} />
             <Route
               path="/account"
               element={

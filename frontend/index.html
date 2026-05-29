@@ -89,31 +89,10 @@
     <script src="/config.js"></script>
   </head>
   <body class="bg-stone-950 text-stone-200 antialiased">
+    <!-- #root wird beim Build prerendert (scripts/prerender.mjs): enthaelt
+         echtes, pro-Route statisches HTML, das auch JS-lose Crawler/KI-Engines
+         sehen. Der Client ersetzt es beim Mount via createRoot. -->
     <div id="root"></div>
-
-    <!-- Fallback-Inhalt fuer JS-lose Crawler / KI-Engines (die meist kein
-         JavaScript ausfuehren). Spiegelt die Kernaussagen der Landing. -->
-    <noscript>
-      <main style="max-width:760px;margin:0 auto;padding:24px;font-family:system-ui,sans-serif;color:#e7e5e4;background:#0c0a09;">
-        <h1>Lumen · light — RAW-Foto-Editor im Browser</h1>
-        <p>
-          Lumen · light ist ein selbst-gehosteter, browser-basierter RAW-Foto-Editor —
-          eine schlanke, abofreie Lightroom-Alternative. RAW-Dateien (CR2, CR3, NEF,
-          ARW, RAF, DNG, RW2, ORF) werden direkt im Browser via WebGL2 entwickelt:
-          Belichtung, Kontrast, Lichter/Tiefen, HSL, Tonkurve, lokale Verlaufs- und
-          Radialmasken, Auto-Tone und Auto-Weissabgleich. Bilder bleiben auf deinem
-          Gerät; selbst hostbar via Docker.
-        </p>
-        <h2>Häufige Fragen</h2>
-        <h3>Ist Lumen eine Lightroom-Alternative?</h3>
-        <p>Ja — die klassischen Regler, lokale Masken und Presets als selbst-hostbare, abofreie Web-App.</p>
-        <h3>Kann ich Lumen selbst hosten?</h3>
-        <p>Ja, via Docker Compose (FastAPI, React 19/WebGL2, Postgres, Keycloak, S3) auf einem kleinen VPS.</p>
-        <h3>Bleiben meine Bilder privat?</h3>
-        <p>Ja, die Verarbeitung läuft lokal im Browser; Bilder verlassen dein Gerät nur, wenn du sie bewusst sicherst.</p>
-        <p><a href="https://github.com/phash/lumen-light">Quellcode &amp; Selbst-Hosting auf GitHub</a></p>
-      </main>
-    </noscript>
 
     <!-- Matomo (cookieless, DNT-respektiert) — siehe public/analytics.js. -->
     <script src="/analytics.js" defer></script>

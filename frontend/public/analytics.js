@@ -8,7 +8,12 @@
   _paq.push(["disableCookies"]); // keine Cookies -> kein Consent erforderlich
   _paq.push(["setDoNotTrack", true]); // DNT-Header respektieren
   _paq.push(["enableLinkTracking"]);
-  _paq.push(["trackPageView"]);
+  // Auf der OIDC-Callback-Route NICHT tracken: die URL traegt ?code/&state
+  // (Auth-Parameter), die nicht in den Matomo-Logs landen sollen. SPA-
+  // Navigationen werden separat ueber MatomoRouteTracker erfasst.
+  if (window.location.pathname.indexOf("/callback") !== 0) {
+    _paq.push(["trackPageView"]);
+  }
   var u = "//musikersuche.org/matomo/";
   _paq.push(["setTrackerUrl", u + "matomo.php"]);
   _paq.push(["setSiteId", "8"]);

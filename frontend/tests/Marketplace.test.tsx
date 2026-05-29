@@ -1,6 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { describe, expect, it, vi, type Mock } from "vitest";
 
 import * as useApiModule from "../src/api/use-api";
@@ -216,5 +216,93 @@ describe("Marketplace", () => {
       ),
     );
     expect(await screen.findByTestId("marketplace-card-p-2")).toBeInTheDocument();
+  });
+});
+
+describe("Marketplace ohne Login (public browse)", () => {
+  function renderAnon(api: FakeApi) {
+    vi.spyOn(useApiModule, "useApi").mockReturnValue(api);
+    return renderWithAuth(
+      <Routes>
+        <Route path="/marketplace" element={<Marketplace />} />
+        <Route path="/login" element={<div data-testid="login-page">login</div>} />
+      </Routes>,
+      {
+        auth: makeFakeAuth({ isAuthenticated: false, user: null }),
+        wrapper: (c) => (
+          <MemoryRouter initialEntries={["/marketplace"]}>{c}</MemoryRouter>
+        ),
+      },
+    );
+  }
+
+  it("Browsen + Detail funktionieren ohne Login", async () => {
+    const api = makeFakeApi();
+    api.listMarketplacePresets.mockResolvedValue({
+      items: [makeItem({ id: "p-x" })],
+      nextCursor: null,
+    });
+    api.getMarketplacePreset.mockResolvedValue(makeDetail({ id: "p-x" }));
+    renderAnon(api);
+    await userEvent.click(await screen.findByTestId("marketplace-card-p-x"));
+    expect(await screen.findByTestId("marketplace-detail-modal")).toBeInTheDocument();
+  });
+
+  it("Anwenden ohne Login leitet zur Login-Seite, ohne die gated API zu rufen", async () => {
+    const api = makeFakeApi();
+    api.listMarketplacePresets.mockResolvedValue({
+      items: [makeItem({ id: "p-x" })],
+      nextCursor: null,
+    });
+    api.getMarketplacePreset.mockResolvedValue(makeDetail({ id: "p-x" }));
+    renderAnon(api);
+    await userEvent.click(await screen.findByTestId("marketplace-card-p-x"));
+    await userEvent.click(await screen.findByTestId("marketplace-apply"));
+    expect(api.applyMarketplacePreset).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("login-page")).toBeInTheDocument();
+  });
+
+  it("Fork ohne Login leitet zur Login-Seite, ohne die gated API zu rufen", async () => {
+    const api = makeFakeApi();
+    api.listMarketplacePresets.mockResolvedValue({
+      items: [makeItem({ id: "p-x" })],
+      nextCursor: null,
+    });
+    api.getMarketplacePreset.mockResolvedValue(makeDetail({ id: "p-x" }));
+    renderAnon(api);
+    await userEvent.click(await screen.findByTestId("marketplace-card-p-x"));
+    await userEvent.click(await screen.findByTestId("marketplace-fork"));
+    expect(api.forkMarketplacePreset).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("login-page")).toBeInTheDocument();
+  });
+
+  it("Melden ohne Login leitet zur Login-Seite, ohne die gated API zu rufen", async () => {
+    const api = makeFakeApi();
+    api.listMarketplacePresets.mockResolvedValue({
+      items: [makeItem({ id: "p-x" })],
+      nextCursor: null,
+    });
+    api.getMarketplacePreset.mockResolvedValue(makeDetail({ id: "p-x" }));
+    renderAnon(api);
+    await userEvent.click(await screen.findByTestId("marketplace-card-p-x"));
+    await userEvent.type(
+      await screen.findByTestId("marketplace-report-reason"),
+      "Spam",
+    );
+    await userEvent.click(screen.getByTestId("marketplace-report-submit"));
+    expect(api.reportMarketplacePreset).not.toHaveBeenCalled();
+    expect(await screen.findByTestId("login-page")).toBeInTheDocument();
+  });
+
+  it("zeigt anonymen Nutzern einen Anmelde-Hinweis im Detail-Modal", async () => {
+    const api = makeFakeApi();
+    api.listMarketplacePresets.mockResolvedValue({
+      items: [makeItem({ id: "p-x" })],
+      nextCursor: null,
+    });
+    api.getMarketplacePreset.mockResolvedValue(makeDetail({ id: "p-x" }));
+    renderAnon(api);
+    await userEvent.click(await screen.findByTestId("marketplace-card-p-x"));
+    expect(await screen.findByTestId("marketplace-anon-hint")).toBeInTheDocument();
   });
 });
