@@ -11,10 +11,12 @@ from typing import Any
 import httpx
 import jwt
 from fastapi import Depends, HTTPException, status
+from fastapi.concurrency import run_in_threadpool
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.algorithms import RSAAlgorithm
 from jwt.exceptions import InvalidTokenError, PyJWTError
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
@@ -313,6 +315,9 @@ def _decode_token(token: str) -> dict[str, Any]:
             algorithms=["RS256"],
             audience=settings.keycloak_audience,
             issuer=settings.keycloak_issuer,
+            # Kleine Toleranz gegen Clock-Skew zwischen Keycloak und API-Host,
+            # damit frische Tokens nicht an exp/nbf-Grenzen 401en.
+            leeway=30,
         )
     except InvalidTokenError as exc:
         raise HTTPException(status_code=401, detail=f"Token ungueltig: {exc}") from exc
@@ -326,10 +331,24 @@ async def _get_or_create_user(db: AsyncSession, sub: str, email: str) -> User:
     if user is None:
         user = User(keycloak_sub=sub, email=email)
         db.add(user)
-        await db.flush()  # User-ID erzeugen, ohne zu committen
-        for p in _DEFAULT_PRESETS:
-            db.add(Preset(user_id=user.id, name=p["name"], adjustments=p["adjustments"]))
-        await db.commit()
+        try:
+            await db.flush()  # User-ID erzeugen, ohne zu committen
+            for p in _DEFAULT_PRESETS:
+                db.add(
+                    Preset(user_id=user.id, name=p["name"], adjustments=p["adjustments"])
+                )
+            await db.commit()
+        except IntegrityError:
+            # Race: ein paralleler Erst-Request (SPA feuert direkt nach dem
+            # Login mehrere Calls) hat den User mit demselben keycloak_sub
+            # schon angelegt. Unique-Constraint greift -> wir rollen zurueck
+            # und liefern die jetzt existierende Row (Upsert-Semantik), statt
+            # einen 500 zu werfen.
+            await db.rollback()
+            existing = await db.execute(
+                select(User).where(User.keycloak_sub == sub)
+            )
+            return existing.scalar_one()
         await db.refresh(user)
         return user
 
@@ -371,7 +390,11 @@ async def _resolve_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentifizierung erforderlich.",
         )
-    payload = _decode_token(creds.credentials)
+    # _decode_token macht blockierendes I/O (httpx JWK-Fetch bei Cache-Miss/
+    # -Expiry/Key-Rotation, bis 5 s) plus CPU-RSA-Verify. Im Single-Worker-
+    # Default wuerde das den Event-Loop fuer alle parallelen Requests
+    # blockieren -> in den Threadpool auslagern.
+    payload = await run_in_threadpool(_decode_token, creds.credentials)
 
     sub = payload.get("sub")
     email = payload.get("email") or payload.get("preferred_username")

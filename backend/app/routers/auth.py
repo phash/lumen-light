@@ -7,7 +7,8 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
-from pydantic import BaseModel, ConfigDict, EmailStr
+from fastapi.concurrency import run_in_threadpool
+from pydantic import BaseModel, ConfigDict
 from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -99,7 +100,9 @@ async def delete_me(
 
     for key in keys:
         try:
-            storage.delete(key)
+            # boto3 ist synchron/blockierend -> Threadpool, damit der
+            # Event-Loop waehrend des S3-Roundtrips nicht steht.
+            await run_in_threadpool(storage.delete, key)
         except Exception:  # noqa: BLE001 — best-effort cleanup
             # Object stays in bucket but DB row goes — orphan acceptable
             # at this scale; periodic GC sweeps it eventually.
@@ -116,7 +119,9 @@ async def delete_me(
     # KC-Token erlauben, dem keine App-Row mehr gegenueber steht
     # (das gleiche, was der bisherige Code ohnehin produziert hat —
     # also kein Regress).
-    kc_delete_user(keycloak_sub)
+    # kc_delete_user macht bis zu zwei blockierende httpx-Roundtrips (Token
+    # + DELETE, zusammen bis 15 s) -> Threadpool.
+    await run_in_threadpool(kc_delete_user, keycloak_sub)
 
 
 # ----- DSGVO Art. 15 + 20 (Auskunft + Datenuebertragbarkeit) -----
@@ -167,7 +172,7 @@ class ReportExport(BaseModel):
 class MeExport(BaseModel):
     model_config = CAMEL_BASE_CONFIG
     id: UUID
-    email: EmailStr
+    email: str  # str statt EmailStr — siehe UserOut/AdminUserOut
     handle: str | None
     bio: str | None
     created_at: datetime

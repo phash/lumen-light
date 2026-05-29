@@ -45,6 +45,9 @@ export default function Marketplace() {
   const reqIdRef = useRef(0);
   useEffect(() => {
     const reqId = ++reqIdRef.current;
+    // Datenfetch beim Filter-/Sort-Wechsel — set-state-in-effect ist hier
+    // beabsichtigt (Loading/Error-Synchronisation). Spaeter ggf. TanStack Query.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
     api
@@ -236,16 +239,21 @@ export default function Marketplace() {
       )}
     </section>
   );
+}
 
-  function DetailModal({
-    detail,
-    onClose,
-    onApplied,
-  }: {
-    detail: MarketplaceDetail;
-    onClose: () => void;
-    onApplied: () => void;
-  }) {
+// Modul-Ebene statt im Marketplace-Body: sonst bekommt das Modal bei jedem
+// Parent-Render eine neue Komponenten-Identitaet -> React unmountet/remountet
+// es und verliert busy/feedback/reportReason (M4-Review-Finding).
+function DetailModal({
+  detail,
+  onClose,
+  onApplied,
+}: {
+  detail: MarketplaceDetail;
+  onClose: () => void;
+  onApplied: () => void;
+}) {
+    const api = useApi();
     const [busy, setBusy] = useState<"apply" | "fork" | "report" | null>(null);
     const [feedback, setFeedback] = useState<string | null>(null);
     const [reportReason, setReportReason] = useState("");
@@ -412,7 +420,6 @@ export default function Marketplace() {
       </div>
     );
   }
-}
 
 function genreBtn(active: boolean): string {
   return `px-3 py-1.5 text-xs uppercase tracking-[0.2em] border ${

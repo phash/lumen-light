@@ -19,7 +19,8 @@ def _put_to_url(url: str, data: bytes, content_type: str) -> None:
 
 
 async def _upload_image(client, headers, filename="cover.jpg") -> str:
-    payload = b"fake-image"
+    # JPEG-Magic-Bytes vorne — confirm() validiert den Content-Type.
+    payload = b"\xff\xd8\xff\xe0fake-image"
     r = await client.post(
         "/api/v1/images",
         headers=headers,
@@ -99,6 +100,36 @@ async def test_public_preset_with_foreign_image_returns_400(client, user_a, user
         },
     )
     assert r.status_code == 400
+
+
+async def test_public_preset_with_non_jpeg_preview_returns_400(client, user_a):
+    """Oeffentliche Vorschaubilder werden an ALLE eingeloggten User
+    ausgeliefert. Nur JPEG wird beim Upload client-seitig von EXIF/GPS
+    befreit (und ist im <img> darstellbar) -> Public-Preview muss JPEG sein,
+    sonst koennten ueber ein PNG/RAW-Cover Metadaten oeffentlich werden."""
+    init = await client.post(
+        "/api/v1/images", headers=user_a["headers"],
+        json={"filename": "cover.png", "contentType": "image/png", "sizeBytes": 8},
+    )
+    body = init.json()
+    _put_to_url(body["uploadUrl"], b"\x89PNG\r\n\x1a\n", "image/png")
+    confirm = await client.post(
+        f"/api/v1/images/{body['id']}/confirm", headers=user_a["headers"]
+    )
+    assert confirm.status_code == 200, confirm.text
+
+    r = await client.post(
+        "/api/v1/presets", headers=user_a["headers"],
+        json={
+            "name": "png-cover",
+            "adjustments": ZERO_ADJ,
+            "visibility": "public",
+            "genre": "portrait",
+            "description": "PNG-Cover soll abgelehnt werden.",
+            "previewImageId": body["id"],
+        },
+    )
+    assert r.status_code == 400, r.text
 
 
 async def test_public_preset_creation_sets_published_at(client, user_a):

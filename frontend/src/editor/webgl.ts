@@ -358,6 +358,12 @@ export class Renderer {
     return this.texture !== null;
   }
 
+  /** Gibt den WebGL-Context frei. Wichtig fuer kurzlebige Export-Renderer —
+   *  Browser begrenzen die Zahl gleichzeitiger WebGL-Contexts (~16). */
+  dispose(): void {
+    this.gl.getExtension("WEBGL_lose_context")?.loseContext();
+  }
+
   /** Original-Pixel-Dimensionen des geladenen Bildes (vor Crop). */
   get imageWidth(): number { return this._imageWidth; }
   get imageHeight(): number { return this._imageHeight; }

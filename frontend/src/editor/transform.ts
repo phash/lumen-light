@@ -33,6 +33,24 @@ export function clampCropRect(rect: CropRect, minSize = 0.05): CropRect {
 }
 
 /**
+ * Output-Pixel-Format aus Quell-Dimensionen + Crop: das gecropte Rechteck
+ * wird pixelgenau gemapt statt gestreckt. Genutzt fuer die Live-Vorschau
+ * (Quelle = herunterskaliert) UND den Full-Res-Export (Quelle = Original).
+ */
+export function cropOutputSize(
+  width: number,
+  height: number,
+  crop: CropRect,
+): { width: number; height: number } {
+  const cw = Math.max(0.05, crop.x1 - crop.x0);
+  const ch = Math.max(0.05, crop.y1 - crop.y0);
+  return {
+    width: Math.max(1, Math.round(width * cw)),
+    height: Math.max(1, Math.round(height * ch)),
+  };
+}
+
+/**
  * 3×3 affine UV-Transformation (column-major fuer GLSL `mat3`).
  *
  * Layout:

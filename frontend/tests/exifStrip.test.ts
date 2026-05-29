@@ -76,4 +76,36 @@ describe("stripJpegExifBytes", () => {
     expect(out[out.length - 2]).toBe(0xff);
     expect(out[out.length - 1]).toBe(0xd9);
   });
+
+  it("trunciertes Segment (Length ragt ueber den Puffer): unveraendert statt korrupt", () => {
+    // APP1 deklariert Length 0x40 (64), aber nur 2 Payload-Bytes + Puffer-Ende.
+    const truncated = new Uint8Array([
+      0xff, 0xd8, // SOI
+      0xff, 0xe1, 0x00, 0x40, 0x01, 0x02, // APP1, Length=64, aber Puffer endet
+    ]);
+    const out = stripJpegExifBytes(truncated);
+    expect(Array.from(out)).toEqual(Array.from(truncated));
+  });
+
+  it("Fill-Bytes (0xFF) vor einem Marker: APP1 wird trotzdem korrekt entfernt", () => {
+    const input = new Uint8Array([
+      0xff, 0xd8, // SOI
+      0xff, // legales Fill-Byte vor dem naechsten Marker
+      0xff, 0xe1, 0x00, 0x04, 0xaa, 0xbb, // APP1
+      0xff, 0xda, 0x00, 0x04, 0x00, 0x00, // SOS-Header
+      0xab, 0xcd, 0xef, // Image-Stream
+      0xff, 0xd9, // EOI
+    ]);
+    const out = stripJpegExifBytes(input);
+    // APP1 muss weg sein
+    let foundApp1 = false;
+    for (let i = 0; i < out.length - 1; i++) {
+      if (out[i] === 0xff && out[i + 1] === 0xe1) foundApp1 = true;
+    }
+    expect(foundApp1).toBe(false);
+    // Stream + EOI intakt
+    expect(out[out.length - 2]).toBe(0xff);
+    expect(out[out.length - 1]).toBe(0xd9);
+    expect(Array.from(out).includes(0xab)).toBe(true);
+  });
 });

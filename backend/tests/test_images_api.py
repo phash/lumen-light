@@ -22,7 +22,9 @@ async def _init(client, headers, filename="test.jpg",
     return r.json()
 
 
-async def _full_upload(client, headers, payload=b"fake-image-bytes",
+# Gueltige JPEG-Magic-Bytes vorne dran — confirm() validiert seit der
+# Content-Type-Haertung die echten Anfangsbytes gegen image/jpeg.
+async def _full_upload(client, headers, payload=b"\xff\xd8\xff\xe0fake-image-bytes",
                        content_type="image/jpeg") -> str:
     init = await _init(
         client, headers, filename="up.jpg",
@@ -118,6 +120,41 @@ async def test_confirm_413_if_actual_object_exceeds_limit(
     assert init["id"] not in ids
 
 
+async def test_confirm_rejects_non_image_payload(client, user_a):
+    """Pre-Signed PUT bindet nur den Content-Type-Header, nicht den Body.
+    Wer als image/jpeg initialisiert, aber Nicht-Bild-Bytes (z.B. HTML)
+    hochlaedt, muss beim confirm 415 bekommen + Object/Row werden geraeumt.
+    Schuetzt vor browser-interpretierbarem Content im Bucket."""
+    init = await _init(
+        client, user_a["headers"], filename="evil.jpg",
+        content_type="image/jpeg", size=40,
+    )
+    _put_to_url(init["uploadUrl"], b"<html>not really a jpeg</html>", "image/jpeg")
+
+    confirm = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert confirm.status_code == 415, confirm.text
+
+    listing = await client.get(
+        "/api/v1/images?state=all", headers=user_a["headers"]
+    )
+    assert init["id"] not in [it["id"] for it in listing.json()]
+
+
+async def test_confirm_accepts_real_jpeg_magic(client, user_a):
+    """Gegenprobe: korrekte JPEG-Magic-Bytes werden akzeptiert (200)."""
+    init = await _init(
+        client, user_a["headers"], filename="ok.jpg",
+        content_type="image/jpeg", size=8,
+    )
+    _put_to_url(init["uploadUrl"], b"\xff\xd8\xff\xe0rest", "image/jpeg")
+    confirm = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert confirm.status_code == 200, confirm.text
+
+
 async def test_list_default_returns_only_ready(client, user_a):
     init_pending = await _init(
         client, user_a["headers"], filename="pending.jpg"
@@ -142,7 +179,8 @@ async def test_list_state_pending(client, user_a):
 
 
 async def test_get_url_returns_signed(client, user_a):
-    image_id = await _full_upload(client, user_a["headers"], payload=b"abc")
+    jpeg = b"\xff\xd8\xff\xe0abc"
+    image_id = await _full_upload(client, user_a["headers"], payload=jpeg)
     r = await client.get(
         f"/api/v1/images/{image_id}/url", headers=user_a["headers"]
     )
@@ -153,7 +191,7 @@ async def test_get_url_returns_signed(client, user_a):
 
     # URL liefert tatsaechlich den Inhalt
     with urllib.request.urlopen(body["url"], timeout=5) as resp:
-        assert resp.read() == b"abc"
+        assert resp.read() == jpeg
 
 
 async def test_delete_removes_db_and_object(client, user_a):

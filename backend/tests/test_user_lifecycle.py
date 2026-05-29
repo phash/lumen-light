@@ -11,7 +11,8 @@ def _put_to_url(url: str, data: bytes, content_type: str) -> None:
         assert 200 <= resp.status < 300
 
 
-async def _upload_image(client, headers, payload=b"x" * 1024) -> str:
+# JPEG-Magic-Bytes vorne — confirm() validiert den Content-Type.
+async def _upload_image(client, headers, payload=b"\xff\xd8\xff\xe0" + b"x" * 1020) -> str:
     init = await client.post(
         "/api/v1/images",
         headers=headers,

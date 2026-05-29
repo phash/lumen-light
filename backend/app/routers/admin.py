@@ -14,7 +14,7 @@ naechsten /me sofort.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -259,7 +259,7 @@ async def patch_feedback(
         fb.status = payload.status
     if payload.admin_notes is not None:
         fb.admin_notes = payload.admin_notes or None
-    fb.updated_at = datetime.utcnow()
+    fb.updated_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(fb)
 

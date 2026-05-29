@@ -5,6 +5,7 @@ import {
   applyUv,
   aspectValue,
   clampCropRect,
+  cropOutputSize,
   defaultCropRect,
   invertUvTransform,
   isIdentityCrop,
@@ -170,5 +171,18 @@ describe("updateCropOnDrag", () => {
     });
     expect(r.x1 - r.x0).toBeCloseTo(0.6, 5);
     expect(r.y1 - r.y0).toBeCloseTo(0.9, 5);
+  });
+
+  it("cropOutputSize mappt das Crop-Rechteck pixelgenau (Full-Res-Export)", () => {
+    // Identitaets-Crop -> volle Quell-Aufloesung (C2: 'native' = Original).
+    expect(cropOutputSize(6000, 4000, ID)).toEqual({ width: 6000, height: 4000 });
+    // Halbes Crop -> halbe Pixel pro Achse.
+    expect(
+      cropOutputSize(6000, 4000, { x0: 0.25, y0: 0.25, x1: 0.75, y1: 0.75 }),
+    ).toEqual({ width: 3000, height: 2000 });
+    // Mindestgroesse 0.05 verhindert 0-Pixel-Output bei degeneriertem Crop.
+    const tiny = cropOutputSize(100, 100, { x0: 0.5, y0: 0.5, x1: 0.5, y1: 0.5 });
+    expect(tiny.width).toBeGreaterThanOrEqual(1);
+    expect(tiny.height).toBeGreaterThanOrEqual(1);
   });
 });

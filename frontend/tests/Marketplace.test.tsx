@@ -36,6 +36,8 @@ function makeFakeApi(): FakeApi {
     confirmUpload: vi.fn(),
     getImageUrl: vi.fn(),
     deleteImage: vi.fn(),
+    getImageEdit: vi.fn(),
+    putImageEdit: vi.fn(),
     listMarketplacePresets: vi.fn().mockResolvedValue({
       items: [],
       nextCursor: null,

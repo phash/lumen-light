@@ -4,6 +4,7 @@ import type { MaskInstance } from "./mask";
 import { useEditorStore, type EditorState } from "./store";
 import {
   type CropRect,
+  cropOutputSize,
   defaultCropRect,
   uvTransformMatrix,
 } from "./transform";
@@ -25,12 +26,7 @@ function outputSizeFor(
   r: Renderer,
   crop: CropRect,
 ): { width: number; height: number } {
-  const cw = Math.max(0.05, crop.x1 - crop.x0);
-  const ch = Math.max(0.05, crop.y1 - crop.y0);
-  return {
-    width: Math.max(1, Math.round(r.imageWidth * cw)),
-    height: Math.max(1, Math.round(r.imageHeight * ch)),
-  };
+  return cropOutputSize(r.imageWidth, r.imageHeight, crop);
 }
 
 function buildMasksUniforms(
@@ -73,8 +69,9 @@ function masksFromState(state: EditorState): MasksUniforms {
 }
 
 export interface CanvasHandle {
-  /** Laedt JPEG/PNG via Browser-Decoder. */
-  loadFile(file: File): Promise<void>;
+  /** Laedt JPEG/PNG via Browser-Decoder. Liefert die (ggf. herunterskalierten)
+   *  Bild-Dimensionen — Aufrufer muss nicht mehr das Canvas-Element auslesen. */
+  loadFile(file: File): Promise<{ width: number; height: number }>;
   /** Laedt ein bereits dekodiertes Bild (z.B. aus RAW). */
   loadBitmap(bitmap: ImageBitmap, width: number, height: number): void;
   /** Erzwingt einen Re-Render mit aktuellem Store-State. */
@@ -82,6 +79,11 @@ export interface CanvasHandle {
   /** Rendert das Bild kurz mit bypass=true, liefert es als DataURL,
    *  rendert direkt wieder normal. Fuer Vorher/Nachher-Snapshots. */
   takeBypassSnapshot(): string | null;
+  /** Rendert das Bild in voller Original-Aufloesung offscreen durch dieselbe
+   *  Pipeline (die Live-Vorschau bleibt aus Performance-Gruenden gedeckelt).
+   *  Liefert das Canvas + eine dispose()-Funktion (WebGL-Context freigeben).
+   *  null, wenn kein Bild geladen ist oder kein WebGL-Context verfuegbar. */
+  exportFullResCanvas(): { canvas: HTMLCanvasElement; dispose: () => void } | null;
 }
 
 interface Props {
@@ -101,6 +103,14 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const rendererRef = useRef<Renderer | null>(null);
+  // Original-Vollaufloesungs-Quelle (vor Preview-Downscale) fuer den
+  // Full-Res-Export. Die Live-Textur ist zwar bereits voll, aber der
+  // Export-Renderer braucht die Quelle + echten Dimensionen separat.
+  const fullSourceRef = useRef<{
+    source: TexImageSource;
+    width: number;
+    height: number;
+  } | null>(null);
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const bypass = useEditorStore((s) => s.bypass);
@@ -160,6 +170,13 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         if (!r) throw new Error("Renderer nicht initialisiert");
         const { image, width, height } = await loadImageFromFile(file);
         r.loadImage(image, width, height);
+        // Original-Aufloesung fuer den Export merken (image ist die volle
+        // Datei; width/height sind die Preview-Skalierung).
+        fullSourceRef.current = {
+          source: image,
+          width: image.naturalWidth,
+          height: image.naturalHeight,
+        };
         const s = useEditorStore.getState();
         const effCrop = cropMode ? IDENTITY_CROP : s.cropRect;
         r.render(
@@ -174,6 +191,9 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.tcaB,
         );
         onTick();
+        // Volle Natural-Dimensionen zurueck — der Aufrufer nutzt sie fuer
+        // Aspect + Export-Dialog (nicht den heruntergerechneten Preview-Wert).
+        return { width: image.naturalWidth, height: image.naturalHeight };
       },
       loadBitmap(bitmap, width, height) {
         const r = rendererRef.current;
@@ -183,6 +203,9 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         const w = Math.round(width * scale);
         const h = Math.round(height * scale);
         r.loadImage(bitmap, w, h);
+        // bitmap ist die volle RAW-Aufloesung; width/height sind die echten
+        // Decoder-Dimensionen -> fuer den Export merken.
+        fullSourceRef.current = { source: bitmap, width, height };
         const s = useEditorStore.getState();
         const effCrop = cropMode ? IDENTITY_CROP : s.cropRect;
         r.render(
@@ -249,6 +272,35 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           s.lensCorrection.tcaB,
         );
         return url;
+      },
+      exportFullResCanvas: () => {
+        const full = fullSourceRef.current;
+        if (!full) return null;
+        const off = document.createElement("canvas");
+        let renderer: Renderer;
+        try {
+          renderer = new Renderer(off);
+        } catch {
+          // Kein WebGL2 (z.B. jsdom) -> Aufrufer faellt auf die Live-Canvas zurueck.
+          return null;
+        }
+        renderer.loadImage(full.source, full.width, full.height);
+        const s = useEditorStore.getState();
+        // Export ist der finale Output: volles Crop angewendet (kein
+        // cropMode-Vollbild), kein Bypass. Output-Format = Original × Crop.
+        const crop = s.cropRect;
+        renderer.render(
+          s.adjustments,
+          false,
+          uvTransformMatrix(crop, s.straightenAngle),
+          s.lensCorrection.distortion,
+          s.lensCorrection.vignette,
+          masksFromState(s),
+          cropOutputSize(full.width, full.height, crop),
+          s.lensCorrection.tcaR,
+          s.lensCorrection.tcaB,
+        );
+        return { canvas: off, dispose: () => renderer.dispose() };
       },
     }),
     [onTick, cropMode],

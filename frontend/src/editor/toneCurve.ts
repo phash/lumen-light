@@ -107,9 +107,10 @@ export function evaluateToneCurve(curve: ToneCurve, x: number): number {
  */
 export function computeToneCurveLut(curve: ToneCurve): Uint8Array {
   const lut = new Uint8Array(TONE_CURVE_LUT_SIZE);
-  // Tangenten einmal berechnen, dann iterativ Segment-Index fuehren —
-  // schneller als evaluate pro i, wenn curve viele Punkte hat.
-  const m = tangents(curve.points);
+  // Tangenten aus dem WeakMap-Cache (teilen sich mit evaluateToneCurve denselben
+  // Eintrag pro Curve-Objekt), dann iterativ Segment-Index fuehren — schneller
+  // als evaluate pro i, wenn curve viele Punkte hat.
+  const m = tangentsCached(curve);
   let seg = 0;
   for (let i = 0; i < TONE_CURVE_LUT_SIZE; i++) {
     const x = i / (TONE_CURVE_LUT_SIZE - 1);

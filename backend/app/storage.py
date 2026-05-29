@@ -69,6 +69,20 @@ class StorageService:
             raise
         return int(response["ContentLength"])
 
+    def head_bytes(self, key: str, n: int) -> bytes:
+        """Liest die ersten n Bytes des Objects (Ranged GET) — fuer Magic-
+        Byte-Validierung beim confirm. Wirft ObjectNotFound wenn nicht da."""
+        try:
+            response = self._client.get_object(
+                Bucket=self.bucket, Key=key, Range=f"bytes=0-{n - 1}"
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                raise ObjectNotFound(key) from exc
+            raise
+        return response["Body"].read()
+
     def delete(self, key: str) -> None:
         """Loescht das Object. Idempotent — kein Fehler wenn schon weg."""
         self._client.delete_object(Bucket=self.bucket, Key=key)

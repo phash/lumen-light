@@ -38,16 +38,28 @@ function isJpeg(bytes: Uint8Array): boolean {
 export function stripJpegExifBytes(input: Uint8Array): Uint8Array {
   if (!isJpeg(input)) return input;
 
+  const n = input.length;
   const out: number[] = [];
   let i = 0;
-  while (i < input.length) {
-    if (input[i] !== 0xff) {
-      // Nach SOS folgt der Image-Stream — alles bis EOI durchreichen.
-      out.push(input[i]!);
+  while (i < n) {
+    const b = input[i]!;
+    if (b !== 0xff) {
+      // Defensive: ausserhalb des Image-Streams sollte hier immer 0xFF stehen.
+      out.push(b);
       i++;
       continue;
     }
-    const marker = input[i + 1]!;
+    // Fill-Bytes: beliebig viele aufeinanderfolgende 0xFF vor einem Marker
+    // sind laut JPEG-Spec legal. Marker ist das erste Nicht-0xFF danach.
+    let j = i + 1;
+    while (j < n && input[j] === 0xff) j++;
+    if (j >= n) {
+      // Trailing 0xFF ohne Marker — Rest unveraendert durchreichen.
+      for (let k = i; k < n; k++) out.push(input[k]!);
+      break;
+    }
+    const marker = input[j]!;
+
     // Marker ohne Length-Field: SOI(D8), EOI(D9), TEM(01), RSTn(D0..D7).
     if (
       marker === 0xd8 ||
@@ -55,33 +67,33 @@ export function stripJpegExifBytes(input: Uint8Array): Uint8Array {
       marker === 0x01 ||
       (marker >= 0xd0 && marker <= 0xd7)
     ) {
-      out.push(0xff, marker);
-      i += 2;
+      for (let k = i; k <= j; k++) out.push(input[k]!); // Fill + Marker
+      i = j + 1;
       continue;
     }
-    // SOS (FFDA) — Length + Data folgt, danach Image-Stream bis EOI.
+
+    // Ab hier Length-Field-Marker: 2 Length-Bytes bei j+1,j+2 noetig.
+    // Bei truncated/malformed Struktur lieber NICHTS strippen und das
+    // Original unveraendert zurueckgeben, statt korrupte Bytes zu erzeugen.
+    if (j + 2 >= n) return input;
+    const length = (input[j + 1]! << 8) | input[j + 2]!;
+    if (length < 2) return input;
+    const segEnd = j + 1 + length; // exklusiv: Marker(j) + Length + Data
+    if (segEnd > n) return input;
+
     if (marker === 0xda) {
-      const length = (input[i + 2]! << 8) | input[i + 3]!;
-      // Header inklusive Marker + Length-Bytes
-      for (let k = 0; k < length + 2; k++) out.push(input[i + k]!);
-      i += length + 2;
-      // Image-Stream bis FFD9 — alles 1:1 kopieren.
-      while (i < input.length) {
-        out.push(input[i]!);
-        i++;
-      }
+      // SOS — Header durchreichen, danach roher Image-Stream bis EOI 1:1.
+      for (let k = i; k < n; k++) out.push(input[k]!);
       break;
     }
-    // Sonstige Marker mit Length-Field (FFE0..FFEF, FFDB, FFC0, FFC4, etc.)
-    const length = (input[i + 2]! << 8) | input[i + 3]!;
     if (marker === 0xe1 || marker === 0xe2) {
-      // APP1 (EXIF) und APP2 (ICC/XMP): segment komplett ueberspringen.
-      i += length + 2;
+      // APP1 (EXIF) / APP2 (ICC/XMP) inkl. evtl. Fill davor ueberspringen.
+      i = segEnd;
       continue;
     }
-    // Anderes Segment: durchreichen.
-    for (let k = 0; k < length + 2; k++) out.push(input[i + k]!);
-    i += length + 2;
+    // Anderes Segment: Fill + Marker + Length + Data durchreichen.
+    for (let k = i; k < segEnd; k++) out.push(input[k]!);
+    i = segEnd;
   }
   return new Uint8Array(out);
 }

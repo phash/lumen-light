@@ -19,6 +19,8 @@ async def _validate_preview_image(
     db: AsyncSession,
     user: User,
     preview_image_id: UUID | None,
+    *,
+    public: bool,
 ) -> None:
     if preview_image_id is None:
         return
@@ -33,6 +35,19 @@ async def _validate_preview_image(
         raise HTTPException(
             status_code=400,
             detail="preview_image_id muss zu einem eigenen Bild gehoeren.",
+        )
+    # Oeffentliche Vorschaubilder werden an alle eingeloggten User
+    # ausgeliefert (marketplace previewUrl). Nur JPEG wird beim Upload
+    # client-seitig von EXIF/GPS befreit (exifStrip.ts ueberspringt PNG/RAW)
+    # und ist im <img> darstellbar -> Public-Preview muss JPEG sein. RAW-
+    # Originale des Users bleiben privat und sind hiervon nicht betroffen.
+    if public and img.content_type != "image/jpeg":
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Vorschaubild fuer oeffentliche Presets muss ein JPEG sein "
+                "(Metadaten werden beim Upload entfernt, browser-darstellbar)."
+            ),
         )
 
 
@@ -49,7 +64,9 @@ SORT_FIELDS = {
 
 @router.get("", response_model=list[PresetOut])
 async def list_presets(
-    q: str | None = Query(default=None, description="Substring-Suche im Namen"),
+    q: str | None = Query(
+        default=None, max_length=80, description="Substring-Suche im Namen"
+    ),
     sort: str = Query(default="name"),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -72,7 +89,9 @@ async def create_preset(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> PresetOut:
-    await _validate_preview_image(db, user, payload.preview_image_id)
+    await _validate_preview_image(
+        db, user, payload.preview_image_id, public=payload.visibility == "public"
+    )
     published_at: datetime | None = (
         datetime.now(timezone.utc) if payload.visibility == "public" else None
     )
@@ -112,7 +131,9 @@ async def update_preset(
     p = result.scalar_one_or_none()
     if p is None:
         raise HTTPException(status_code=404, detail="Preset nicht gefunden.")
-    await _validate_preview_image(db, user, payload.preview_image_id)
+    await _validate_preview_image(
+        db, user, payload.preview_image_id, public=payload.visibility == "public"
+    )
     p.name = payload.name
     p.adjustments = payload.adjustments.model_dump()
     p.masks = [m.model_dump() for m in payload.masks]

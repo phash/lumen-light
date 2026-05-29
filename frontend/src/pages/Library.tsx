@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/use-api";
 import type { Image } from "../api/client";
@@ -19,6 +20,7 @@ function formatSize(bytes: number | null): string {
 
 export default function Library() {
   const api = useApi();
+  const navigate = useNavigate();
   const [images, setImages] = useState<Image[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
@@ -140,13 +142,23 @@ export default function Library() {
                 {formatSize(img.sizeBytes)} · {img.contentType}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => void onDelete(img.id)}
-              className="text-stone-500 hover:text-red-400"
-            >
-              Löschen
-            </button>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                data-testid={`image-edit-${img.id}`}
+                onClick={() => void navigate(`/editor?image=${img.id}`)}
+                className="text-amber-200 hover:underline"
+              >
+                Im Editor öffnen
+              </button>
+              <button
+                type="button"
+                onClick={() => void onDelete(img.id)}
+                className="text-stone-500 hover:text-red-400"
+              >
+                Löschen
+              </button>
+            </div>
           </li>
         ))}
       </ul>

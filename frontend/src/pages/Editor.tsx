@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import OnboardingTour from "../onboarding/OnboardingTour";
 import { getOnboardingState } from "../onboarding/state";
@@ -16,7 +17,9 @@ import {
   suggestFilename,
 } from "../editor/export";
 import ExportDialog from "../editor/ExportDialog";
+import { defaultLensCorrection } from "../editor/lens";
 import { findLensProfile, profileToCorrection } from "../editor/lensProfile";
+import { masksToWire, wireToMasks } from "../editor/maskSerializer";
 import {
   type LinearMaskInstance,
   MAX_LINEAR_MASKS,
@@ -32,7 +35,7 @@ import { detectFacesSafe } from "../editor/faceDetector";
 import { FILE_PICKER_ACCEPT, decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
 import { type Genre, suggestGenre } from "../editor/suggestPreset";
 import { selectedMask, useEditorStore } from "../editor/store";
-import { type AspectRatio } from "../editor/transform";
+import { type AspectRatio, defaultCropRect } from "../editor/transform";
 import { useKeyboardShortcuts } from "../editor/useKeyboardShortcuts";
 
 function countByType(
@@ -98,6 +101,11 @@ export default function Editor() {
   >(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const [wbPickerActive, setWbPickerActive] = useState(false);
+  // C1: aus der Bibliothek geoeffnetes Bild (?image=<id>) -> Autosave-Ziel.
+  const [searchParams] = useSearchParams();
+  const storedImageIdParam = searchParams.get("image");
+  const [storedImageId, setStoredImageId] = useState<string | null>(null);
+  const loadedImageRef = useRef<string | null>(null);
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const setAdjustment = useEditorStore((s) => s.setAdjustment);
@@ -153,7 +161,7 @@ export default function Editor() {
     [],
   );
 
-  const runSuggestion = async (focal: number | null): Promise<void> => {
+  const runSuggestion = useCallback(async (focal: number | null): Promise<void> => {
     const c = canvasElement;
     if (!c) return;
     const stats = analyze(c);
@@ -172,9 +180,9 @@ export default function Editor() {
       faceCount: faces.length,
     });
     if (genre) setSuggestedGenre(genre);
-  };
+  }, [canvasElement]);
 
-  const onFile = async (file: File) => {
+  const onFile = useCallback(async (file: File) => {
     setError(null);
     setOriginalFilename(file.name);
     setCameraInfo(null);
@@ -220,10 +228,10 @@ export default function Editor() {
           void runSuggestion(focal);
         }, 100);
       } else {
-        await canvasHandleRef.current?.loadFile(file);
-        // Dimensions aus dem Canvas-Element lesen — wurde von loadFile gesetzt
-        const c = canvasElement;
-        if (c) setImageDims({ width: c.width, height: c.height });
+        // loadFile liefert die Dimensionen direkt zurueck — kein Auslesen des
+        // (beim Auto-Load evtl. noch nicht gemounteten) canvasElement-State (L4).
+        const dims = await canvasHandleRef.current?.loadFile(file);
+        if (dims) setImageDims(dims);
         // JPEG/PNG-Pfad: keine EXIF-Brennweite, aber Face-Detection kann
         // Portraits trotzdem erkennen. Gleicher Render-Tick-Delay.
         setTimeout(() => {
@@ -236,7 +244,7 @@ export default function Editor() {
     } finally {
       setDecoding(false);
     }
-  };
+  }, [resetGeometry, setLensCorrection, setLensProfile, runSuggestion]);
 
   const onPick = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -259,10 +267,15 @@ export default function Editor() {
   }, [hasImage]);
 
   const doExport = async () => {
-    if (!canvasElement) return;
+    // C2: Voll-Aufloesungs-Export — das Original wird offscreen durch die
+    // Pipeline gerendert (Live-Vorschau bleibt gedeckelt). Fallback auf die
+    // Live-Canvas, falls kein WebGL-Export-Context verfuegbar ist (jsdom/Tests).
+    const full = canvasHandleRef.current?.exportFullResCanvas?.() ?? null;
+    const source = full?.canvas ?? canvasElement;
+    if (!source) return;
     setExporting(true);
     try {
-      const blob = await exportCanvas(canvasElement, {
+      const blob = await exportCanvas(source, {
         format: exportFormat,
         quality: exportQuality,
         width: exportWidth === "native" ? undefined : exportWidth,
@@ -272,6 +285,7 @@ export default function Editor() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export fehlgeschlagen");
     } finally {
+      full?.dispose();
       setExporting(false);
     }
   };
@@ -531,6 +545,78 @@ export default function Editor() {
     setBypass,
   });
 
+  // C1: Bild + gespeicherten Bearbeitungsstand laden, wenn der Editor mit
+  // ?image=<id> geoeffnet wird. Ref-Guard laedt jedes Bild nur einmal;
+  // alle setState-Calls passieren async (kein set-state-in-effect).
+  useEffect(() => {
+    const id = storedImageIdParam;
+    if (!id || loadedImageRef.current === id) return;
+    loadedImageRef.current = id;
+    void (async () => {
+      try {
+        const meta = (await api.listImages("all")).find((i) => i.id === id);
+        const { url } = await api.getImageUrl(id);
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error("Bild konnte nicht geladen werden");
+        const blob = await resp.blob();
+        const file = new File([blob], meta?.originalFilename ?? "bild", {
+          type: meta?.contentType ?? blob.type,
+        });
+        await onFile(file);
+        // Gespeicherten Stand wiederherstellen (Multi-Device-Resume); 404 -> null.
+        const edit = await api.getImageEdit(id);
+        if (edit) {
+          useEditorStore.getState().applyEditState({
+            adjustments: edit.adjustments,
+            masks: wireToMasks(edit.masks),
+            cropRect: edit.crop ?? defaultCropRect(),
+            straightenAngle: edit.straightenAngle,
+            lensCorrection: edit.lensCorrection ?? defaultLensCorrection(),
+            lensProfileId: edit.lensProfileId,
+            manualLensOverride: edit.manualLensOverride,
+          });
+        }
+        setStoredImageId(id);
+      } catch (err) {
+        setError(
+          err instanceof Error ? err.message : "Bild konnte nicht geladen werden",
+        );
+      }
+    })();
+  }, [storedImageIdParam, api, onFile]);
+
+  // C1: debounced Autosave des Bearbeitungsstands, solange ein gespeichertes
+  // Bild offen ist. PUT ist fire-and-forget (kein setState -> kein
+  // set-state-in-effect). Cleanup canceled den Timer bei jeder Aenderung.
+  useEffect(() => {
+    if (!storedImageId || !hasImage) return;
+    const handle = window.setTimeout(() => {
+      void api
+        .putImageEdit(storedImageId, {
+          adjustments,
+          masks: masksToWire(masks),
+          crop: cropRect,
+          straightenAngle,
+          lensCorrection,
+          lensProfileId,
+          manualLensOverride,
+        })
+        .catch(() => undefined);
+    }, 1200);
+    return () => window.clearTimeout(handle);
+  }, [
+    storedImageId,
+    hasImage,
+    api,
+    adjustments,
+    masks,
+    cropRect,
+    straightenAngle,
+    lensCorrection,
+    lensProfileId,
+    manualLensOverride,
+  ]);
+
   const selectedLinear: LinearMaskInstance | null =
     selected && selected.type === "linear" ? selected : null;
   const selectedRadial: RadialMaskInstance | null =
@@ -699,7 +785,7 @@ export default function Editor() {
 
         {exportOpen && (
           <ExportDialog
-            canvasWidth={canvasElement?.width ?? 0}
+            canvasWidth={imageDims?.width ?? canvasElement?.width ?? 0}
             format={exportFormat}
             onFormatChange={setExportFormat}
             quality={exportQuality}

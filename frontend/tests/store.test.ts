@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { ADJUSTMENTS, defaultAdjustments, defaultHslAdjustments } from "../src/editor/adjustments";
+import { takeSnapshot } from "../src/editor/history";
 import { defaultLensCorrection } from "../src/editor/lens";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "../src/editor/mask";
 import {
@@ -462,5 +463,34 @@ describe("Multi-Mask", () => {
     useEditorStore.getState().applyMasks([]);
     expect(useEditorStore.getState().masks).toEqual([]);
     expect(useEditorStore.getState().selectedMaskId).toBeNull();
+  });
+
+  it("applyEditState setzt den kompletten Stand und leert die History (C1)", () => {
+    // History vorab fuellen, um zu pruefen, dass applyEditState sie leert.
+    const snap = takeSnapshot(useEditorStore.getState());
+    useEditorStore.setState({ past: [snap], future: [snap] });
+    expect(useEditorStore.getState().past).toHaveLength(1);
+
+    useEditorStore.getState().applyEditState({
+      adjustments: { exposure: 0.6 },
+      masks: [],
+      cropRect: { x0: 0.1, y0: 0.1, x1: 0.9, y1: 0.9 },
+      straightenAngle: 0.05,
+      lensCorrection: { distortion: 0.2, vignette: -0.1, tcaR: 0, tcaB: 0 },
+      lensProfileId: "p-1",
+      manualLensOverride: true,
+    });
+
+    const s = useEditorStore.getState();
+    expect(s.adjustments.exposure).toBe(0.6);
+    // Nicht uebergebene Felder fallen auf Default zurueck (nicht alter State).
+    expect(s.adjustments.contrast).toBe(0);
+    expect(s.cropRect).toEqual({ x0: 0.1, y0: 0.1, x1: 0.9, y1: 0.9 });
+    expect(s.straightenAngle).toBeCloseTo(0.05);
+    expect(s.lensCorrection.distortion).toBe(0.2);
+    expect(s.lensProfileId).toBe("p-1");
+    expect(s.manualLensOverride).toBe(true);
+    expect(s.past).toEqual([]);
+    expect(s.future).toEqual([]);
   });
 });

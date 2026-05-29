@@ -80,7 +80,7 @@ export default function ExportDialog({
           data-testid="export-width"
           className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200"
         >
-          <option value="native">Original-Vorschau ({canvasWidth}px)</option>
+          <option value="native">Original ({canvasWidth}px)</option>
           <option value="2048">2048 px</option>
           <option value="1024">1024 px</option>
           <option value="512">512 px (Web)</option>

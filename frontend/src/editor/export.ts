@@ -5,10 +5,10 @@
  * mit allen Adjustments gerendert), kann es optional skalieren und als
  * Blob im gewuenschten Format zurueckgeben.
  *
- * In Iteration 10 ist die Export-Aufloesung auf die Live-Preview-Aufloesung
- * limitiert (max 1600px Breite, siehe loadImageFromFile). Voll-Aufloesungs-
- * Export auf der Original-Breite ist eine eigene Iteration und braucht
- * einen Re-Render in einen Off-Screen-FBO mit Original-Texture.
+ * Voll-Aufloesungs-Export (C2): der Editor uebergibt hier nicht die
+ * gedeckelte Live-Canvas, sondern eine offscreen in Original-Aufloesung
+ * gerenderte Canvas (siehe Canvas.exportFullResCanvas). Die `width`-Option
+ * skaliert davon herunter (scharf) statt eine 1600px-Vorschau hochzurechnen.
  */
 
 export type ExportFormat = "jpeg" | "png" | "webp";

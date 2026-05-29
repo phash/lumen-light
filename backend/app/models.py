@@ -131,6 +131,29 @@ class Image(Base):
     user: Mapped[User] = relationship(back_populates="images")
 
 
+class ImageEdit(Base):
+    """Persistierter Bearbeitungsstand pro Bild (C1, Multi-Device).
+
+    Genau ein State pro Bild (PK = image_id), Cascade-Delete mit dem Bild.
+    `state` ist der komplette Editor-Snapshot als JSONB (adjustments, masks,
+    crop, straightenAngle, lensCorrection, ...) im camelCase-Wireformat —
+    der Pixel-Pfad ist client-seitig, das Backend persistiert nur."""
+    __tablename__ = "image_edits"
+
+    image_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("images.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    state: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+        nullable=False,
+    )
+
+
 class PresetReport(Base):
     """Eine Meldung pro reporter+preset. Auto-Hide bei >=3 Meldungen
     setzt das Preset auf visibility='private' zurueck."""

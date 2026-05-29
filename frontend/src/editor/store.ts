@@ -99,6 +99,18 @@ export interface EditorState {
   removeSelectedMask: () => void;
   clearMasks: () => void;
   applyMasks: (masks: ReadonlyArray<MaskInstance>) => void;
+  /** Kompletten Editier-Stand setzen (C1: gespeicherten Stand eines Bildes
+   *  wiederherstellen). Ersetzt adjustments/masks/Geometrie/Lens in einem
+   *  Schritt und leert die History (frischer Start fuer dieses Bild). */
+  applyEditState: (state: {
+    adjustments: Partial<Adjustments>;
+    masks: ReadonlyArray<MaskInstance>;
+    cropRect: CropRect;
+    straightenAngle: number;
+    lensCorrection: LensCorrection;
+    lensProfileId: string | null;
+    manualLensOverride: boolean;
+  }) => void;
   past: ReadonlyArray<HistorySnapshot>;
   future: ReadonlyArray<HistorySnapshot>;
   undo: () => void;
@@ -448,6 +460,23 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       return { masks: result, selectedMaskId: null };
     });
   },
+  applyEditState: (s) => {
+    set({
+      adjustments: { ...defaultAdjustments(), ...s.adjustments },
+      masks: s.masks,
+      selectedMaskId: null,
+      cropRect: clampCropRect(s.cropRect),
+      straightenAngle: Math.max(
+        -MAX_STRAIGHTEN_RADIANS,
+        Math.min(MAX_STRAIGHTEN_RADIANS, s.straightenAngle),
+      ),
+      lensCorrection: clampLens(s.lensCorrection),
+      lensProfileId: s.lensProfileId,
+      manualLensOverride: s.manualLensOverride,
+      past: [],
+      future: [],
+    });
+  },
   undo: () => {
     const state = get();
     // Pending Burst flushen, damit Cmd+Z mid-drag nicht den falschen
@@ -478,6 +507,18 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     void state; // silence unused if other branches removed
   },
   redo: () => {
+    // Symmetrisch zu undo(): einen mid-drag Pending-Burst zuerst committen.
+    // Ein in-flight Edit ist eine neue Aenderung -> sie schiebt sich in past
+    // und leert future (flushPending macht beides), wodurch redo danach
+    // korrekt zum No-Op wird, statt den frischen Edit zu verwerfen.
+    flushPending(_historyDebounce, {
+      pushPast: (snap) => {
+        useEditorStore.setState((s) => ({
+          past: [...s.past.slice(-(MAX_HISTORY - 1)), snap],
+          future: [],
+        }));
+      },
+    });
     const state = get();
     if (state.future.length === 0) return;
     const target = state.future[0]!;

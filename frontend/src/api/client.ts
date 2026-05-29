@@ -51,6 +51,11 @@ export interface Adjustments {
   saturation: number;
   sharpness: number;
   noiseReduction: number;
+  // Phase G — muessen mit backend/schemas/adjustments.schema.json und
+  // src/editor/adjustments.ts synchron bleiben (Sync-Test:
+  // tests/adjustments-wire-sync.test.ts).
+  highlightRecovery: number;
+  localContrast: number;
   hsl: HslAdjustmentsWire | null;
   toneCurve: ToneCurveWire | null;
 }
@@ -150,16 +155,53 @@ export interface ImageUrl {
   expiresIn: number;
 }
 
+// Persistierter Editor-Bearbeitungsstand (C1, Multi-Device). Spiegelt das
+// Backend-Schema `ImageEditState`. Crop/Lens-Geometrie wird vom Backend
+// opak (JSONB) durchgereicht — die Pixel-Logik lebt im Frontend.
+export interface CropRectWire {
+  x0: number;
+  y0: number;
+  x1: number;
+  y1: number;
+}
+
+export interface LensCorrectionWire {
+  distortion: number;
+  vignette: number;
+  tcaR: number;
+  tcaB: number;
+}
+
+export interface ImageEditState {
+  adjustments: Adjustments;
+  masks: PresetMask[];
+  crop: CropRectWire | null;
+  straightenAngle: number;
+  lensCorrection: LensCorrectionWire | null;
+  lensProfileId: string | null;
+  manualLensOverride: boolean;
+}
+
 export type GetUserFn = () => OidcUser | null | undefined;
 
 export type ImageStateFilter = "ready" | "pending" | "all";
 
+export interface MeExportReport {
+  id: string;
+  presetId: string;
+  reason: string;
+  createdAt: string;
+}
+
 export interface MeExport {
   id: string;
   email: string;
+  handle: string | null;
+  bio: string | null;
   createdAt: string;
   presets: Preset[];
   images: Array<Image & { downloadUrl: string; downloadUrlExpiresIn: number }>;
+  submittedReports: MeExportReport[];
 }
 
 export interface MarketplaceListItem {
@@ -220,6 +262,10 @@ export interface ApiClient {
   confirmUpload(id: string): Promise<Image>;
   getImageUrl(id: string): Promise<ImageUrl>;
   deleteImage(id: string): Promise<void>;
+  /** Gespeicherten Bearbeitungsstand laden; null wenn keiner existiert (404). */
+  getImageEdit(id: string): Promise<ImageEditState | null>;
+  /** Bearbeitungsstand speichern (Upsert) — debounced Autosave aus dem Editor. */
+  putImageEdit(id: string, state: ImageEditState): Promise<void>;
 
   listMarketplacePresets(query?: MarketplaceListQuery): Promise<MarketplaceList>;
   getMarketplacePreset(id: string): Promise<MarketplaceDetail>;
@@ -358,6 +404,20 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     getImageUrl: (id) => request<ImageUrl>(`/images/${id}/url`),
     deleteImage: (id) =>
       request<void>(`/images/${id}`, { method: "DELETE" }),
+    getImageEdit: async (id) => {
+      try {
+        return await request<ImageEditState>(`/images/${id}/edit`);
+      } catch (err) {
+        // 404 = noch kein gespeicherter Stand -> Editor startet frisch.
+        if (err instanceof ApiError && err.status === 404) return null;
+        throw err;
+      }
+    },
+    putImageEdit: (id, state) =>
+      request<void>(`/images/${id}/edit`, {
+        method: "PUT",
+        body: JSON.stringify(state),
+      }),
 
     listMarketplacePresets: (query = {}) => {
       const p = new URLSearchParams();

@@ -154,7 +154,10 @@ export default function OnboardingTour({ onClose }: Props) {
     };
   }, [rect, step]);
 
-  if (!open || !step) return null;
+  // Kein `open`-Prop mehr (Parent unmountet via {open && <Tour/>}). Frueher
+  // stand hier `!open` — das referenzierte das globale window.open (immer
+  // truthy) und war damit toter Code. Nur der step-Guard zaehlt.
+  if (!step) return null;
 
   return (
     <div

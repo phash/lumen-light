@@ -16,7 +16,7 @@ from datetime import datetime
 from typing import Annotated, Literal, Self
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
 
@@ -125,7 +125,11 @@ class Adjustments(BaseModel):
 
 class UserOut(BaseModel):
     id: UUID
-    email: EmailStr
+    # str statt EmailStr: Legacy-Test-User mit Special-Use-TLD (.local/.test)
+    # wuerden sonst die OUTPUT-Validation sprengen (500). Identitaet/Format
+    # liegt bei Keycloak; hier ist die Email nur Display-Text. Konsistent mit
+    # AdminUserOut/FeedbackOut/MeExport.
+    email: str
     created_at: datetime
     model_config = CAMEL_OUT_CONFIG
 
@@ -358,6 +362,37 @@ class ImageUrlOut(BaseModel):
     model_config = CAMEL_BASE_CONFIG
     url: str
     expires_in: int
+
+
+class ImageEditState(BaseModel):
+    """Persistierter Editor-Bearbeitungsstand eines Bildes (C1, Multi-Device).
+
+    `adjustments` und `masks` werden strikt validiert (inkl. Mask-Caps —
+    identisch zu PresetIn). Crop/Lens-Geometrie ist client-seitige Form und
+    wird als opake JSONB-Objekte durchgereicht (der Pixel-Pfad lebt im
+    Frontend). camelCase-Wireformat wie der Rest."""
+    model_config = CAMEL_BASE_CONFIG
+    adjustments: Adjustments
+    masks: list[MaskData] = Field(default_factory=list)
+    crop: dict | None = None
+    straighten_angle: float = Field(default=0, ge=-3.15, le=3.15)
+    lens_correction: dict | None = None
+    lens_profile_id: str | None = Field(default=None, max_length=80)
+    manual_lens_override: bool = False
+
+    @model_validator(mode="after")
+    def _check_mask_caps(self) -> Self:
+        n_lin = sum(1 for m in self.masks if m.type == "linear")
+        n_rad = sum(1 for m in self.masks if m.type == "radial")
+        if n_lin > MAX_LINEAR_MASKS:
+            raise ValueError(
+                f"max {MAX_LINEAR_MASKS} lineare Masken (got {n_lin})"
+            )
+        if n_rad > MAX_RADIAL_MASKS:
+            raise ValueError(
+                f"max {MAX_RADIAL_MASKS} radiale Masken (got {n_rad})"
+            )
+        return self
 
 
 # ----- Admin -----
