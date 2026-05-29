@@ -1,0 +1,17 @@
+# Lumen · light — KI-/Such-Crawler sind willkommen (Sichtbarkeit erwuenscht).
+# Login-gated App-Routen + Auth/API/Storage haben keinen oeffentlichen Inhalt
+# und werden von der Indexierung ausgenommen.
+User-agent: *
+Disallow: /editor
+Disallow: /library
+Disallow: /marketplace
+Disallow: /account
+Disallow: /admin
+Disallow: /callback
+Disallow: /login
+Disallow: /register
+Disallow: /auth/
+Disallow: /api/
+Disallow: /lumen-images/
+
+Sitemap: https://lumen.mr-development.de/sitemap.xml

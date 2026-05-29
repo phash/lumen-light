@@ -6,20 +6,116 @@
     <meta name="theme-color" content="#1c1917" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+    <title>Lumen · light — RAW-Foto-Editor im Browser (selbst-gehostet)</title>
+    <meta
+      name="description"
+      content="Lumen · light ist ein selbst-gehosteter, browser-basierter RAW-Foto-Editor — eine schlanke, abofreie Lightroom-Alternative. RAW-Entwicklung, lokale Masken, HSL & Tonkurve direkt im Browser via WebGL2."
+    />
+    <link rel="canonical" href="https://lumen.mr-development.de/" />
+    <meta name="robots" content="index, follow, max-image-preview:large" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Lumen · light" />
+    <meta property="og:title" content="Lumen · light — RAW-Foto-Editor im Browser" />
+    <meta
+      property="og:description"
+      content="Selbst-gehosteter, browser-basierter RAW-Editor (Lightroom-Alternative). RAW entwickeln, lokale Masken, HSL & Tonkurve — alles im Browser, ohne Cloud-Zwang."
+    />
+    <meta property="og:url" content="https://lumen.mr-development.de/" />
+    <meta property="og:image" content="https://lumen.mr-development.de/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:locale" content="de_DE" />
+
+    <!-- Twitter / X -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Lumen · light — RAW-Foto-Editor im Browser" />
+    <meta
+      name="twitter:description"
+      content="Selbst-gehosteter, browser-basierter RAW-Editor (Lightroom-Alternative) via WebGL2 — ohne Abo, ohne Cloud-Zwang."
+    />
+    <meta name="twitter:image" content="https://lumen.mr-development.de/og-image.png" />
+
     <link rel="manifest" href="/manifest.webmanifest" />
     <link rel="icon" type="image/svg+xml" href="/lumen-icon.svg" />
     <link rel="apple-touch-icon" href="/lumen-icon.svg" />
-    <title>Lumen · light</title>
-    <!-- Run-Time-Konfiguration MUSS vor dem Entry-Modul laufen. Daher BLOCKING
-         im <head> (kein defer): Vite hebt das Entry-Modul in den <head>, ein
-         deferred config.js liefe sonst NACH dem Modul -> window.__APP_CONFIG__
-         waere bei runtime-config.ts noch leer (Fallback auf Build-Time-Default). -->
+
+    <!-- Strukturierte Daten: liegen im rohen HTML und sind damit auch fuer
+         JS-lose Crawler/KI-Engines lesbar (GEO/AEO). -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "Lumen · light",
+      "applicationCategory": "MultimediaApplication",
+      "applicationSubCategory": "RAW Photo Editor",
+      "operatingSystem": "Web",
+      "url": "https://lumen.mr-development.de/",
+      "description": "Selbst-gehosteter, browser-basierter RAW-Foto-Editor (Lightroom-Alternative). RAW-Entwicklung, lokale Masken, HSL und Tonkurve direkt im Browser via WebGL2.",
+      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
+      "featureList": [
+        "RAW-Decoding (CR2, CR3, NEF, ARW, RAF, DNG, RW2, ORF)",
+        "WebGL2-Bildpipeline",
+        "Lineare und radiale Masken",
+        "HSL-Mischer und Tonkurve",
+        "Auto-Tone und Auto-Weissabgleich",
+        "Preset-Marketplace",
+        "Selbst-hostbar via Docker"
+      ],
+      "softwareVersion": "0.1.0",
+      "author": { "@type": "Person", "name": "Manuel Rödig" },
+      "sameAs": ["https://github.com/phash/lumen-light"]
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
+      "mainEntity": [
+        { "@type": "Question", "name": "Was ist Lumen · light?", "acceptedAnswer": { "@type": "Answer", "text": "Lumen ist ein selbst-gehosteter, browser-basierter RAW-Foto-Editor — eine schlanke Lightroom-Alternative. RAW-Dateien werden direkt im Browser via WebGL2 entwickelt, ohne Cloud-Zwang." } },
+        { "@type": "Question", "name": "Welche RAW-Formate unterstützt Lumen?", "acceptedAnswer": { "@type": "Answer", "text": "CR2, CR3, NEF, ARW, RAF, DNG, RW2 und ORF — geöffnet via libraw-wasm direkt im Browser." } },
+        { "@type": "Question", "name": "Ist Lumen eine Lightroom-Alternative?", "acceptedAnswer": { "@type": "Answer", "text": "Ja. Lumen bietet die klassischen Regler (Belichtung, Kontrast, Lichter, Tiefen, HSL, Tonkurve), lokale Masken und Presets — als selbst-hostbare, abofreie Web-App." } },
+        { "@type": "Question", "name": "Kann ich Lumen selbst hosten?", "acceptedAnswer": { "@type": "Answer", "text": "Ja, via Docker Compose (FastAPI, React, Postgres, Keycloak, S3). Läuft auf einem kleinen VPS." } },
+        { "@type": "Question", "name": "Kostet Lumen etwas?", "acceptedAnswer": { "@type": "Answer", "text": "Nein. Lumen ist kostenlos und selbst-hostbar — kein Abo, keine Cloud-Pflicht." } },
+        { "@type": "Question", "name": "Bleiben meine Bilder privat?", "acceptedAnswer": { "@type": "Answer", "text": "Ja. Die Bildverarbeitung läuft lokal im Browser; Bilder bleiben auf deinem Gerät, außer du sicherst sie bewusst im eigenen Storage." } }
+      ]
+    }
+    </script>
+
+    <!-- Run-Time-Konfiguration MUSS vor dem Entry-Modul laufen (siehe Kommentar
+         frueher): blockierend im <head>. -->
     <script src="/config.js"></script>
   </head>
   <body class="bg-stone-950 text-stone-200 antialiased">
     <div id="root"></div>
-    <!-- Matomo (cookieless, DNT-respektiert) — siehe public/analytics.js.
-         config.js wird blockierend im <head> geladen (Run-Time-Config). -->
+
+    <!-- Fallback-Inhalt fuer JS-lose Crawler / KI-Engines (die meist kein
+         JavaScript ausfuehren). Spiegelt die Kernaussagen der Landing. -->
+    <noscript>
+      <main style="max-width:760px;margin:0 auto;padding:24px;font-family:system-ui,sans-serif;color:#e7e5e4;background:#0c0a09;">
+        <h1>Lumen · light — RAW-Foto-Editor im Browser</h1>
+        <p>
+          Lumen · light ist ein selbst-gehosteter, browser-basierter RAW-Foto-Editor —
+          eine schlanke, abofreie Lightroom-Alternative. RAW-Dateien (CR2, CR3, NEF,
+          ARW, RAF, DNG, RW2, ORF) werden direkt im Browser via WebGL2 entwickelt:
+          Belichtung, Kontrast, Lichter/Tiefen, HSL, Tonkurve, lokale Verlaufs- und
+          Radialmasken, Auto-Tone und Auto-Weissabgleich. Bilder bleiben auf deinem
+          Gerät; selbst hostbar via Docker.
+        </p>
+        <h2>Häufige Fragen</h2>
+        <h3>Ist Lumen eine Lightroom-Alternative?</h3>
+        <p>Ja — die klassischen Regler, lokale Masken und Presets als selbst-hostbare, abofreie Web-App.</p>
+        <h3>Kann ich Lumen selbst hosten?</h3>
+        <p>Ja, via Docker Compose (FastAPI, React 19/WebGL2, Postgres, Keycloak, S3) auf einem kleinen VPS.</p>
+        <h3>Bleiben meine Bilder privat?</h3>
+        <p>Ja, die Verarbeitung läuft lokal im Browser; Bilder verlassen dein Gerät nur, wenn du sie bewusst sicherst.</p>
+        <p><a href="https://github.com/phash/lumen-light">Quellcode &amp; Selbst-Hosting auf GitHub</a></p>
+      </main>
+    </noscript>
+
+    <!-- Matomo (cookieless, DNT-respektiert) — siehe public/analytics.js. -->
     <script src="/analytics.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
