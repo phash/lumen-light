@@ -99,6 +99,25 @@ Als Issues in `phash/lumen-light` angelegt:
 **Reihenfolge-Empfehlung:** #8 → #5 → #1/#2 → #3 → #4; #6/#7 als
 größere Folge-Iteration.
 
+### Update (2026-05-29) — Stand der Umsetzung
+
+- **#8 ✓** Repo public (AGPL-3.0, von GitHub erkannt), Secrets-Audit der
+  gesamten History clean, GitHub-Link in Footer + Impressum live.
+- **#5 ✓** README-Schaufenster (Hero, Badges, Demo-Link, Vergleich) + LICENSE.
+- **#6 ✓** Echtes Prerendering live: `frontend/src/entry-server.tsx`
+  (Vite-SSR) + `frontend/scripts/prerender.mjs` rendern `/`, `/datenschutz`,
+  `/impressum` zu statischem HTML (Flat-Files, `nginx try_files $uri.html`,
+  kein 301). Läuft im alpine-Docker-Build (pure Node, kein Browser, kein
+  neues Dep). `<noscript>` entfernt; Rechtsseiten ohne Landing-JSON-LD.
+- **#7 teilweise ✓** Marketplace-Browse öffentlich ohne Login (Backend
+  ungated read; apply/fork/report bleiben gated + ratelimitiert; Frontend
+  Public-Route + Login-Redirect + Hinweis). `robots.txt`/sitemap angepasst.
+  Datenschutz + Publish-Consent auf „öffentlich inkl. Suchmaschinen/KI"
+  aktualisiert. **Offen:** pro-Preset prerenderte Detailseiten (brauchen
+  Runtime-SSR oder Build-Time-API) — Issue #7 bleibt dafür offen.
+- **#1–#4** vorbereitet als Drafts (`docs/off-page-submissions.md`),
+  Einreichen/Posten erfolgt manuell.
+
 ## Verifikation (live)
 
 ```bash
