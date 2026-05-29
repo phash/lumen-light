@@ -141,6 +141,15 @@ export default function Landing() {
             Impressum
           </Link>
           <a
+            href="https://github.com/phash/lumen-light"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="landing-github"
+            className="hover:text-stone-300"
+          >
+            GitHub
+          </a>
+          <a
             href="https://buymeacoffee.com/phash"
             target="_blank"
             rel="noopener noreferrer"

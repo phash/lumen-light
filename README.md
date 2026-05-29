@@ -1,6 +1,17 @@
 # Lumen · light
 
-Browser-basierter, selbst-gehosteter RAW-Foto-Editor — Lightroom-Light fuer Hobby-Fotografen, ohne Software-Installation und ohne Cloud-Pflicht.
+> Browser-basierter, selbst-gehosteter RAW-Foto-Editor — eine schlanke, abofreie **Lightroom-Alternative** für Hobby-Fotografen. Ohne Software-Installation, ohne Cloud-Pflicht.
+
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE)
+[![CI](https://github.com/phash/lumen-light/actions/workflows/ci.yml/badge.svg)](https://github.com/phash/lumen-light/actions/workflows/ci.yml)
+![React 19](https://img.shields.io/badge/React-19-149ECA?logo=react&logoColor=white)
+![FastAPI](https://img.shields.io/badge/FastAPI-async-009688?logo=fastapi&logoColor=white)
+![WebGL2](https://img.shields.io/badge/WebGL2-shader_pipeline-990000)
+![Self-hosted](https://img.shields.io/badge/self--hosted-Docker_Compose-2496ED?logo=docker&logoColor=white)
+
+**[🔗 Live-Demo](https://lumen.mr-development.de)** · [Features](#was-lumen-kann) · [Schnellstart](#schnellstart-lokale-entwicklung) · [Selfhost](#production)
+
+![Lumen · light — RAW-Editor im Browser](docs/screenshots/phase5/01-editor-default.png)
 
 **Selfhost auf einem 4-GB-VPS · Open-Source-Stack · DSGVO-konform out-of-the-box.**
 
@@ -14,6 +25,19 @@ Browser-basierter, selbst-gehosteter RAW-Foto-Editor — Lightroom-Light fuer Ho
 - **Vorher/Nachher-Vergleich**: Bypass-halten oder Compare-Split.
 - **Export** als JPEG oder PNG, Quality- und Width-Slider.
 - **Preset-Marketplace**: User koennen Presets oeffentlich teilen, andere wenden sie auf eigene Bilder an oder forken in die eigene Bibliothek. Reporting + Auto-Hide bei Missbrauch.
+
+## Lumen vs. Lightroom
+
+Lumen ersetzt nicht jeden Profi-Workflow — aber für RAW-Entwicklung ohne Abo und ohne Cloud-Zwang deckt es die wichtigsten Schritte ab.
+
+|                      | Lumen · light            | Adobe Lightroom        |
+| -------------------- | ------------------------ | ---------------------- |
+| Preis                | Kostenlos, selbst-hostbar | Abo ab ~12 €/Monat     |
+| Plattform            | Browser (WebGL2)         | Desktop + Cloud-App    |
+| Deine Daten          | Bleiben bei dir          | Adobe Creative Cloud   |
+| RAW im Browser       | Ja                       | Nein (Desktop)         |
+| Lokale Masken        | Linear + Radial          | Umfangreich (inkl. KI) |
+| Ohne Abo / offline   | Ja                       | Nein                   |
 
 ## Stack
 
@@ -65,7 +89,7 @@ cd backend && .venv/bin/pytest -q
 
 # Frontend Unit + Component
 cd frontend && pnpm test
-# Aktuell: 295 Tests in 34 Files, ~6 s.
+# Aktuell: 333 Tests in 40 Files, ~7 s.
 
 # E2E (Stack muss komplett laufen)
 cd frontend && pnpm exec playwright test
@@ -127,4 +151,4 @@ Volle Anleitung: `infra/deployment-runbook.md`.
 
 ## Lizenz
 
-Persoenliches Selfhost-Projekt. Code intern, kein offener Vertrieb.
+[GNU AGPL-3.0](LICENSE). Du darfst Lumen selbst hosten, anpassen und weitergeben — wenn du eine modifizierte Version als Netzwerk-Dienst anbietest, müssen die Änderungen unter derselben Lizenz offengelegt werden.

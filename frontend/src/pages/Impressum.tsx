@@ -65,7 +65,7 @@ export default function Impressum() {
         >
           github.com/phash/lumen-light
         </a>{" "}
-        verfügbar.
+        unter der AGPL-3.0 verfügbar.
       </p>
     </section>
   );
