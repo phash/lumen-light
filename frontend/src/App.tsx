@@ -1,6 +1,7 @@
 import { AuthProvider } from "react-oidc-context";
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 
+import MatomoRouteTracker from "./analytics/MatomoRouteTracker";
 import { oidcConfig } from "./auth/config";
 import Callback from "./auth/Callback";
 import RequireAdmin from "./auth/RequireAdmin";
@@ -21,6 +22,7 @@ export default function App() {
   return (
     <AuthProvider {...oidcConfig}>
       <BrowserRouter>
+        <MatomoRouteTracker />
         <Header />
         <main>
           <Routes>

@@ -46,7 +46,7 @@ lumen.mr-development.de {
     # SPA (nginx) — strikte CSP NUR fuer die App-Antworten (nicht /auth).
     handle {
         header {
-            Content-Security-Policy "default-src 'self'; img-src 'self' blob: data:; media-src 'self' blob:; connect-src 'self' https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            Content-Security-Policy "default-src 'self'; img-src 'self' blob: data: https://musikersuche.org; media-src 'self' blob:; connect-src 'self' https://musikersuche.org https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self' https://musikersuche.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         }
         reverse_proxy lumen-web:80
     }

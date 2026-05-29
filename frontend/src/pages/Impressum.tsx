@@ -1,56 +1,71 @@
 /**
- * Impressum — TMG/DDG § 5. Bei Selfhost-Use unter Bekannten ist die
- * Pflichtschwelle umstritten („geschaeftsmaessig" vs. rein privat); der
- * Sicherheits-halber ist ein Impressum vorhanden, mit Platzhaltern
- * fuer den realen Betreiber.
+ * Impressum — TMG/DDG § 5, § 18 Abs. 2 MStV. Betreiberdaten konsistent zur
+ * Hauptseite phash.de (Manuel Rödig). Lumen ist eine privat betriebene
+ * Selfhost-Instanz.
  */
 export default function Impressum() {
   return (
     <section data-testid="page-impressum" className="px-8 py-12 max-w-3xl mx-auto text-stone-300">
       <h1 className="text-3xl text-stone-100">Impressum</h1>
-      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-04-28</p>
+      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-05-29</p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">Diensteanbieter</h2>
       <p className="mt-3">
-        [Vor- und Nachname des Selfhost-Betreibers]
+        Manuel Rödig
         <br />
-        [Strasse Hausnummer]
+        Tannenweg 6
         <br />
-        [PLZ Ort], Deutschland
+        85405 Nandlstadt, Deutschland
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">Kontakt</h2>
       <p className="mt-3">
-        E-Mail: [Email-Adresse]
+        E-Mail:{" "}
+        <a href="mailto:phash@phash.de" className="text-amber-200 hover:underline">
+          phash@phash.de
+        </a>
       </p>
 
-      <h2 className="mt-8 text-xl text-stone-200 italic">Verantwortlich nach § 18 Abs. 2 MStV</h2>
-      <p className="mt-3">[Name + Anschrift wie oben]</p>
+      <h2 className="mt-8 text-xl text-stone-200 italic">
+        Verantwortlich i.S.d. § 18 Abs. 2 MStV
+      </h2>
+      <p className="mt-3">Manuel Rödig, Anschrift wie oben.</p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">Hosting</h2>
       <p className="mt-3">
-        IONOS SE, Elgendorfer Strasse 57, 56410 Montabaur, Deutschland.
+        IONOS SE, Elgendorfer Straße 57, 56410 Montabaur, Deutschland.
       </p>
 
-      <h2 className="mt-8 text-xl text-stone-200 italic">Hinweis</h2>
-      <p className="mt-3 text-stone-400 text-sm">
-        Dies ist eine privat betriebene Selfhost-Instanz von Lumen — kein
-        kommerzielles Angebot, keine Registrierung fuer die Allgemeinheit.
-        Der Quellcode ist unter{" "}
+      <h2 className="mt-8 text-xl text-stone-200 italic">EU-Streitschlichtung</h2>
+      <p className="mt-3 text-sm text-stone-400">
+        Die Europäische Kommission stellt eine Plattform zur
+        Online-Streitbeilegung (OS) bereit:{" "}
         <a
-          href="https://github.com/lumen-light"
+          href="https://ec.europa.eu/consumers/odr/"
           className="text-amber-200 hover:underline"
           target="_blank"
           rel="noopener noreferrer"
         >
-          github.com/lumen-light
-        </a>{" "}
-        verfuegbar (Platzhalter — siehe Repository-URL des Projekts).
+          https://ec.europa.eu/consumers/odr/
+        </a>
+        . Zur Teilnahme an einem Streitbeilegungsverfahren vor einer
+        Verbraucherschlichtungsstelle sind wir nicht verpflichtet und nicht
+        bereit.
       </p>
 
-      <p className="mt-12 text-xs text-stone-500">
-        Bitte vor dem Veroeffentlichen die Platzhalter durch reale Daten
-        ersetzen — Impressumsangaben muessen dem TMG/DDG entsprechen.
+      <h2 className="mt-8 text-xl text-stone-200 italic">Hinweis</h2>
+      <p className="mt-3 text-stone-400 text-sm">
+        Lumen · light ist eine privat betriebene Selfhost-Instanz — kein
+        kommerzielles Angebot. Der Quellcode ist unter{" "}
+        <a
+          href="https://github.com/phash/lumen-light"
+          className="text-amber-200 hover:underline"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          github.com/phash/lumen-light
+        </a>{" "}
+        verfügbar.
       </p>
     </section>
   );

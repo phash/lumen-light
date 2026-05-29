@@ -12,13 +12,16 @@ export default function Datenschutz() {
   return (
     <section data-testid="page-datenschutz" className="px-8 py-12 max-w-3xl mx-auto text-stone-300">
       <h1 className="text-3xl text-stone-100">Datenschutz</h1>
-      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-04-28 (Marketplace ergänzt)</p>
+      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-05-29</p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">1. Verantwortlicher</h2>
       <p className="mt-3">
-        Verantwortlich für die Datenverarbeitung auf dieser Instanz ist der
-        Selfhost-Betreiber (siehe Impressum). Diese Lumen-Instanz wird
-        privat betrieben — kein kommerzielles Angebot.
+        Manuel Rödig, Tannenweg 6, 85405 Nandlstadt, Deutschland. E-Mail:{" "}
+        <a href="mailto:phash@phash.de" className="text-amber-200 hover:underline">
+          phash@phash.de
+        </a>{" "}
+        (siehe Impressum). Diese Lumen-Instanz wird privat betrieben — kein
+        kommerzielles Angebot.
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">2. Welche Daten werden verarbeitet?</h2>
@@ -77,7 +80,7 @@ export default function Datenschutz() {
 
       <h2 className="mt-8 text-xl text-stone-200 italic">4. Speicherort und Empfänger</h2>
       <p className="mt-3">
-        Postgres-Datenbank, Garage-S3-Bucket und Keycloak-Realm liegen auf
+        Postgres-Datenbank, S3-Bucket (MinIO) und Keycloak-Realm liegen auf
         einem deutschen IONOS-VPS. Auftragsverarbeiter: IONOS SE als Hoster.
         Bilder selbst werden ausschließlich auf diesem VPS gespeichert.
       </p>
@@ -95,7 +98,8 @@ export default function Datenschutz() {
         deinen Rechner nicht. Zurückziehen jederzeit über den Toggle.
       </p>
       <p className="mt-3">
-        Keine sonstigen Analytics-/Tracking-/CDN-Dienste.
+        Zur anonymen Reichweitenmessung nutzen wir Matomo (siehe 4b) —
+        keine weiteren Tracking-, Werbe- oder Profiling-Dienste.
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">4a. Marketplace-Sichtbarkeit</h2>
@@ -108,6 +112,25 @@ export default function Datenschutz() {
         nur durch dein aktives Setzen des Toggles. Du kannst jedes
         Preset jederzeit auf privat zurücksetzen
         (<span className="text-amber-200">Account › Meine veröffentlichten Presets › Zurückziehen</span>).
+      </p>
+
+      <h2 className="mt-8 text-xl text-stone-200 italic">4b. Reichweitenmessung (Matomo)</h2>
+      <p className="mt-3">
+        Wir betreiben eine selbst-gehostete Matomo-Instanz
+        (<code className="text-stone-400">musikersuche.org/matomo</code>) zur
+        anonymen Reichweitenmessung. Matomo läuft{" "}
+        <span className="text-stone-200">cookieless</span> (es werden keine
+        Cookies gesetzt), respektiert den{" "}
+        <span className="text-stone-200">Do-Not-Track</span>-Header deines
+        Browsers, und die IP-Adresse wird serverseitig anonymisiert (letzte
+        Oktette entfernt). Erfasst werden nur aggregierte, nicht auf dich
+        rückführbare Besuchsdaten (aufgerufene Seiten, ungefähre Region,
+        Browser-/Geräte-Typ), gespeichert für maximal 24 Monate. Die Daten
+        bleiben auf dem deutschen IONOS-VPS; keine Weitergabe an Dritte.
+        Rechtsgrundlage: Art. 6 Abs. 1 lit. f DSGVO (berechtigtes Interesse an
+        der bedarfsgerechten Verbesserung des Dienstes). Da cookieless,
+        anonymisiert und DNT-respektierend, ist hierfür keine Einwilligung
+        erforderlich.
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">5. Speicherdauer</h2>
@@ -146,7 +169,8 @@ export default function Datenschutz() {
         Login-Flow Session-Cookies — technisch erforderlich (Erwägungs-
         grund 30). Im Browser-localStorage werden Einstellungen wie der
         Klapp-Status der Sidebar-Sektionen gespeichert; das ist rein
-        clientseitig und nicht personenbezogen.
+        clientseitig und nicht personenbezogen. Auch die Reichweitenmessung
+        (Matomo, Abschnitt 4b) arbeitet cookieless.
       </p>
 
       <p className="mt-12 text-xs text-stone-500">

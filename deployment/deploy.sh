@@ -49,22 +49,34 @@ echo "==> [6/8] Keycloak-SMTP (Projektmailserver) im Realm 'lumen' setzen"
 docker exec lumen-keycloak /opt/keycloak/bin/kcadm.sh config credentials \
   --server http://localhost:8080/auth --realm master \
   --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASSWORD"
-docker exec lumen-keycloak /opt/keycloak/bin/kcadm.sh update realms/lumen \
-  -s "smtpServer.host=$SMTP_HOST" -s "smtpServer.port=$SMTP_PORT" \
-  -s "smtpServer.from=$SMTP_FROM" -s "smtpServer.fromDisplayName=$SMTP_FROM_DISPLAY" \
-  -s "smtpServer.ssl=false" -s "smtpServer.starttls=true" -s "smtpServer.auth=true" \
-  -s "smtpServer.user=$SMTP_USER" -s "smtpServer.password=$SMTP_PASSWORD" \
-  && echo "   SMTP gesetzt (from=$SMTP_FROM via $SMTP_HOST:$SMTP_PORT)"
+# smtpServer ist ein Map-Feld — kcadm `-s smtpServer.host=...` (dotted) bzw.
+# `-s smtpServer={json}` greifen NICHT zuverlaessig. Stattdessen Merge-Update
+# via partiellem JSON ueber stdin (-f -). Werte aus .env.
+python3 -c "import json,os;print(json.dumps({'smtpServer':{'host':os.environ['SMTP_HOST'],'port':os.environ['SMTP_PORT'],'from':os.environ['SMTP_FROM'],'fromDisplayName':os.environ['SMTP_FROM_DISPLAY'],'ssl':'false','starttls':'true','auth':'true','user':os.environ['SMTP_USER'],'password':os.environ['SMTP_PASSWORD'],'replyTo':os.environ['SMTP_FROM']}}))" \
+  | docker exec -i lumen-keycloak /opt/keycloak/bin/kcadm.sh update realms/lumen -f -
+echo "   SMTP gesetzt (from=$SMTP_FROM via $SMTP_HOST:$SMTP_PORT)"
 
-echo "==> [7/8] Caddy-Block sicherstellen + validieren + reload"
-if ! grep -q "^${DOMAIN} {" "$CADDYFILE"; then
-  cp "$CADDYFILE" "${CADDYFILE}.bak.$(date +%Y%m%d-%H%M%S)"
-  printf '\n# --- Lumen (auto-eingefuegt von deployment/deploy.sh) ---\n' >> "$CADDYFILE"
-  cat infra/caddy/lumen.caddyfile >> "$CADDYFILE"
-  echo "   Lumen-Block angehaengt (Backup der Caddyfile angelegt)."
-else
-  echo "   Lumen-Block bereits vorhanden."
-fi
+echo "==> [7/8] Caddy-Block (neu) setzen + validieren + restart"
+# Bestehenden Lumen-Block + Marker entfernen und frisch anhaengen — so greifen
+# auch CSP-/Routing-Aenderungen bei Re-Deploys (nicht nur beim ersten Mal).
+cp "$CADDYFILE" "${CADDYFILE}.bak.$(date +%Y%m%d-%H%M%S)"
+python3 - "$CADDYFILE" "$DOMAIN" infra/caddy/lumen.caddyfile <<'PY'
+import sys
+caddyfile, domain, blockfile = sys.argv[1], sys.argv[2], sys.argv[3]
+lines = open(caddyfile).read().splitlines(keepends=True)
+out, i, n = [], 0, len(lines)
+while i < n:
+    if lines[i].startswith(domain + " {"):
+        depth = lines[i].count("{") - lines[i].count("}"); i += 1
+        while i < n and depth > 0:
+            depth += lines[i].count("{") - lines[i].count("}"); i += 1
+        continue  # ganzen Block ueberspringen
+    out.append(lines[i]); i += 1
+out = [l for l in out if not l.strip().startswith("# --- Lumen")]
+text = "".join(out).rstrip() + "\n\n# --- Lumen ---\n" + open(blockfile).read()
+open(caddyfile, "w").write(text)
+print("   Lumen-Block ersetzt (Backup angelegt).")
+PY
 # Erst validieren (faengt Syntaxfehler ab, bevor wir neu starten).
 docker exec "$CADDY_CONTAINER" caddy validate --config /etc/caddy/Caddyfile
 # Der Cluster-Caddy hat `admin off` -> `caddy reload` (Admin-API) geht NICHT.

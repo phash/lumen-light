@@ -16,6 +16,8 @@
     <!-- Run-Time-Konfiguration. In Production gemountet vom Container,
          lokal optional. Fallback: VITE_*-Build-Time-Vars. -->
     <script src="/config.js" defer></script>
+    <!-- Matomo (cookieless, DNT-respektiert) — siehe public/analytics.js -->
+    <script src="/analytics.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
