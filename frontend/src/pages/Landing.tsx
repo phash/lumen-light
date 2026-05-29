@@ -86,6 +86,15 @@ export default function Landing() {
           <Link to="/impressum" className="hover:text-stone-300">
             Impressum
           </Link>
+          <a
+            href="https://buymeacoffee.com/phash"
+            target="_blank"
+            rel="noopener noreferrer"
+            data-testid="landing-bmac"
+            className="ml-auto text-amber-200/80 hover:text-amber-200"
+          >
+            ☕ Buy me a coffee
+          </a>
         </div>
       </div>
     </section>
