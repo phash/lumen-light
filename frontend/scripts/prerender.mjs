@@ -22,15 +22,17 @@ const BASE = "https://lumen.mr-development.de";
 // eigene title/description/og und KEIN Landing-JSON-LD (sonst FAQPage ohne
 // sichtbare FAQ -> Google-Strukturdaten-Verstoss).
 const ROUTE_META = {
+  // Flat-Files (datenschutz.html) statt Verzeichnis (datenschutz/index.html):
+  // nginx liefert sie ueber `try_files $uri.html` ohne 301-Trailing-Slash.
   "/": { file: "index.html", title: null, description: null },
   "/datenschutz": {
-    file: "datenschutz/index.html",
+    file: "datenschutz.html",
     title: "Datenschutz — Lumen · light",
     description:
       "Datenschutzerklärung von Lumen · light: welche Daten verarbeitet werden, Matomo-Analyse und deine Rechte nach DSGVO.",
   },
   "/impressum": {
-    file: "impressum/index.html",
+    file: "impressum.html",
     title: "Impressum — Lumen · light",
     description:
       "Impressum und Anbieterkennzeichnung von Lumen · light nach TMG/DDG.",
