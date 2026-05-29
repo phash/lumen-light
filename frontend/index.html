@@ -10,13 +10,16 @@
     <link rel="icon" type="image/svg+xml" href="/lumen-icon.svg" />
     <link rel="apple-touch-icon" href="/lumen-icon.svg" />
     <title>Lumen · light</title>
+    <!-- Run-Time-Konfiguration MUSS vor dem Entry-Modul laufen. Daher BLOCKING
+         im <head> (kein defer): Vite hebt das Entry-Modul in den <head>, ein
+         deferred config.js liefe sonst NACH dem Modul -> window.__APP_CONFIG__
+         waere bei runtime-config.ts noch leer (Fallback auf Build-Time-Default). -->
+    <script src="/config.js"></script>
   </head>
   <body class="bg-stone-950 text-stone-200 antialiased">
     <div id="root"></div>
-    <!-- Run-Time-Konfiguration. In Production gemountet vom Container,
-         lokal optional. Fallback: VITE_*-Build-Time-Vars. -->
-    <script src="/config.js" defer></script>
-    <!-- Matomo (cookieless, DNT-respektiert) — siehe public/analytics.js -->
+    <!-- Matomo (cookieless, DNT-respektiert) — siehe public/analytics.js.
+         config.js wird blockierend im <head> geladen (Run-Time-Config). -->
     <script src="/analytics.js" defer></script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
