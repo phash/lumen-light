@@ -35,7 +35,9 @@ COPY --from=build /app/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
+# 127.0.0.1 statt localhost: nginx bindet IPv4; localhost loest in alpine teils
+# auf ::1 (IPv6) auf -> falsches "unhealthy" trotz funktionierendem Server.
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-    CMD wget -q -O - http://localhost/ > /dev/null || exit 1
+    CMD wget -q -O - http://127.0.0.1/ > /dev/null || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

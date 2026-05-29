@@ -34,9 +34,11 @@ echo "==> [4/8] Build (--no-cache, Cluster-Konvention) + Start"
 "${COMPOSE[@]}" up -d
 
 echo "==> [5/8] Auf Keycloak warten (well-known)"
+# Das KC-Image hat KEIN curl — daher von lumen-api aus pruefen (hat curl und
+# erreicht lumen-keycloak ueber das gemeinsame Netz).
 for i in $(seq 1 80); do
-  if docker exec lumen-keycloak curl -fsS \
-      http://localhost:8080/auth/realms/master/.well-known/openid-configuration >/dev/null 2>&1; then
+  if docker exec lumen-api curl -fsS \
+      http://lumen-keycloak:8080/auth/realms/master/.well-known/openid-configuration >/dev/null 2>&1; then
     echo "   Keycloak bereit."; break
   fi
   sleep 3
@@ -63,9 +65,12 @@ if ! grep -q "^${DOMAIN} {" "$CADDYFILE"; then
 else
   echo "   Lumen-Block bereits vorhanden."
 fi
+# Erst validieren (faengt Syntaxfehler ab, bevor wir neu starten).
 docker exec "$CADDY_CONTAINER" caddy validate --config /etc/caddy/Caddyfile
-docker exec "$CADDY_CONTAINER" caddy reload --config /etc/caddy/Caddyfile
-echo "   Caddy neu geladen."
+# Der Cluster-Caddy hat `admin off` -> `caddy reload` (Admin-API) geht NICHT.
+# Konfig wird per Container-Restart geladen (kurzer Blip fuer alle Sites).
+docker restart "$CADDY_CONTAINER" >/dev/null
+echo "   Caddy neu gestartet (Config geladen)."
 
 echo "==> [8/8] Smoke-Test"
 sleep 3
