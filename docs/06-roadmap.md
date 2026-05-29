@@ -87,12 +87,15 @@ Recherche-Output siehe `docs/superpowers/specs/2026-04-28-phase-g-pro-correction
 - ~~Touch-Optimierung im Editor-Viewport~~ ✓ erledigt — Pinch-Zoom mit Anker-Mitte, Two-Finger→One-Finger nahtlos zu Pan zurueck.
 - ~~Release-Notes-Pflege + CHANGELOG~~ ✓ erledigt — `CHANGELOG.md` mit Unreleased-Pre-Beta-Block.
 - ~~Beta-User-Onboarding-Doku~~ ✓ erledigt — `docs/beta-onboarding.md` (13 Kapitel von „Account anlegen" bis „PWA installieren").
-- Real-Browser-Smoke-Tests fuer die Touch-Logik (jsdom kann keine echten Pointer-Events) — Playwright-Setup steht aus.
+- Real-Browser-Smoke-Tests fuer die Touch-Logik (jsdom kann keine echten Pointer-Events) — Playwright-E2E existiert jetzt als nightly CI-Workflow (`.github/workflows/e2e.yml`).
+- ~~Voll-Auflösungs-Export~~ ✓ erledigt (C2) — Original wird offscreen in voller Auflösung durch die WebGL-Pipeline gerendert; „Original" = echte Originalauflösung statt 1600px-Vorschau.
+- ~~Multi-Device-Weiterbearbeitung hochgeladener Bilder~~ ✓ erledigt (C1) — Bild aus Bibliothek wiederöffnen + Edit-State pro Bild persistiert (Migration 008, debounced Autosave). Erfüllt Erfolgskriterium #4 aus `01-konzept.md`.
+- ~~Post-Review-Härtung~~ ✓ erledigt — Rate-Limiting (default + sub-Key), async-I/O off-loop, JIT-Race, Content-Type-Magic-Bytes, Coverage in CI; siehe CHANGELOG.
 
 **Sicherheit/DSGVO (vor Multi-Tenant-Live):**
 - ~~Pre-Signed-POST-Janitor-Cron~~ ✓ erledigt — `app/janitor.py` + `scripts/janitor.py` (CLI), 4 Tests. Cron-Eintrag empfohlen: alle 5 min `python -m scripts.janitor`.
 - ~~DELETE /me Keycloak-Admin-API-Aufruf~~ ✓ erledigt — `app/keycloak_admin.py` mit Service-Account-Client (Client-Credentials-Grant). Konfiguriert via `KEYCLOAK_ADMIN_CLIENT_ID` + `KEYCLOAK_ADMIN_CLIENT_SECRET`. Best-effort: KC-Ausfall blockiert App-Cleanup nicht.
-- E2E-Test für Marketplace — Stack-Compose-Setup ausstehend.
+- ~~E2E-Test für Marketplace~~ ✓ erledigt — `frontend/e2e/marketplace.spec.ts` (empty-state, publish→browse→detail→apply, fork, report).
 
 **Admin & Bot-Härtung (neu, MVP komplett):**
 - Admin-Bereich `/admin` mit User-Tabelle (Disable-Toggle, Aggregate) und Feedback-Inbox (Status-Workflow new/triaged/closed, Admin-Notes). Frontend-Gating via `useIsAdmin`-Hook + `RequireAdmin`, Backend-Gating via `current_admin` (Realm-Role `admin`). Migration 007 (`users.is_disabled` + `feedbacks`).

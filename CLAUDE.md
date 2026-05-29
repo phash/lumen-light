@@ -91,7 +91,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `backend/app/auth.py` | JWT-Verify (PyJWT, RS256-Whitelist), JIT-User-Provisioning + 20 Default-Presets (4 Looks + 6 Genre + 10 Motiv: Macro/Astro/Food/Hochzeit/Innen/Konzert/Strand/Schnee/Herbst/Architektur). `current_admin`-Dep prueft Realm-Role `admin`. |
 | `backend/app/schemas.py` | Adjustments, Mask-Discriminated-Union (`MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`), `extra="forbid"`. `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` → Wire-Keys camelCase, Eingang akzeptiert beide via `populate_by_name=True`. |
 | `backend/app/rate_limit.py` | slowapi-Limiter (SHA-256-Token-Hash-Key, IP-Fallback). `LUMEN_RATELIMIT_STORAGE` ueber env auf Redis-URI fuer Multi-Worker-Setups |
-| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback |
+| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) |
 | `backend/app/routers/admin.py` | Admin-Endpoints (Users-Liste/Disable, Stats, Feedback-Inbox + PATCH). Gating via `current_admin` Dep |
 | `backend/app/routers/feedback.py` | User-Feedback-Submit. Honeypot `website` (silent drop), Rate-Limit 5/h |
 | `frontend/src/auth/useIsAdmin.ts` | Decodet `auth.user.access_token` (KC schreibt `realm_access`/`resource_access` nur dort, nicht ins ID-Token); ID-Token-Profile als Fallback. `RequireAdmin` schuetzt `/admin`. |
@@ -105,7 +105,8 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `frontend/src/editor/shaders.ts` | Fragment-Shader mit `MAX_LINEAR_MASKS = 4` und `MAX_RADIAL_MASKS = 4` (Schema-Sync-Test prüft) |
 | `frontend/src/editor/store.ts` | Zustand-Store inkl. Undo/Redo (history-Snapshot debounced 250ms) |
 | `frontend/src/editor/mask.ts` | Linear-/Radial-Typen, Limits-Konstanten — Single Source |
-| `frontend/src/editor/Canvas.tsx` | Renderer-Mount, `takeBypassSnapshot()` für Compare-Split |
+| `frontend/src/editor/Canvas.tsx` | Renderer-Mount, `takeBypassSnapshot()` für Compare-Split, `exportFullResCanvas()` für Full-Res-Export (C2, offscreen-Renderer auf Original-Quelle). `loadFile()` liefert Natural-Dims zurück |
+| `backend/app/routers/images.py` | Upload (init/confirm mit Magic-Byte-Check)/list/url/delete + `GET`/`PUT /{id}/edit` (C1: Edit-State, Ownership übers Bild, Upsert). Blockierendes boto3 via `run_in_threadpool` |
 | `frontend/src/editor/lensProfile.ts` | 18 Lens-Profile aus `infra/lensfun/profiles.json` |
 | `frontend/src/editor/EditorToolbar.tsx` | Untere Action-Bar (Bypass/Crop/Auto-Tone/Auto-WB/Compare/WB-Picker/Zoom/Undo/Redo + Mask + Help/Presets/Marketplace/Export) |
 | `frontend/src/editor/EditorBanners.tsx` | 4 absolute Banners: Fehler, Decoding, Smart-Suggestion, Camera-Info |
@@ -259,13 +260,22 @@ backend pytest. E2E nicht in PR-Pipeline (Stack-Compose dauert).
 
 - **Phase E komplett**: HSL (E1), Tonkurve (E2), Sharpening + Noise (E3), Face-Detection (E4, opt-in), Auto-Straighten (E5).
 - **Phase F1 komplett**: Preset-Marketplace mit Backend (Migration 005, 7 Endpunkte, Auto-Hide), Frontend (Marketplace-Page, Detail-Modal, PresetDialog-Publish-Toggle, Account-Profil + veroeffentlichte Presets).
+- **Phase G komplett**: G1 Highlight-Recovery, G2 Local-Contrast/Clarity, G3 TCA-Korrektur (RawTherapee-inspiriert). G4 (Lensfun-DB-Stuetzstellen-Interpolation) bleibt Backlog.
 - **Phase D durch**: D1 (EditorToolbar/Banners/OverlayCanvas), D2 (LocalAdjBuffers), D4 (Wireformat camelCase), D6 (Component-Tests).
 - **Reviews abgeschlossen**: Security/DSGVO/Code/UI-UX. Critical + High + Medium-Items umgesetzt.
 - **Tests**: backend pytest + frontend vitest + Playwright (admin/feedback/onboarding/marketplace/editor/login). Lint + tsc + build im CI.
 - **Admin & Feedback (MVP)**: `/admin` mit Users + Feedback-Inbox; Header-Feedback-Dialog mit Honeypot. Realm `admin`-Rolle muss in KC einem User zugewiesen werden, damit der Backend-`current_admin`-Dep durchlaesst.
+- **Post-Review-Hardening + C1/C2**: Reviews-Findings (HIGH→LOW) umgesetzt — Rate-Limiting (default 600/min via SlowAPIMiddleware + `sub`-Key), Async-I/O im Threadpool, JIT-Race-Handling, Magic-Byte-Content-Type-Check, `EmailStr`→`str`, JPEG-Pflicht für Public-Previews, CI-E2E-Cron + Coverage. **C1**: Multi-Device-Resume (Migration 008 `image_edits`, `GET`/`PUT /images/:id/edit`, Library-„Im Editor öffnen", debounced Autosave). **C2**: Full-Res-Export (offscreen-Render des Originals, `Canvas.exportFullResCanvas`).
 
 ## Offene Backlog-Items (vor public-Launch nochmal pruefen)
 
-- **Pre-Signed-POST mit Content-Length-Range** (Sec High, ohne User nicht eilig) — heutiger Pfad: HEAD-Check + Cleanup im `confirm_upload` deckt den Worst-Case (Bucket-Overflow) ab. Vor Multi-Tenant-Live noch einen Janitor-Cron einbauen, der `images` mit `upload_state='pending' AND created_at < now()-15min` plus zugehoerige S3-Objekte loescht.
-- **DELETE /me Keycloak-Account** (DSGVO High) — heute werden nur App-Daten geloescht, der KC-Account bleibt; Datenschutz-Hinweis ist drin. Sauberer Fix: Service-Account-Setup + Admin-API-Call.
-- **E2E-Test fuer Marketplace** — Stack-Compose-Setup ausstehend.
+Bereits erledigt (frueher hier als offen gelistet — Stand jetzt korrekt):
+
+- **Janitor-Cron** ✓ — `app/janitor.py` + `scripts/janitor.py` raeumen pending Uploads (>15 min) aus DB+S3. Im Prod-Cluster als Cron alle 5 min einplanen (`python -m scripts.janitor`).
+- **DELETE /me Keycloak-Account** ✓ — Service-Account-Pfad in `app/keycloak_admin.py` (Client-Credentials-Grant), aktiv sobald `KEYCLOAK_ADMIN_CLIENT_ID/SECRET` gesetzt sind. Best-effort, KC-Ausfall blockiert App-Cleanup nicht.
+- **E2E-Test fuer Marketplace** ✓ — `frontend/e2e/marketplace.spec.ts` (empty-state, publish→browse→detail→apply, fork, report).
+
+Genuin offen:
+
+- **G4 Lensfun-DB-Stuetzstellen-Interpolation** — Backlog, kein Launch-Blocker.
+- **Pre-Signed-POST mit Content-Length-Range** — heutiger Pfad (HEAD-Size-Check + Cleanup + 413 im `confirm_upload`, plus Janitor) deckt Bucket-Overflow ab; echte Content-Length-Range erst bei Multi-Tenant-Public noetig.
