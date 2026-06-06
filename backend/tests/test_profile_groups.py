@@ -83,3 +83,22 @@ def test_merge_geometry_group_pulls_from_preset_geometry():
     )
     assert merged["crop"] == {"x0": 0.1, "y0": 0.1, "x1": 0.9, "y1": 0.9}
     assert merged["straightenAngle"] == 0.05
+
+
+def test_batch_apply_in_rejects_unknown_group():
+    import pytest
+    from pydantic import ValidationError
+    from app.schemas import BatchApplyIn
+    from uuid import uuid4
+
+    with pytest.raises(ValidationError):
+        BatchApplyIn(imageIds=[uuid4()], groups=["tone", "voodoo"])
+
+
+def test_preset_geometry_defaults():
+    from app.schemas import PresetGeometry
+
+    g = PresetGeometry()
+    assert g.crop is None
+    assert g.straighten_angle == 0
+    assert g.manual_lens_override is False

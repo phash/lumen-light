@@ -19,6 +19,8 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from pydantic.alias_generators import to_camel
 
+from app.profile_groups import KNOWN_GROUP_KEYS
+
 
 CAMEL_BASE_CONFIG = ConfigDict(
     alias_generator=to_camel,
@@ -121,6 +123,20 @@ class Adjustments(BaseModel):
     toneCurve: ToneCurve | None = None  # noqa: N815
 
 
+# ----- Preset-Geometrie -----
+
+class PresetGeometry(BaseModel):
+    """Geometrie-Teil eines Presets (Crop/Straighten/Lens). Form identisch
+    zu den Geometrie-Feldern in ImageEditState; Crop/LensCorrection bleiben
+    opake dicts (Pixel-Pfad lebt im Frontend)."""
+    model_config = CAMEL_BASE_CONFIG
+    crop: dict | None = None
+    straighten_angle: float = Field(default=0, ge=-3.15, le=3.15)
+    lens_correction: dict | None = None
+    lens_profile_id: str | None = Field(default=None, max_length=80)
+    manual_lens_override: bool = False
+
+
 # ----- User -----
 
 class UserOut(BaseModel):
@@ -213,6 +229,7 @@ class PresetIn(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     adjustments: Adjustments
     masks: list[MaskData] = Field(default_factory=list)
+    geometry: PresetGeometry | None = None
     visibility: PresetVisibility = "private"
     genre: PresetGenre | None = None
     description: str | None = Field(default=None, max_length=500)
@@ -254,6 +271,7 @@ class PresetOut(BaseModel):
     name: str
     adjustments: Adjustments
     masks: list[MaskData] = Field(default_factory=list)
+    geometry: PresetGeometry | None
     visibility: PresetVisibility
     genre: PresetGenre | None
     description: str | None
@@ -303,6 +321,27 @@ class MarketplaceApplyOut(BaseModel):
 class PresetReportIn(BaseModel):
     model_config = CAMEL_BASE_CONFIG
     reason: str = Field(min_length=1, max_length=500)
+
+
+class BatchApplyIn(BaseModel):
+    """Profil auf mehrere Bilder anwenden. `groups` = angehakte
+    Schritt-Gruppen-Keys; unbekannte Keys -> 422."""
+    model_config = CAMEL_BASE_CONFIG
+    image_ids: list[UUID] = Field(min_length=1, max_length=200)
+    groups: list[str] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def _check_groups(self) -> Self:
+        unknown = [g for g in self.groups if g not in KNOWN_GROUP_KEYS]
+        if unknown:
+            raise ValueError(f"Unbekannte Gruppen: {unknown}")
+        return self
+
+
+class BatchApplyOut(BaseModel):
+    model_config = CAMEL_BASE_CONFIG
+    applied: int
+    total: int
 
 
 class ProfileIn(BaseModel):
