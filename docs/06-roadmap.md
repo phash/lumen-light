@@ -25,6 +25,7 @@ Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Anna
 | E5 | Auto-Straighten (Sobel + Hough-Voting) | ✓ abgeschlossen |
 | F1 | Preset-Marketplace (publish/apply/fork/report, Auto-Hide, Profil) | ✓ abgeschlossen |
 | D1/D2/D4/D6 | Editor-Refactor + Wireformat camelCase + Tests | ✓ abgeschlossen |
+| P1 | Bearbeitungs-Profile: YAML-Export/Import, Schritt-Checkboxen, Batch-Anwendung | ✓ abgeschlossen |
 
 ## Phase 1 · Bildverarbeitung im Browser ✓
 
@@ -79,6 +80,10 @@ Recherche-Output siehe `docs/superpowers/specs/2026-04-28-phase-g-pro-correction
 | G2 | Local Contrast / Clarity (Unsharp-Mask im Y-Kanal, 5x5-Gauss) | ✓ |
 | G3 | TCA-Korrektur (per-Channel-Distortion fuer R/B) | ✓ |
 | G4 | Lensfun-DB-Migration mit Stuetzstellen-Interpolation | ⏸ Backlog |
+
+## Phase P · Bearbeitungs-Profile ✓
+
+YAML-Export/Import von Presets (Client-seitig, Format-Version 1 `lumenProfile: 1`), granulare Schritt-Checkboxen beim Anwenden (8 Gruppen, Single-Source-JSON `backend/schemas/edit-groups.json`), nicht-destruktive Batch-Anwendung via `POST /presets/{id}/apply` auf mehrere Bilder gleichzeitig. Migration 009 (`009_preset_geometry`) ergaenzt `presets.geometry` JSONB fuer Crop/Straighten/Lens-Daten. Bibliothek zeigt Mehrfachauswahl + Batch-Apply-Modal.
 
 ## Aktuell offen (Stand 2026-04-28)
 

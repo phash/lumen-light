@@ -12,7 +12,12 @@
 **/*.pyc
 **/.pytest_cache
 **/.coverage
-backend/schemas
+backend/schemas/*
+# edit-groups.json muss im Frontend-Build-Context bleiben: profileGroups.ts
+# importiert ../../../backend/schemas/edit-groups.json beim Vite-Build.
+# Den Dir-INHALT mit /* ausschliessen (statt das Verzeichnis selbst), sonst
+# betritt Docker es nicht und die !-Re-Inclusion verpufft.
+!backend/schemas/edit-groups.json
 docs
 diagramme
 *.log

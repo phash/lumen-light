@@ -104,18 +104,16 @@ test("UI-Screenshots: Editor-Hauptzustaende fuer Phase-5-Doku", async ({ page })
     await expect(page.getByTestId("preset-dialog")).toBeVisible();
     await page.waitForTimeout(300);
 
-    // Eigenes Preset laden
-    const ownPreset = page.locator("[data-testid^=preset-load-]").filter({
-      hasText: "Laden",
-    });
-    // Last-of-list (eigenes ist nach den Defaults, ABER List-Sortierung
-    // ist alphabetisch by name). „Mein Look mit Masken" -> kommt nach
-    // "Neutral" alphabetisch... wir suchen es per Text.
+    // Eigenes Preset anwenden. List-Sortierung ist alphabetisch by name,
+    // daher suchen wir „Mein Look mit Masken" per Text. Der neue Flow
+    // oeffnet zuerst das Schritt-Panel, dann bestaetigen wir.
     await page
       .locator("li")
       .filter({ hasText: "Mein Look mit Masken" })
-      .getByText("Laden")
+      .getByText("Anwenden")
       .click();
+    await expect(page.getByTestId("apply-step-panel")).toBeVisible();
+    await page.getByTestId("apply-confirm").click();
     await page.waitForTimeout(300);
 
     // Mask-Liste sollte 2 Einträge zeigen

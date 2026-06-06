@@ -54,6 +54,7 @@ function makeFakeApi(presets: Preset[] = []): FakeApi {
     adminStats: vi.fn(),
     adminListFeedback: vi.fn(),
     adminPatchFeedback: vi.fn(),
+    applyPresetBatch: vi.fn(),
   };
 }
 
@@ -68,6 +69,7 @@ function makePreset(overrides: Partial<Preset> = {}): Preset {
     name: "Mein Look",
     adjustments: ZERO_ADJ,
     masks: [],
+    geometry: null,
     visibility: "private",
     genre: null,
     description: null,
@@ -145,7 +147,7 @@ describe("PresetDialog", () => {
     });
   });
 
-  it("Laden ruft applyAdjustments + applyMasks und schliesst den Dialog", async () => {
+  it("Anwenden merged die Default-Gruppen in den Store und schliesst den Dialog", async () => {
     const linearWire = {
       type: "linear" as const,
       mask: { p1: { u: 0, v: 0 }, p2: { u: 1, v: 1 }, feather: 0.4 },
@@ -161,7 +163,9 @@ describe("PresetDialog", () => {
     ]);
     const { onClose, onLoadedPresetIdChange } = renderDialog(api);
     await waitFor(() => screen.getByTestId("preset-item-a"));
-    await userEvent.click(screen.getByTestId("preset-load-a"));
+    // Neuer Flow: Anwenden oeffnet das Schritt-Panel, Bestaetigen merged.
+    await userEvent.click(screen.getByTestId("preset-apply-a"));
+    await userEvent.click(screen.getByTestId("apply-confirm"));
 
     const s = useEditorStore.getState();
     expect(s.adjustments.contrast).toBe(0.4);
@@ -315,6 +319,73 @@ describe("PresetDialog", () => {
     renderDialog(api);
     await waitFor(() => screen.getByTestId("preset-item-y"));
     expect(screen.getByText("1 Maske")).toBeInTheDocument();
+  });
+
+  // ---------- Apply-Panel Cancel + Import (neue Tests) ----------
+
+  it("Apply-Panel oeffnen und Abbrechen wendet nicht an und schliesst nicht", async () => {
+    const api = makeFakeApi([makePreset({ id: "a", name: "Neutral" })]);
+    const { onClose } = renderDialog(api);
+    await waitFor(() => screen.getByTestId("preset-item-a"));
+
+    // Store-Zustand vor dem Apply merken
+    const before = useEditorStore.getState().adjustments.contrast;
+
+    await userEvent.click(screen.getByTestId("preset-apply-a"));
+    expect(screen.getByTestId("apply-step-panel")).toBeInTheDocument();
+
+    await userEvent.click(screen.getByTestId("apply-cancel"));
+
+    expect(screen.queryByTestId("apply-step-panel")).not.toBeInTheDocument();
+    expect(useEditorStore.getState().adjustments.contrast).toBe(before);
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
+  it("YAML-Import Happy-Path: createPreset wird mit richtigem Namen aufgerufen", async () => {
+    const api = makeFakeApi([]);
+    api.createPreset = vi.fn().mockResolvedValue(
+      makePreset({ id: "imported-1", name: "Importiert" }),
+    );
+    const { onLoadedPresetIdChange } = renderDialog(api);
+    await waitFor(() => expect(api.listPresets).toHaveBeenCalled());
+
+    const yaml = [
+      "lumenProfile: 1",
+      "name: Importiert",
+      "adjustments: {}",
+      "masks: []",
+    ].join("\n");
+    const file = new File([yaml], "p.yaml", { type: "application/yaml" });
+    await userEvent.upload(screen.getByTestId("preset-import-input"), file);
+
+    await waitFor(() => {
+      expect(api.createPreset).toHaveBeenCalledWith(
+        expect.objectContaining({ name: "Importiert" }),
+      );
+    });
+    expect(onLoadedPresetIdChange).toHaveBeenCalledWith("imported-1");
+  });
+
+  it("YAML-Import 409: Fehlermeldung 'existiert bereits'", async () => {
+    const api = makeFakeApi([]);
+    api.createPreset = vi.fn().mockRejectedValue(new ApiError(409, "duplicate"));
+    renderDialog(api);
+    await waitFor(() => expect(api.listPresets).toHaveBeenCalled());
+
+    const yaml = [
+      "lumenProfile: 1",
+      "name: Importiert",
+      "adjustments: {}",
+      "masks: []",
+    ].join("\n");
+    const file = new File([yaml], "p.yaml", { type: "application/yaml" });
+    await userEvent.upload(screen.getByTestId("preset-import-input"), file);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("preset-error").textContent).toContain(
+        "existiert bereits",
+      );
+    });
   });
 
   // ---------- Publish-Flow (F1) ----------
