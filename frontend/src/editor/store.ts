@@ -503,9 +503,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         adjustments: merged.adjustments,
         masks: wireToMasks(merged.masks),
         selectedMaskId: null,
-        cropRect: merged.crop ?? defaultCropRect(),
-        straightenAngle: merged.straightenAngle,
-        lensCorrection: merged.lensCorrection ?? defaultLensCorrection(),
+        cropRect: clampCropRect(merged.crop ?? defaultCropRect()),
+        straightenAngle: Math.max(
+          -MAX_STRAIGHTEN_RADIANS,
+          Math.min(MAX_STRAIGHTEN_RADIANS, merged.straightenAngle),
+        ),
+        lensCorrection: clampLens(merged.lensCorrection ?? defaultLensCorrection()),
         lensProfileId: merged.lensProfileId,
         manualLensOverride: merged.manualLensOverride,
       };

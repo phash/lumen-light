@@ -118,7 +118,7 @@ export default function BatchApplyModal({ imageIds, onClose, onApplied }: Props)
             type="button"
             data-testid="batch-apply-confirm"
             onClick={() => void onApply()}
-            disabled={busy || !selectedId}
+            disabled={busy || !selectedId || enabled.size === 0}
             className="px-3 py-1 text-[10px] uppercase tracking-[0.2em] bg-amber-200/20 border border-amber-300 text-amber-200 hover:bg-amber-200/30 disabled:opacity-40"
           >
             Anwenden

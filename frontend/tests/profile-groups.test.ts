@@ -4,7 +4,7 @@ import type { ImageEditState } from "../src/api/client";
 import { defaultAdjustments } from "../src/editor/adjustments";
 import { defaultLensCorrection } from "../src/editor/lens";
 import { GROUPS, defaultEnabledGroups, mergeGroups } from "../src/editor/profileGroups";
-import { useEditorStore } from "../src/editor/store";
+import { MAX_STRAIGHTEN_RADIANS, useEditorStore } from "../src/editor/store";
 import { defaultCropRect } from "../src/editor/transform";
 
 const TOPLEVEL = [
@@ -137,5 +137,31 @@ describe("store.applyProfileGroups", () => {
       new Set(["lens"]),       // lens-Gruppe angehakt
     );
     expect(useEditorStore.getState().lensCorrection).toEqual(defaultLensCorrection());
+  });
+
+  test("applyProfileGroups klemmt out-of-range Geometrie aus dem Profil", () => {
+    const store = useEditorStore.getState();
+    store.resetAll();
+    useEditorStore.getState().applyProfileGroups(
+      {
+        adjustments: defaultAdjustments(),
+        masks: [],
+        crop: { x0: -1, y0: -1, x1: 2, y1: 2 },   // out of [0,1]
+        straightenAngle: 3.0,                        // weit ueber MAX
+        lensCorrection: { distortion: 9, vignette: -9, tcaR: 9, tcaB: -9 }, // out of [-1,1]
+        lensProfileId: null,
+        manualLensOverride: false,
+      },
+      new Set(["crop", "lens"]),
+    );
+    const s = useEditorStore.getState();
+    // Crop auf [0,1] geklemmt
+    expect(s.cropRect.x0).toBeGreaterThanOrEqual(0);
+    expect(s.cropRect.x1).toBeLessThanOrEqual(1);
+    // Straighten auf +/-MAX geklemmt
+    expect(Math.abs(s.straightenAngle)).toBeLessThanOrEqual(MAX_STRAIGHTEN_RADIANS + 1e-9);
+    // Lens auf [-1,1] geklemmt
+    expect(s.lensCorrection.distortion).toBeLessThanOrEqual(1);
+    expect(s.lensCorrection.vignette).toBeGreaterThanOrEqual(-1);
   });
 });
