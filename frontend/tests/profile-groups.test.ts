@@ -2,8 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import type { ImageEditState } from "../src/api/client";
 import { defaultAdjustments } from "../src/editor/adjustments";
+import { defaultLensCorrection } from "../src/editor/lens";
 import { GROUPS, defaultEnabledGroups, mergeGroups } from "../src/editor/profileGroups";
 import { useEditorStore } from "../src/editor/store";
+import { defaultCropRect } from "../src/editor/transform";
 
 const TOPLEVEL = [
   "masks", "crop", "straightenAngle",
@@ -97,5 +99,43 @@ describe("store.applyProfileGroups", () => {
     expect(s.adjustments.contrast).toBe(0.5);     // tone uebernommen
     expect(s.adjustments.temperature).toBe(0.7);  // color blieb
     expect(s.past.length).toBe(before + 1);       // genau ein Snapshot
+  });
+
+  test("crop-Gruppe mit null-Crop im Profil setzt Crop auf Identity zurueck", () => {
+    const store = useEditorStore.getState();
+    store.resetAll();
+    store.setCropRect({ x0: 0.1, y0: 0.1, x1: 0.9, y1: 0.9 });
+    useEditorStore.getState().applyProfileGroups(
+      {
+        adjustments: defaultAdjustments(),
+        masks: [],
+        crop: null,            // Profil ohne Crop
+        straightenAngle: 0,
+        lensCorrection: null,
+        lensProfileId: null,
+        manualLensOverride: false,
+      },
+      new Set(["crop"]),       // crop-Gruppe angehakt
+    );
+    expect(useEditorStore.getState().cropRect).toEqual(defaultCropRect());
+  });
+
+  test("lens-Gruppe mit null-LensCorrection im Profil setzt Lens auf Identity zurueck", () => {
+    const store = useEditorStore.getState();
+    store.resetAll();
+    store.setLensCorrection({ distortion: 0.5, vignette: 0.5, tcaR: 0, tcaB: 0 });
+    useEditorStore.getState().applyProfileGroups(
+      {
+        adjustments: defaultAdjustments(),
+        masks: [],
+        crop: null,
+        straightenAngle: 0,
+        lensCorrection: null,  // Profil ohne Lens-Korrektur
+        lensProfileId: null,
+        manualLensOverride: false,
+      },
+      new Set(["lens"]),       // lens-Gruppe angehakt
+    );
+    expect(useEditorStore.getState().lensCorrection).toEqual(defaultLensCorrection());
   });
 });

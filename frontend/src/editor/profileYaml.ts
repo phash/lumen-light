@@ -50,7 +50,7 @@ export function parseProfileYaml(text: string): ProfileFile {
   if (typeof obj.name !== "string" || obj.name.trim() === "") {
     throw new Error("Profil-Datei hat keinen gültigen Namen.");
   }
-  if (typeof obj.adjustments !== "object" || obj.adjustments === null) {
+  if (typeof obj.adjustments !== "object" || obj.adjustments === null || Array.isArray(obj.adjustments)) {
     throw new Error("Profil-Datei hat keine Anpassungen.");
   }
   return {

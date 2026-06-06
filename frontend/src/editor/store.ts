@@ -503,9 +503,9 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         adjustments: merged.adjustments,
         masks: wireToMasks(merged.masks),
         selectedMaskId: null,
-        cropRect: merged.crop ?? state.cropRect,
+        cropRect: merged.crop ?? defaultCropRect(),
         straightenAngle: merged.straightenAngle,
-        lensCorrection: merged.lensCorrection ?? state.lensCorrection,
+        lensCorrection: merged.lensCorrection ?? defaultLensCorrection(),
         lensProfileId: merged.lensProfileId,
         manualLensOverride: merged.manualLensOverride,
       };
