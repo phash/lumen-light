@@ -9,10 +9,18 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
 from app.database import get_db
-from app.models import Image, Preset, User
+from app.models import Image, ImageEdit, Preset, User
+from app.profile_groups import merge_edit_state
 from app.rate_limit import limiter
 from app.routers.marketplace import REPORT_AUTOHIDE_THRESHOLD
-from app.schemas import PresetIn, PresetOut
+from app.schemas import (
+    Adjustments,
+    BatchApplyIn,
+    BatchApplyOut,
+    ImageEditState,
+    PresetIn,
+    PresetOut,
+)
 
 
 async def _validate_preview_image(
@@ -193,3 +201,72 @@ async def delete_preset(
         raise HTTPException(status_code=404, detail="Preset nicht gefunden.")
     await db.delete(p)
     await db.commit()
+
+
+@router.post("/{preset_id}/apply", response_model=BatchApplyOut)
+@limiter.limit("30/minute")
+async def apply_preset_batch(
+    request: Request,
+    preset_id: UUID,
+    payload: BatchApplyIn,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+) -> BatchApplyOut:
+    """Wendet die angehakten Schritt-Gruppen eines Presets nicht-destruktiv
+    auf den gespeicherten Edit-State mehrerer eigener Bilder an. All-or-
+    nothing: Ownership/Ready wird vorab geprueft, dann ein Commit."""
+    preset = (
+        await db.execute(
+            select(Preset).where(
+                Preset.id == preset_id, Preset.user_id == user.id
+            )
+        )
+    ).scalar_one_or_none()
+    if preset is None:
+        raise HTTPException(status_code=404, detail="Preset nicht gefunden.")
+
+    image_ids = list(dict.fromkeys(payload.image_ids))  # dedupe, Reihenfolge egal
+    images = (
+        await db.execute(
+            select(Image).where(
+                Image.id.in_(image_ids),
+                Image.user_id == user.id,
+                Image.upload_state == "ready",
+            )
+        )
+    ).scalars().all()
+    if len(images) != len(image_ids):
+        raise HTTPException(
+            status_code=400,
+            detail="Mindestens ein Bild ist fremd, unbekannt oder nicht ready.",
+        )
+
+    existing_edits = {
+        e.image_id: e
+        for e in (
+            await db.execute(
+                select(ImageEdit).where(ImageEdit.image_id.in_(image_ids))
+            )
+        ).scalars().all()
+    }
+    default_state = ImageEditState(adjustments=Adjustments()).model_dump()
+
+    for image_id in image_ids:
+        edit = existing_edits.get(image_id)
+        base_state = edit.state if edit is not None else default_state
+        merged = merge_edit_state(
+            base_state=base_state,
+            preset_adjustments=preset.adjustments,
+            preset_masks=preset.masks,
+            preset_geometry=preset.geometry,
+            enabled=payload.groups,
+        )
+        # Validierung (Ranges, Mask-Caps) + Normalisierung auf camelCase.
+        validated = ImageEditState.model_validate(merged).model_dump()
+        if edit is None:
+            db.add(ImageEdit(image_id=image_id, state=validated))
+        else:
+            edit.state = validated
+
+    await db.commit()
+    return BatchApplyOut(applied=len(image_ids), total=len(image_ids))
