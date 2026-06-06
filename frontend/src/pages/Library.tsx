@@ -30,13 +30,15 @@ export default function Library() {
   const [batchOpen, setBatchOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
-  const toggleSelected = (id: string) =>
+  const toggleSelected = (id: string) => {
+    setToast(null);
     setSelected((prev) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
     });
+  };
 
   const refresh = useCallback(async () => {
     try {
@@ -143,7 +145,7 @@ export default function Library() {
           <button
             type="button"
             data-testid="batch-apply-open"
-            onClick={() => setBatchOpen(true)}
+            onClick={() => { setToast(null); setBatchOpen(true); }}
             disabled={selected.size === 0}
             className="text-amber-200 hover:underline disabled:opacity-40 disabled:no-underline"
           >
