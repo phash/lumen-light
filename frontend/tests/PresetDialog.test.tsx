@@ -147,7 +147,7 @@ describe("PresetDialog", () => {
     });
   });
 
-  it("Laden ruft applyAdjustments + applyMasks und schliesst den Dialog", async () => {
+  it("Anwenden merged die Default-Gruppen in den Store und schliesst den Dialog", async () => {
     const linearWire = {
       type: "linear" as const,
       mask: { p1: { u: 0, v: 0 }, p2: { u: 1, v: 1 }, feather: 0.4 },
@@ -163,7 +163,9 @@ describe("PresetDialog", () => {
     ]);
     const { onClose, onLoadedPresetIdChange } = renderDialog(api);
     await waitFor(() => screen.getByTestId("preset-item-a"));
-    await userEvent.click(screen.getByTestId("preset-load-a"));
+    // Neuer Flow: Anwenden oeffnet das Schritt-Panel, Bestaetigen merged.
+    await userEvent.click(screen.getByTestId("preset-apply-a"));
+    await userEvent.click(screen.getByTestId("apply-confirm"));
 
     const s = useEditorStore.getState();
     expect(s.adjustments.contrast).toBe(0.4);

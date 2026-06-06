@@ -3,11 +3,16 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   ApiError,
   type Image,
+  type ImageEditState,
   type Preset,
   type PresetGenre,
+  type PresetGeometryWire,
 } from "../api/client";
 import { useApi } from "../api/use-api";
-import { masksToWire, wireToMasks } from "./maskSerializer";
+import StepCheckboxes from "./StepCheckboxes";
+import { masksToWire } from "./maskSerializer";
+import { defaultEnabledGroups } from "./profileGroups";
+import { parseProfileYaml, serializeProfileYaml } from "./profileYaml";
 import { useEditorStore } from "./store";
 
 const GENRE_OPTIONS: ReadonlyArray<{ value: PresetGenre; label: string }> = [
@@ -59,8 +64,18 @@ export default function PresetDialog({
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const masks = useEditorStore((s) => s.masks);
-  const applyAdjustments = useEditorStore((s) => s.applyAdjustments);
-  const applyMasks = useEditorStore((s) => s.applyMasks);
+  const applyProfileGroups = useEditorStore((s) => s.applyProfileGroups);
+  const cropRect = useEditorStore((s) => s.cropRect);
+  const straightenAngle = useEditorStore((s) => s.straightenAngle);
+  const lensCorrection = useEditorStore((s) => s.lensCorrection);
+  const lensProfileId = useEditorStore((s) => s.lensProfileId);
+  const manualLensOverride = useEditorStore((s) => s.manualLensOverride);
+
+  // Anwenden-Flow: ausgewaehltes Preset + angehakte Schritt-Gruppen.
+  const [applyTarget, setApplyTarget] = useState<Preset | null>(null);
+  const [enabledGroups, setEnabledGroups] = useState<Set<string>>(() =>
+    defaultEnabledGroups(),
+  );
 
   // Mount-Guard: verhindert setState nach Unmount oder Close, wenn ein
   // langlaufender Network-Request noch antwortet.
@@ -128,12 +143,87 @@ export default function PresetDialog({
     };
   }, [api, publish.enabled, images.length]);
 
-  const onLoad = (p: Preset) => {
+  // Aktuelle Editor-Geometrie als Wire-Objekt (zum Speichern in ein Preset).
+  const currentGeometry = (): PresetGeometryWire => ({
+    crop: cropRect,
+    straightenAngle,
+    lensCorrection,
+    lensProfileId,
+    manualLensOverride,
+  });
+
+  const onPickApply = (p: Preset) => {
     setError(null);
-    applyAdjustments(p.adjustments);
-    applyMasks(wireToMasks(p.masks));
-    onLoadedPresetIdChange(p.id);
+    setEnabledGroups(defaultEnabledGroups());
+    setApplyTarget(p);
+  };
+
+  const toggleGroup = (key: string) => {
+    setEnabledGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const onApplyConfirm = () => {
+    if (!applyTarget) return;
+    const profile: ImageEditState = {
+      adjustments: applyTarget.adjustments,
+      masks: applyTarget.masks,
+      crop: applyTarget.geometry?.crop ?? null,
+      straightenAngle: applyTarget.geometry?.straightenAngle ?? 0,
+      lensCorrection: applyTarget.geometry?.lensCorrection ?? null,
+      lensProfileId: applyTarget.geometry?.lensProfileId ?? null,
+      manualLensOverride: applyTarget.geometry?.manualLensOverride ?? false,
+    };
+    applyProfileGroups(profile, enabledGroups);
+    onLoadedPresetIdChange(applyTarget.id);
+    setApplyTarget(null);
     onClose();
+  };
+
+  const onExportYaml = (p: Preset) => {
+    const text = serializeProfileYaml({
+      name: p.name,
+      adjustments: p.adjustments,
+      masks: p.masks,
+      geometry: p.geometry,
+    });
+    const blob = new Blob([text], { type: "application/yaml" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${p.name.replace(/[^\w.-]+/g, "_")}.yaml`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const onImportYaml = async (file: File) => {
+    setError(null);
+    setBusy(true);
+    try {
+      const parsed = parseProfileYaml(await file.text());
+      const created = await api.createPreset({
+        name: parsed.name,
+        adjustments: parsed.adjustments,
+        masks: parsed.masks,
+        geometry: parsed.geometry ?? null,
+      });
+      if (!mountedRef.current) return;
+      onLoadedPresetIdChange(created.id);
+      await refresh();
+    } catch (err) {
+      if (!mountedRef.current) return;
+      if (err instanceof ApiError && err.status === 409) {
+        setError("Ein Preset mit diesem Namen existiert bereits.");
+      } else {
+        setError(err instanceof Error ? err.message : "Import fehlgeschlagen");
+      }
+    } finally {
+      if (mountedRef.current) setBusy(false);
+    }
   };
 
   const onDelete = async (id: string) => {
@@ -179,6 +269,7 @@ export default function PresetDialog({
         name: trimmed,
         adjustments,
         masks: masksToWire(masks),
+        geometry: currentGeometry(),
         ...(publish.enabled
           ? {
               visibility: "public" as const,
@@ -216,6 +307,7 @@ export default function PresetDialog({
         name: current.name,
         adjustments,
         masks: masksToWire(masks),
+        geometry: currentGeometry(),
       });
       if (!mountedRef.current) return;
       await refresh();
@@ -241,7 +333,7 @@ export default function PresetDialog({
       onClick={onClose}
     >
       <div
-        className="w-[420px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
+        className="relative w-[420px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
@@ -289,12 +381,21 @@ export default function PresetDialog({
                   <div className="flex gap-2 text-xs">
                     <button
                       type="button"
-                      data-testid={`preset-load-${p.id}`}
-                      onClick={() => onLoad(p)}
+                      data-testid={`preset-apply-${p.id}`}
+                      onClick={() => onPickApply(p)}
                       disabled={busy}
                       className="text-amber-200 hover:text-amber-100 disabled:opacity-40"
                     >
-                      Laden
+                      Anwenden
+                    </button>
+                    <button
+                      type="button"
+                      data-testid={`preset-export-${p.id}`}
+                      onClick={() => onExportYaml(p)}
+                      disabled={busy}
+                      className="text-stone-400 hover:text-stone-200 disabled:opacity-40"
+                    >
+                      YAML
                     </button>
                     <button
                       type="button"
@@ -446,6 +547,21 @@ export default function PresetDialog({
             </div>
           )}
 
+          <label className="block text-[10px] uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200 cursor-pointer">
+            YAML importieren
+            <input
+              type="file"
+              accept=".yaml,.yml,application/yaml,text/yaml"
+              data-testid="preset-import-input"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void onImportYaml(f);
+                e.target.value = "";
+              }}
+            />
+          </label>
+
           <div className="flex gap-2">
             <input
               type="text"
@@ -470,6 +586,42 @@ export default function PresetDialog({
             </button>
           </div>
         </div>
+
+        {applyTarget && (
+          <div
+            data-testid="apply-step-panel"
+            className="absolute inset-0 z-40 flex items-center justify-center bg-black/70"
+            onClick={() => setApplyTarget(null)}
+          >
+            <div
+              className="w-[320px] bg-stone-900 border border-stone-700 p-4 space-y-3"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-stone-200 text-sm">
+                {`„${applyTarget.name}“ anwenden`}
+              </h3>
+              <StepCheckboxes enabled={enabledGroups} onToggle={toggleGroup} />
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  data-testid="apply-cancel"
+                  onClick={() => setApplyTarget(null)}
+                  className="text-xs text-stone-500 hover:text-stone-300"
+                >
+                  Abbrechen
+                </button>
+                <button
+                  type="button"
+                  data-testid="apply-confirm"
+                  onClick={onApplyConfirm}
+                  className="px-3 py-1 text-[10px] uppercase tracking-[0.2em] bg-amber-200/20 border border-amber-300 text-amber-200 hover:bg-amber-200/30"
+                >
+                  Anwenden
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
