@@ -100,6 +100,7 @@ async def create_preset(
         name=payload.name,
         adjustments=payload.adjustments.model_dump(),
         masks=[m.model_dump() for m in payload.masks],
+        geometry=payload.geometry.model_dump() if payload.geometry else None,
         visibility=payload.visibility,
         genre=payload.genre,
         description=payload.description,
@@ -137,6 +138,7 @@ async def update_preset(
     p.name = payload.name
     p.adjustments = payload.adjustments.model_dump()
     p.masks = [m.model_dump() for m in payload.masks]
+    p.geometry = payload.geometry.model_dump() if payload.geometry else None
     # published_at: null -> NOW beim erstmaligen Veroeffentlichen,
     # sonst beibehalten. Bei privat: zuruecksetzen, damit Public-Listen
     # konsistent bleiben.
