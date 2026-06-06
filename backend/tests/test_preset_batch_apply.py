@@ -1,8 +1,5 @@
 """Batch-Apply: Profil auf mehrere Bilder anwenden (POST /presets/{id}/apply)."""
-import io
-
-import httpx
-from PIL import Image as PILImage
+import urllib.request
 
 ZERO_ADJ = {
     "exposure": 0.0, "contrast": 0.0, "highlights": 0.0, "shadows": 0.0,
@@ -10,23 +7,35 @@ ZERO_ADJ = {
     "vibrance": 0.0, "saturation": 0.0,
 }
 
+# Gueltige JPEG-Magic-Bytes vorne dran — confirm() validiert die echten
+# Anfangsbytes gegen image/jpeg. Kein echtes Bild noetig (der Pixel-Pfad ist
+# client-seitig), daher Magic-Byte-Literal statt Pillow. Gleiches Muster wie
+# test_images_api.py — haelt Pillow aus den Backend-Test-Deps.
+_JPEG_BYTES = b"\xff\xd8\xff\xe0fake-image-bytes"
+
+
+def _put_to_url(url: str, data: bytes, content_type: str) -> None:
+    req = urllib.request.Request(
+        url, data=data, method="PUT", headers={"Content-Type": content_type},
+    )
+    with urllib.request.urlopen(req, timeout=5) as resp:
+        assert 200 <= resp.status < 300
+
 
 async def _make_ready_image(client, headers) -> str:
-    """Legt ein Bild an, laedt JPEG-Bytes per Pre-Signed PUT hoch, confirmt."""
-    buf = io.BytesIO()
-    PILImage.new("RGB", (8, 8), (120, 120, 120)).save(buf, format="JPEG")
-    data = buf.getvalue()
+    """Legt ein Bild an, laedt JPEG-Magic-Bytes per Pre-Signed PUT hoch, confirmt."""
     init = await client.post(
         "/api/v1/images",
         headers=headers,
-        json={"filename": "x.jpg", "contentType": "image/jpeg", "sizeBytes": len(data)},
+        json={
+            "filename": "x.jpg",
+            "contentType": "image/jpeg",
+            "sizeBytes": len(_JPEG_BYTES),
+        },
     )
     assert init.status_code == 201, init.text
     image_id = init.json()["id"]
-    upload_url = init.json()["uploadUrl"]
-    async with httpx.AsyncClient() as raw:
-        put = await raw.put(upload_url, content=data, headers={"Content-Type": "image/jpeg"})
-        assert put.status_code in (200, 204), put.text
+    _put_to_url(init.json()["uploadUrl"], _JPEG_BYTES, "image/jpeg")
     conf = await client.post(f"/api/v1/images/{image_id}/confirm", headers=headers)
     assert conf.status_code == 200, conf.text
     return image_id
