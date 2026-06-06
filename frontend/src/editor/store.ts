@@ -1,5 +1,6 @@
 import { create } from "zustand";
 
+import type { ImageEditState } from "../api/client";
 import {
   type AdjustmentKey,
   type Adjustments,
@@ -53,6 +54,8 @@ import {
   clampCropRect,
   defaultCropRect,
 } from "./transform";
+import { masksToWire, wireToMasks } from "./maskSerializer";
+import { mergeGroups } from "./profileGroups";
 
 export const MAX_STRAIGHTEN_RADIANS = (10 * Math.PI) / 180; // ±10°
 
@@ -111,6 +114,12 @@ export interface EditorState {
     lensProfileId: string | null;
     manualLensOverride: boolean;
   }) => void;
+  /** Merged die angehakten Profil-Gruppen nicht-destruktiv in den aktuellen
+   *  Stand des offenen Bildes. Ein History-Snapshot (undobar). */
+  applyProfileGroups: (
+    profile: ImageEditState,
+    enabled: ReadonlySet<string>,
+  ) => void;
   past: ReadonlyArray<HistorySnapshot>;
   future: ReadonlyArray<HistorySnapshot>;
   undo: () => void;
@@ -475,6 +484,31 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       manualLensOverride: s.manualLensOverride,
       past: [],
       future: [],
+    });
+  },
+  applyProfileGroups: (profile, enabled) => {
+    _snapshotBefore(get());
+    set((state) => {
+      const base: ImageEditState = {
+        adjustments: state.adjustments,
+        masks: masksToWire(state.masks),
+        crop: state.cropRect,
+        straightenAngle: state.straightenAngle,
+        lensCorrection: state.lensCorrection,
+        lensProfileId: state.lensProfileId,
+        manualLensOverride: state.manualLensOverride,
+      };
+      const merged = mergeGroups(base, profile, enabled);
+      return {
+        adjustments: merged.adjustments,
+        masks: wireToMasks(merged.masks),
+        selectedMaskId: null,
+        cropRect: merged.crop ?? state.cropRect,
+        straightenAngle: merged.straightenAngle,
+        lensCorrection: merged.lensCorrection ?? state.lensCorrection,
+        lensProfileId: merged.lensProfileId,
+        manualLensOverride: merged.manualLensOverride,
+      };
     });
   },
   undo: () => {
