@@ -67,6 +67,7 @@ class Preset(Base):
         server_default=text("'[]'::jsonb"),
         default=list,
     )
+    geometry: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
     visibility: Mapped[str] = mapped_column(
         String(20), nullable=False, server_default=text("'private'"), default="private"
     )
