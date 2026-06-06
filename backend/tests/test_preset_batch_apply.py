@@ -1,5 +1,7 @@
 """Batch-Apply: Profil auf mehrere Bilder anwenden (POST /presets/{id}/apply)."""
 import io
+
+import httpx
 from PIL import Image as PILImage
 
 ZERO_ADJ = {
@@ -22,7 +24,6 @@ async def _make_ready_image(client, headers) -> str:
     assert init.status_code == 201, init.text
     image_id = init.json()["id"]
     upload_url = init.json()["uploadUrl"]
-    import httpx
     async with httpx.AsyncClient() as raw:
         put = await raw.put(upload_url, content=data, headers={"Content-Type": "image/jpeg"})
         assert put.status_code in (200, 204), put.text
@@ -31,9 +32,9 @@ async def _make_ready_image(client, headers) -> str:
     return image_id
 
 
-async def _create_preset(client, headers, name, **over) -> str:
-    body = {"name": name, "adjustments": {**ZERO_ADJ, **over.pop("adjustments", {})}}
-    body.update(over)
+async def _create_preset(client, headers, name, *, adjustments=None, **extra) -> str:
+    body = {"name": name, "adjustments": {**ZERO_ADJ, **(adjustments or {})}}
+    body.update(extra)
     r = await client.post("/api/v1/presets", headers=headers, json=body)
     assert r.status_code == 201, r.text
     return r.json()["id"]
@@ -107,3 +108,26 @@ async def test_batch_apply_unknown_group_returns_422(client, user_a):
         json={"imageIds": [img], "groups": ["voodoo"]},
     )
     assert r.status_code == 422
+
+
+async def test_batch_apply_crop_group_no_geometry_clears_existing_crop(client, user_a):
+    img = await _make_ready_image(client, user_a["headers"])
+    # Bild bekommt vorher einen Crop-State
+    await client.put(
+        f"/api/v1/images/{img}/edit",
+        headers=user_a["headers"],
+        json={"adjustments": ZERO_ADJ, "masks": [],
+              "crop": {"x0": 0.1, "y0": 0.1, "x1": 0.9, "y1": 0.9},
+              "straightenAngle": 0.1},
+    )
+    # Preset ohne Geometrie, aber crop-Gruppe angehakt
+    preset_id = await _create_preset(client, user_a["headers"], "Kein-Crop-Preset")
+    r = await client.post(
+        f"/api/v1/presets/{preset_id}/apply",
+        headers=user_a["headers"],
+        json={"imageIds": [img], "groups": ["crop"]},
+    )
+    assert r.status_code == 200
+    e = await client.get(f"/api/v1/images/{img}/edit", headers=user_a["headers"])
+    assert e.json()["crop"] is None            # gecleared (Preset hat keine Geometrie)
+    assert e.json()["straightenAngle"] == 0.0  # zurueckgesetzt

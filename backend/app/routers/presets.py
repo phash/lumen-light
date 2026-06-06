@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from pydantic import ValidationError as PydanticValidationError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -262,11 +263,18 @@ async def apply_preset_batch(
             enabled=payload.groups,
         )
         # Validierung (Ranges, Mask-Caps) + Normalisierung auf camelCase.
-        validated = ImageEditState.model_validate(merged).model_dump()
+        try:
+            validated = ImageEditState.model_validate(merged).model_dump()
+        except PydanticValidationError as exc:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Preset-Daten ungueltig fuer Bild {image_id}: {exc.error_count()} Fehler.",
+            ) from exc
         if edit is None:
             db.add(ImageEdit(image_id=image_id, state=validated))
         else:
             edit.state = validated
 
     await db.commit()
+    # applied == total by design (all-or-nothing). applied laesst Spielraum fuer kuenftigen partial-apply.
     return BatchApplyOut(applied=len(image_ids), total=len(image_ids))

@@ -9,8 +9,13 @@ from pathlib import Path
 from typing import Any
 
 _GROUPS_PATH = Path(__file__).resolve().parents[1] / "schemas" / "edit-groups.json"
-with _GROUPS_PATH.open(encoding="utf-8") as _fh:
-    GROUPS: list[dict[str, Any]] = json.load(_fh)
+try:
+    with _GROUPS_PATH.open(encoding="utf-8") as _fh:
+        GROUPS: list[dict[str, Any]] = json.load(_fh)
+except (FileNotFoundError, json.JSONDecodeError) as exc:
+    raise RuntimeError(
+        f"edit-groups.json nicht gefunden oder ungueltig: {_GROUPS_PATH}"
+    ) from exc
 
 KNOWN_GROUP_KEYS: set[str] = {g["key"] for g in GROUPS}
 
