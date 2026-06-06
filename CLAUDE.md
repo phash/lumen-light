@@ -91,7 +91,13 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `backend/app/auth.py` | JWT-Verify (PyJWT, RS256-Whitelist), JIT-User-Provisioning + 20 Default-Presets (4 Looks + 6 Genre + 10 Motiv: Macro/Astro/Food/Hochzeit/Innen/Konzert/Strand/Schnee/Herbst/Architektur). `current_admin`-Dep prueft Realm-Role `admin`. |
 | `backend/app/schemas.py` | Adjustments, Mask-Discriminated-Union (`MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`), `extra="forbid"`. `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` → Wire-Keys camelCase, Eingang akzeptiert beide via `populate_by_name=True`. |
 | `backend/app/rate_limit.py` | slowapi-Limiter (SHA-256-Token-Hash-Key, IP-Fallback). `LUMEN_RATELIMIT_STORAGE` ueber env auf Redis-URI fuer Multi-Worker-Setups |
-| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) |
+| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) |
+| `backend/schemas/edit-groups.json` | Single Source fuer das Gruppen->Feld-Mapping (8 Gruppen: tone/color/hsl/curve/detail/masks/crop/lens). Backend liest zur Laufzeit, Frontend importiert beim Build (Vite-Repo-Root-Context). |
+| `backend/app/profile_groups.py` | Laedt die JSON, stellt `GROUPS`, `KNOWN_GROUP_KEYS`, `merge_edit_state(...)` bereit. Batch-Apply-Endpoint nutzt `merge_edit_state` fuer nicht-destruktiven Merge. |
+| `frontend/src/editor/profileGroups.ts` | Importiert `backend/schemas/edit-groups.json`, exportiert `GROUPS`, `defaultEnabledGroups()`, `mergeGroups(base, profile, enabled)`. Gleicher Repo-Root-Build-Context wie `lensProfile.ts`. |
+| `frontend/src/editor/profileYaml.ts` | `serializeProfileYaml` / `parseProfileYaml` (yaml-npm). YAML-Format-Version 1 (`lumenProfile: 1`). Import schickt geparste Struktur an `POST /presets` — Pydantic validiert. |
+| `frontend/src/editor/StepCheckboxes.tsx` | Geteilte Schritt-Checkbox-Gruppe (8 Gruppen, crop/lens default aus mit bildspezifisch-Hinweis). Genutzt in PresetDialog + BatchApplyModal. |
+| `frontend/src/pages/BatchApplyModal.tsx` | Library-Batch-Modal: Preset-Auswahl + StepCheckboxes + `POST /presets/{id}/apply` → `onApplied(applied, total)`. Triggerbar per `batch-apply-open`-Button wenn ≥1 Bild selektiert. |
 | `backend/app/routers/admin.py` | Admin-Endpoints (Users-Liste/Disable, Stats, Feedback-Inbox + PATCH). Gating via `current_admin` Dep |
 | `backend/app/routers/feedback.py` | User-Feedback-Submit. Honeypot `website` (silent drop), Rate-Limit 5/h |
 | `frontend/src/auth/useIsAdmin.ts` | Decodet `auth.user.access_token` (KC schreibt `realm_access`/`resource_access` nur dort, nicht ins ID-Token); ID-Token-Profile als Fallback. `RequireAdmin` schuetzt `/admin`. |
@@ -142,6 +148,14 @@ gesetzt — pytest läuft sonst gegen 429er.
   `HSL_CHANNELS=8`, `DISTORTION_GAIN`, `VIGNETTE_GAIN` leben in
   TS-Modulen UND als GLSL-Literal. Sync-Test in
   `frontend/tests/shader-limits-sync.test.ts`.
+- **edit-groups.json ist Single Source** fuer das Gruppen->Feld-Mapping:
+  `backend/schemas/edit-groups.json`. Das Backend liest sie zur Laufzeit
+  aus `backend/schemas/` (die Datei liegt im Backend-Build-Context `../backend`
+  und wird per `COPY . .` ins Image uebernommen). Das Frontend importiert
+  sie beim Build via Vite ueber den Repo-Root-Build-Context — gleiches
+  Muster wie `lensProfile.ts` mit `infra/lensfun/profiles.json`. **Wichtig:**
+  `infra/` liegt NICHT im Backend-Image (Build-Context ist `../backend`),
+  deshalb liegt die Datei in `backend/schemas/` und nicht in `infra/`.
 - **`pnpm exec` braucht `cwd=frontend/`**: aus dem Repo-Root kommt
   `ERR_PNPM_RECURSIVE_EXEC_NO_PACKAGE`. `cd frontend && pnpm exec ...`.
 - **localStorage in vitest ist flaky**: Module-Level-Variable als
