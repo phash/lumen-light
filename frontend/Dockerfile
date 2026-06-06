@@ -15,6 +15,10 @@ RUN pnpm install --frozen-lockfile
 COPY frontend/ ./
 # infra/ als Geschwister fuer den lensfun-Profiles-Import (../../../infra/...).
 COPY infra/ /app/infra/
+# edit-groups.json als Geschwister: profileGroups.ts importiert beim Vite-Build
+# ../../../backend/schemas/edit-groups.json. Nur diese eine Datei (per
+# .dockerignore-Ausnahme im Context), nicht das ganze backend/.
+COPY backend/schemas/edit-groups.json /app/backend/schemas/edit-groups.json
 
 # Vite-Build mit Build-Time-Vars als Fallback. Production-Run-Time nutzt
 # /config.js, das per Volume-Mount ueberschrieben wird (siehe

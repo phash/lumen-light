@@ -149,13 +149,18 @@ gesetzt — pytest läuft sonst gegen 429er.
   TS-Modulen UND als GLSL-Literal. Sync-Test in
   `frontend/tests/shader-limits-sync.test.ts`.
 - **edit-groups.json ist Single Source** fuer das Gruppen->Feld-Mapping:
-  `backend/schemas/edit-groups.json`. Das Backend liest sie zur Laufzeit
-  aus `backend/schemas/` (die Datei liegt im Backend-Build-Context `../backend`
-  und wird per `COPY . .` ins Image uebernommen). Das Frontend importiert
-  sie beim Build via Vite ueber den Repo-Root-Build-Context — gleiches
-  Muster wie `lensProfile.ts` mit `infra/lensfun/profiles.json`. **Wichtig:**
-  `infra/` liegt NICHT im Backend-Image (Build-Context ist `../backend`),
-  deshalb liegt die Datei in `backend/schemas/` und nicht in `infra/`.
+  `backend/schemas/edit-groups.json`. Das Backend liest sie zur Laufzeit aus
+  `backend/schemas/` (Backend-Build-Context `../backend`, per `COPY . .` im
+  Image). Das Frontend importiert sie beim Vite-Build via
+  `../../../backend/schemas/edit-groups.json` (`profileGroups.ts`). **Docker-
+  Falle:** anders als `lensProfile.ts`/`infra/` ist das NICHT frei — die
+  Datei muss aktiv in den Frontend-Build-Context: (1) Root-`.dockerignore`
+  schliesst `backend/schemas/*` aus, mit Ausnahme
+  `!backend/schemas/edit-groups.json`; (2) `frontend/Dockerfile` macht
+  `COPY backend/schemas/edit-groups.json /app/backend/schemas/edit-groups.json`
+  vor `pnpm build`. Ohne beides bricht NUR der Prod-Docker-Build (lokal/CI
+  `pnpm build` findet die Datei auf der Platte). `infra/` liegt zudem nicht im
+  Backend-Image — deshalb `backend/schemas/` statt `infra/` als Ablageort.
 - **`pnpm exec` braucht `cwd=frontend/`**: aus dem Repo-Root kommt
   `ERR_PNPM_RECURSIVE_EXEC_NO_PACKAGE`. `cd frontend && pnpm exec ...`.
 - **localStorage in vitest ist flaky**: Module-Level-Variable als
