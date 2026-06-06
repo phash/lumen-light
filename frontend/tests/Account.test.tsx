@@ -60,6 +60,7 @@ function makeFakeApi(): FakeApi {
     adminStats: vi.fn(),
     adminListFeedback: vi.fn(),
     adminPatchFeedback: vi.fn(),
+    applyPresetBatch: vi.fn(),
   };
 }
 
@@ -69,6 +70,7 @@ function makePreset(overrides: Partial<Preset> = {}): Preset {
     name: "Mein Public",
     adjustments: defaultAdjustments(),
     masks: [],
+    geometry: null,
     visibility: "public",
     genre: "portrait",
     description: "x",

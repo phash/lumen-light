@@ -111,6 +111,7 @@ export interface Preset {
   name: string;
   adjustments: Adjustments;
   masks: PresetMask[];
+  geometry: PresetGeometryWire | null;
   visibility: PresetVisibility;
   genre: PresetGenre | null;
   description: string | null;
@@ -126,6 +127,7 @@ export interface PresetWritePayload {
   name: string;
   adjustments: Adjustments;
   masks?: PresetMask[];
+  geometry?: PresetGeometryWire | null;
   visibility?: PresetVisibility;
   genre?: PresetGenre | null;
   description?: string | null;
@@ -170,6 +172,14 @@ export interface LensCorrectionWire {
   vignette: number;
   tcaR: number;
   tcaB: number;
+}
+
+export interface PresetGeometryWire {
+  crop: CropRectWire | null;
+  straightenAngle: number;
+  lensCorrection: LensCorrectionWire | null;
+  lensProfileId: string | null;
+  manualLensOverride: boolean;
 }
 
 export interface ImageEditState {
@@ -229,6 +239,11 @@ export interface MarketplaceApply {
   masks: PresetMask[];
 }
 
+export interface BatchApplyResult {
+  applied: number;
+  total: number;
+}
+
 export interface Profile {
   id: string;
   handle: string | null;
@@ -256,6 +271,10 @@ export interface ApiClient {
   createPreset(payload: PresetWritePayload): Promise<Preset>;
   updatePreset(id: string, payload: PresetWritePayload): Promise<Preset>;
   deletePreset(id: string): Promise<void>;
+  applyPresetBatch(
+    id: string,
+    payload: { imageIds: string[]; groups: string[] },
+  ): Promise<BatchApplyResult>;
 
   listImages(state?: ImageStateFilter): Promise<Image[]>;
   initUpload(filename: string, contentType: string, sizeBytes: number): Promise<ImageInit>;
@@ -391,6 +410,11 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       }),
     deletePreset: (id) =>
       request<void>(`/presets/${id}`, { method: "DELETE" }),
+    applyPresetBatch: (id, payload) =>
+      request<BatchApplyResult>(`/presets/${id}/apply`, {
+        method: "POST",
+        body: JSON.stringify(payload),
+      }),
 
     listImages: (state = "ready") =>
       request<Image[]>(`/images?state=${state}`),

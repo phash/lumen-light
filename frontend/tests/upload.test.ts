@@ -38,6 +38,7 @@ function makeFakeApi(): FakeApi {
     adminStats: vi.fn(),
     adminListFeedback: vi.fn(),
     adminPatchFeedback: vi.fn(),
+    applyPresetBatch: vi.fn(),
   };
 }
 
