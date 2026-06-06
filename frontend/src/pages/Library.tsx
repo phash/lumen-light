@@ -5,6 +5,7 @@ import { useApi } from "../api/use-api";
 import type { Image } from "../api/client";
 import { uploadImage } from "../api/upload";
 import { FILE_PICKER_ACCEPT } from "../editor/raw";
+import BatchApplyModal from "./BatchApplyModal";
 
 function formatSize(bytes: number | null): string {
   if (bytes == null) return "—";
@@ -25,6 +26,17 @@ export default function Library() {
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [stripExif, setStripExif] = useState(true);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [batchOpen, setBatchOpen] = useState(false);
+  const [toast, setToast] = useState<string | null>(null);
+
+  const toggleSelected = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
 
   const refresh = useCallback(async () => {
     try {
@@ -126,6 +138,25 @@ export default function Library() {
         </p>
       )}
 
+      {images.length > 0 && (
+        <div className="mt-6 flex items-center gap-4 text-sm">
+          <button
+            type="button"
+            data-testid="batch-apply-open"
+            onClick={() => setBatchOpen(true)}
+            disabled={selected.size === 0}
+            className="text-amber-200 hover:underline disabled:opacity-40 disabled:no-underline"
+          >
+            Profil anwenden ({selected.size})
+          </button>
+          {toast && (
+            <span data-testid="batch-toast" className="text-stone-400">
+              {toast}
+            </span>
+          )}
+        </div>
+      )}
+
       <ul className="mt-6 divide-y divide-stone-800" data-testid="image-list">
         {images.length === 0 && (
           <li className="py-3 text-stone-500 italic">Noch keine Bilder hochgeladen.</li>
@@ -136,6 +167,13 @@ export default function Library() {
             data-testid={`image-row-${img.id}`}
             className="flex items-center justify-between py-3"
           >
+            <input
+              type="checkbox"
+              data-testid={`image-select-${img.id}`}
+              checked={selected.has(img.id)}
+              onChange={() => toggleSelected(img.id)}
+              className="accent-amber-300 mr-3"
+            />
             <div>
               <div className="text-stone-200">{img.originalFilename}</div>
               <div className="text-xs text-stone-500">
@@ -162,6 +200,17 @@ export default function Library() {
           </li>
         ))}
       </ul>
+
+      {batchOpen && (
+        <BatchApplyModal
+          imageIds={[...selected]}
+          onClose={() => setBatchOpen(false)}
+          onApplied={(applied, total) => {
+            setToast(`${applied} von ${total} angewendet`);
+            setSelected(new Set());
+          }}
+        />
+      )}
     </section>
   );
 }
