@@ -11,6 +11,27 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * FastAPI liefert `detail` als String (HTTPException) ODER als Array von
+ * `{msg, loc}`-Objekten (RequestValidationError, 422). Letzteres wuerde sonst
+ * als „[object Object]" in der Fehlermeldung landen — hier zu lesbarem Text
+ * zusammenfassen (relevant z.B. beim YAML-Import).
+ */
+function formatErrorDetail(detail: unknown): string | null {
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((e) =>
+        e && typeof e === "object" && "msg" in e
+          ? String((e as { msg: unknown }).msg)
+          : null,
+      )
+      .filter((m): m is string => m !== null);
+    if (msgs.length > 0) return msgs.join("; ");
+  }
+  return null;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -384,8 +405,12 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     if (!res.ok) {
       const body = (await res.json().catch(() => ({
         detail: res.statusText,
-      }))) as { detail?: string; code?: string };
-      throw new ApiError(res.status, body.detail ?? res.statusText, body.code);
+      }))) as { detail?: unknown; code?: string };
+      throw new ApiError(
+        res.status,
+        formatErrorDetail(body.detail) ?? res.statusText,
+        body.code,
+      );
     }
     if (res.status === 204) {
       return undefined as T;

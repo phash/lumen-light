@@ -140,3 +140,43 @@ async def test_batch_apply_crop_group_no_geometry_clears_existing_crop(client, u
     e = await client.get(f"/api/v1/images/{img}/edit", headers=user_a["headers"])
     assert e.json()["crop"] is None            # gecleared (Preset hat keine Geometrie)
     assert e.json()["straightenAngle"] == 0.0  # zurueckgesetzt
+
+
+async def test_batch_apply_default_preset_with_missing_keys_succeeds(client, user_a):
+    """Regression (CRITICAL): die 10 Look/Genre-Default-Presets (vor Phase E/G)
+    haben kein highlightRecovery/localContrast/sharpness/noiseReduction in der
+    gespeicherten JSONB. Batch-Apply mit den Default-Gruppen (tone+detail an)
+    darf NICHT 400 werfen — die rohe Preset-JSONB wird vor dem Merge ueber das
+    Adjustments-Modell normalisiert (fehlende Felder -> Default 0)."""
+    presets = (
+        await client.get("/api/v1/presets", headers=user_a["headers"])
+    ).json()
+    punchy = next(p for p in presets if p["name"] == "Punchy")
+    img = await _make_ready_image(client, user_a["headers"])
+    r = await client.post(
+        f"/api/v1/presets/{punchy['id']}/apply",
+        headers=user_a["headers"],
+        json={"imageIds": [img], "groups": ["tone", "detail"]},
+    )
+    assert r.status_code == 200, r.text
+    assert r.json() == {"applied": 1, "total": 1}
+    e = (
+        await client.get(f"/api/v1/images/{img}/edit", headers=user_a["headers"])
+    ).json()
+    # Fehlende Felder mit Default 0 gefuellt (kein None -> keine 400):
+    assert e["adjustments"]["highlightRecovery"] == 0
+    assert e["adjustments"]["localContrast"] == 0
+    # tone-Gruppe hat Punchys Kontrast uebernommen:
+    assert e["adjustments"]["contrast"] == punchy["adjustments"]["contrast"]
+
+
+async def test_batch_apply_empty_groups_returns_422(client, user_a):
+    """Leeres groups ist kein erlaubter No-op mehr (min_length=1)."""
+    img = await _make_ready_image(client, user_a["headers"])
+    preset_id = await _create_preset(client, user_a["headers"], "Empty-Groups")
+    r = await client.post(
+        f"/api/v1/presets/{preset_id}/apply",
+        headers=user_a["headers"],
+        json={"imageIds": [img], "groups": []},
+    )
+    assert r.status_code == 422

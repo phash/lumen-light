@@ -25,10 +25,14 @@ export function isIdentityCrop(rect: CropRect): boolean {
 }
 
 export function clampCropRect(rect: CropRect, minSize = 0.05): CropRect {
-  const x0 = Math.max(0, Math.min(rect.x0, 1 - minSize));
-  const y0 = Math.max(0, Math.min(rect.y0, 1 - minSize));
-  const x1 = Math.max(x0 + minSize, Math.min(rect.x1, 1));
-  const y1 = Math.max(y0 + minSize, Math.min(rect.y1, 1));
+  // Nicht-finite Eingaben (z.B. ein defektes/importiertes Crop-Objekt mit
+  // fehlenden Feldern) auf die Identitaet zuruecksetzen — sonst laufen NaN
+  // ueber uvTransformMatrix in die WebGL-Pipeline und das Bild bleibt leer.
+  const f = (v: number, fallback: number) => (Number.isFinite(v) ? v : fallback);
+  const x0 = Math.max(0, Math.min(f(rect.x0, 0), 1 - minSize));
+  const y0 = Math.max(0, Math.min(f(rect.y0, 0), 1 - minSize));
+  const x1 = Math.max(x0 + minSize, Math.min(f(rect.x1, 1), 1));
+  const y1 = Math.max(y0 + minSize, Math.min(f(rect.y1, 1), 1));
   return { x0, y0, x1, y1 };
 }
 

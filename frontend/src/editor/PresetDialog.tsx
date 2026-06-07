@@ -202,6 +202,12 @@ export default function PresetDialog({
 
   const onImportYaml = async (file: File) => {
     setError(null);
+    // Datei-Groesse vor dem Lesen begrenzen: ein Profil ist wenige KB; eine
+    // riesige YAML wuerde nur den Tab beim Parsen einfrieren.
+    if (file.size > 256 * 1024) {
+      setError("Datei zu groß (max. 256 KB für ein Profil).");
+      return;
+    }
     setBusy(true);
     try {
       const parsed = parseProfileYaml(await file.text());

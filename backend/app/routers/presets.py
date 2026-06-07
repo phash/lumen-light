@@ -257,7 +257,14 @@ async def apply_preset_batch(
         base_state = edit.state if edit is not None else default_state
         merged = merge_edit_state(
             base_state=base_state,
-            preset_adjustments=preset.adjustments,
+            # Rohe JSONB durch das Adjustments-Modell normalisieren: aelteren
+            # Presets (z.B. den Default-Presets vor Phase E/G) fehlen Felder
+            # wie highlightRecovery/localContrast. Ohne Normalisierung setzt
+            # merge_edit_state dort None ein -> ImageEditState-Validation 400.
+            # PresetOut/Marketplace-Apply normalisieren genauso.
+            preset_adjustments=Adjustments.model_validate(
+                preset.adjustments
+            ).model_dump(),
             preset_masks=preset.masks,
             preset_geometry=preset.geometry,
             enabled=payload.groups,
@@ -275,6 +282,15 @@ async def apply_preset_batch(
         else:
             edit.state = validated
 
-    await db.commit()
+    try:
+        await db.commit()
+    except IntegrityError as exc:
+        # Race: ein Zielbild wurde zwischen Ownership-Check und Commit
+        # geloescht (FK auf image_edits.image_id) -> sauberes 409 statt 500.
+        await db.rollback()
+        raise HTTPException(
+            status_code=409,
+            detail="Ein Zielbild wurde waehrend des Anwendens geaendert oder geloescht.",
+        ) from exc
     # applied == total by design (all-or-nothing). applied laesst Spielraum fuer kuenftigen partial-apply.
     return BatchApplyOut(applied=len(image_ids), total=len(image_ids))
