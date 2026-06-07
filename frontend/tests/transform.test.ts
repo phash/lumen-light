@@ -186,3 +186,21 @@ describe("updateCropOnDrag", () => {
     expect(tiny.height).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe("clampCropRect NaN-Guard", () => {
+  it("nicht-finite/defekte Felder werden auf Identitaet geklemmt (kein NaN)", () => {
+    // Simuliert ein defektes/importiertes Crop-Objekt (fehlende/falsche Felder).
+    const garbage = {
+      x0: NaN,
+      y0: undefined,
+      x1: "x",
+      y1: null,
+    } as unknown as CropRect;
+    const r = clampCropRect(garbage);
+    for (const v of [r.x0, r.y0, r.x1, r.y1]) {
+      expect(Number.isFinite(v)).toBe(true);
+    }
+    expect(r.x1).toBeGreaterThan(r.x0);
+    expect(r.y1).toBeGreaterThan(r.y0);
+  });
+});

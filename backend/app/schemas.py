@@ -123,16 +123,45 @@ class Adjustments(BaseModel):
     toneCurve: ToneCurve | None = None  # noqa: N815
 
 
-# ----- Preset-Geometrie -----
+# ----- Geometrie (Crop / Lens) -----
+
+# Editor-Begradigung ist auf ~10deg begrenzt (MAX_STRAIGHTEN_RADIANS im
+# Frontend-Store, 10*pi/180 = 0.17453 rad). Wir spiegeln das als Obergrenze,
+# damit ein importiertes/Batch-angewendetes Profil keinen Winkel ausserhalb
+# der Editor-Range einschleust. 0.18 = ~10.3deg, deckt 10deg mit Reserve.
+MAX_PRESET_STRAIGHTEN = 0.18
+
+
+class CropRect(BaseModel):
+    """Crop-Rechteck in normalisierten Quell-UV [0,1]. Frueher ein opaker
+    dict — jetzt getypt, damit weder Garbage (NaN-Render im Editor) noch
+    unbounded JSON (Storage-DoS) in presets.geometry/image_edits landet."""
+    model_config = CAMEL_BASE_CONFIG
+    x0: float = Field(ge=0, le=1)
+    y0: float = Field(ge=0, le=1)
+    x1: float = Field(ge=0, le=1)
+    y1: float = Field(ge=0, le=1)
+
+
+class LensCorrectionData(BaseModel):
+    """Objektiv-Korrektur-Parameter. Getypt (siehe CropRect-Begruendung).
+    tca_r/tca_b -> Wire tcaR/tcaB via alias_generator."""
+    model_config = CAMEL_BASE_CONFIG
+    distortion: float = Field(ge=-1, le=1)
+    vignette: float = Field(ge=-1, le=1)
+    tca_r: float = Field(ge=-1, le=1)
+    tca_b: float = Field(ge=-1, le=1)
+
 
 class PresetGeometry(BaseModel):
     """Geometrie-Teil eines Presets (Crop/Straighten/Lens). Form identisch
-    zu den Geometrie-Feldern in ImageEditState; Crop/LensCorrection bleiben
-    opake dicts (Pixel-Pfad lebt im Frontend)."""
+    zu den Geometrie-Feldern in ImageEditState."""
     model_config = CAMEL_BASE_CONFIG
-    crop: dict | None = None
-    straighten_angle: float = Field(default=0, ge=-3.15, le=3.15)
-    lens_correction: dict | None = None
+    crop: CropRect | None = None
+    straighten_angle: float = Field(
+        default=0, ge=-MAX_PRESET_STRAIGHTEN, le=MAX_PRESET_STRAIGHTEN
+    )
+    lens_correction: LensCorrectionData | None = None
     lens_profile_id: str | None = Field(default=None, max_length=80)
     manual_lens_override: bool = False
 
@@ -328,7 +357,9 @@ class BatchApplyIn(BaseModel):
     Schritt-Gruppen-Keys; unbekannte Keys -> 422."""
     model_config = CAMEL_BASE_CONFIG
     image_ids: list[UUID] = Field(min_length=1, max_length=200)
-    groups: list[str] = Field(default_factory=list)
+    # min_length=1: ein leeres groups waere ein No-op, der trotzdem Default-
+    # Edit-Rows materialisieren und faelschlich Erfolg melden wuerde.
+    groups: list[str] = Field(min_length=1, max_length=8)
 
     @model_validator(mode="after")
     def _check_groups(self) -> Self:
@@ -407,15 +438,15 @@ class ImageEditState(BaseModel):
     """Persistierter Editor-Bearbeitungsstand eines Bildes (C1, Multi-Device).
 
     `adjustments` und `masks` werden strikt validiert (inkl. Mask-Caps —
-    identisch zu PresetIn). Crop/Lens-Geometrie ist client-seitige Form und
-    wird als opake JSONB-Objekte durchgereicht (der Pixel-Pfad lebt im
-    Frontend). camelCase-Wireformat wie der Rest."""
+    identisch zu PresetIn). Crop/Lens-Geometrie ist getypt (CropRect/
+    LensCorrectionData); der Pixel-Pfad lebt im Frontend. camelCase-Wireformat
+    wie der Rest."""
     model_config = CAMEL_BASE_CONFIG
     adjustments: Adjustments
     masks: list[MaskData] = Field(default_factory=list)
-    crop: dict | None = None
+    crop: CropRect | None = None
     straighten_angle: float = Field(default=0, ge=-3.15, le=3.15)
-    lens_correction: dict | None = None
+    lens_correction: LensCorrectionData | None = None
     lens_profile_id: str | None = Field(default=None, max_length=80)
     manual_lens_override: bool = False
 

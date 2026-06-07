@@ -74,3 +74,19 @@ describe("vignetteMultiplier", () => {
     expect(corner_neg).toBeCloseTo(1 - 0.5 * VIGNETTE_GAIN * 0.5, 6);
   });
 });
+
+describe("clampLens NaN-Guard", () => {
+  it("nicht-finite/defekte Werte werden zu 0 (neutral, kein NaN)", () => {
+    const garbage = {
+      distortion: NaN,
+      vignette: undefined,
+      tcaR: "x",
+      tcaB: null,
+    } as unknown as Parameters<typeof clampLens>[0];
+    const r = clampLens(garbage);
+    for (const v of [r.distortion, r.vignette, r.tcaR, r.tcaB]) {
+      expect(Number.isFinite(v)).toBe(true);
+    }
+    expect(r.distortion).toBe(0);
+  });
+});

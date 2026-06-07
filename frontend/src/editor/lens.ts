@@ -34,11 +34,14 @@ export const VIGNETTE_GAIN = 2.0;
 export const TCA_GAIN = 0.05;
 
 export function clampLens(c: LensCorrection): LensCorrection {
+  // Nicht-finite Werte (defektes/importiertes Lens-Objekt) -> 0 (neutral),
+  // sonst laufen NaN in die Shader-Uniforms.
+  const f = (v: number) => (Number.isFinite(v) ? Math.max(-1, Math.min(1, v)) : 0);
   return {
-    distortion: Math.max(-1, Math.min(1, c.distortion)),
-    vignette: Math.max(-1, Math.min(1, c.vignette)),
-    tcaR: Math.max(-1, Math.min(1, c.tcaR)),
-    tcaB: Math.max(-1, Math.min(1, c.tcaB)),
+    distortion: f(c.distortion),
+    vignette: f(c.vignette),
+    tcaR: f(c.tcaR),
+    tcaB: f(c.tcaB),
   };
 }
 

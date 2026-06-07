@@ -34,7 +34,7 @@ async def test_put_then_get_round_trips_edit_state(client, user_a):
     state = {
         "adjustments": {"exposure": 0.5, "contrast": 0.2},
         "masks": [],
-        "crop": {"x": 0.1, "y": 0.1, "w": 0.8, "h": 0.8},
+        "crop": {"x0": 0.1, "y0": 0.1, "x1": 0.9, "y1": 0.9},
         "straightenAngle": 0.05,
         "lensProfileId": "canon-ef-50",
         "manualLensOverride": True,
@@ -53,7 +53,7 @@ async def test_put_then_get_round_trips_edit_state(client, user_a):
     assert body["adjustments"]["contrast"] == 0.2
     # Default-Felder werden aufgefuellt
     assert body["adjustments"]["highlightRecovery"] == 0
-    assert body["crop"] == {"x": 0.1, "y": 0.1, "w": 0.8, "h": 0.8}
+    assert body["crop"] == {"x0": 0.1, "y0": 0.1, "x1": 0.9, "y1": 0.9}
     assert body["straightenAngle"] == 0.05
     assert body["lensProfileId"] == "canon-ef-50"
     assert body["manualLensOverride"] is True
