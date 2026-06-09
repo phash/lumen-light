@@ -11,7 +11,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 
-import { render, PRERENDER_ROUTES, LANDING_JSONLD, HREFLANG_HTML } from "../dist-ssr/entry-server.js";
+import { render, PRERENDER_ROUTES, LANDING_JSONLD, HREFLANG_HTML, HEAD_META } from "../dist-ssr/entry-server.js";
 
 const FRONTEND = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const DIST = resolve(FRONTEND, "dist");
@@ -22,23 +22,16 @@ const BASE = "https://lumen.mr-development.de";
 // Sub-Routen (Marketplace/Rechtsseiten) bekommen eigene title/description/og
 // und KEIN Landing-JSON-LD (sonst FAQPage ohne sichtbare FAQ -> Google-
 // Strukturdaten-Verstoss).
+// title/description/ogTitle der CONTENT-getriebenen Routen kommen aus der
+// Single Source (HEAD_META aus dem SSR-Bundle) — keine Duplikate hier. Nur
+// `file` + (fuer Landing-Locales) `locale` ergaenzen. Rechtsseiten haben kein
+// CONTENT-Pendant und bleiben als Literale.
 const ROUTE_META = {
   // Flat-Files (datenschutz.html) statt Verzeichnis (datenschutz/index.html):
   // nginx liefert sie ueber `try_files $uri.html` ohne 301-Trailing-Slash.
-  "/": { file: "index.html", title: null, description: null, locale: "de" },
-  "/en": {
-    file: "en.html",
-    title: "Free Lightroom Alternative in Your Browser — Lumen",
-    description:
-      "Lumen is a free, lightweight, self-hostable Lightroom alternative: develop RAW photos right in your browser — local masks, HSL, tone curve, auto-tone. No subscription, no forced cloud.",
-    locale: "en",
-  },
-  "/marketplace": {
-    file: "marketplace.html",
-    title: "Kostenlose Presets — Lumen · light Marketplace",
-    description:
-      "Kostenlose Foto-Presets für Lumen · light, die browser-basierte Lightroom-Alternative. Ohne Konto stöbern, mit einem Klick anwenden.",
-  },
+  "/": { file: "index.html", ...HEAD_META["/"], locale: "de" },
+  "/en": { file: "en.html", ...HEAD_META["/en"], locale: "en" },
+  "/marketplace": { file: "marketplace.html", ...HEAD_META["/marketplace"] },
   "/datenschutz": {
     file: "datenschutz.html",
     title: "Datenschutz — Lumen · light",
@@ -82,10 +75,12 @@ function applyHead(html, route) {
   // ueber mehrere Zeilen formatiert sein koennen (name=/content= getrennt).
   if (meta?.title) {
     out = replaceOnce(out, /<title>[\s\S]*?<\/title>/, `<title>${meta.title}</title>`, route, "title");
+    // og:title nutzt ogTitle, faellt sonst auf title zurueck (Rechtsseiten).
+    const ogTitle = meta.ogTitle ?? meta.title;
     out = replaceOnce(
       out,
       /<meta\s+property="og:title"[\s\S]*?\/>/,
-      `<meta property="og:title" content="${meta.title}" />`,
+      `<meta property="og:title" content="${ogTitle}" />`,
       route,
       "og:title",
     );

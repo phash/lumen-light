@@ -15,6 +15,7 @@ import { AuthContext, type AuthContextProps } from "react-oidc-context";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import Header from "./components/Header";
+import { CONTENT } from "./i18n/content";
 import { jsonLdScripts } from "./i18n/structuredData";
 import Datenschutz from "./pages/Datenschutz";
 import Impressum from "./pages/Impressum";
@@ -99,3 +100,29 @@ export const HREFLANG_HTML =
   `<link rel="alternate" hreflang="de" href="${BASE}/" />\n` +
   `    <link rel="alternate" hreflang="en" href="${BASE}/en" />\n` +
   `    <link rel="alternate" hreflang="x-default" href="${BASE}/en" />`;
+
+// Head-Meta (title/description/ogTitle) aus der Single Source CONTENT — vom
+// Node-Prerender konsumiert, damit diese Strings NICHT in prerender.mjs
+// dupliziert werden. Rechtsseiten haben kein CONTENT-Pendant und bleiben dort
+// als Literale. ogTitle faellt im Prerender auf title zurueck, wenn leer.
+export interface RouteHead {
+  readonly title: string;
+  readonly description: string;
+  readonly ogTitle?: string;
+}
+export const HEAD_META: Record<"/" | "/en" | "/marketplace", RouteHead> = {
+  "/": {
+    title: CONTENT.de.meta.title,
+    description: CONTENT.de.meta.description,
+    ogTitle: CONTENT.de.meta.ogTitle,
+  },
+  "/en": {
+    title: CONTENT.en.meta.title,
+    description: CONTENT.en.meta.description,
+    ogTitle: CONTENT.en.meta.ogTitle,
+  },
+  "/marketplace": {
+    title: CONTENT.de.marketplace.title,
+    description: CONTENT.de.marketplace.description,
+  },
+};
