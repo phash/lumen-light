@@ -127,10 +127,12 @@ curl -s https://lumen.mr-development.de/sitemap.xml
 curl -sI https://lumen.mr-development.de/og-image.png   # Content-Type: image/png
 ```
 
-Nach jeder Landing-/JSON-LD-Änderung: sichtbare FAQ und `FAQPage`-JSON-LD
-synchron halten (`tests/Landing.test.tsx` schützt die sichtbare Seite;
-das JSON-LD in `index.html` ist manuell gepflegt — bei Änderung beide
-anfassen).
+Seit der Bilingual-Iteration (siehe Update unten) werden sichtbare FAQ und
+`FAQPage`-JSON-LD **aus derselben Quelle** (`src/i18n/content.ts` →
+`structuredData.ts`) erzeugt und beim Prerender injiziert — die fruehere
+„JSON-LD in `index.html` manuell synchron halten"-Pflicht entfaellt.
+`tests/Landing.test.tsx` und `tests/structuredData.test.ts` sichern die
+Deckungsgleichheit pro Locale ab.
 
 ### Update (2026-06-09) — Bilingual DE+EN + GEO-Politur
 
