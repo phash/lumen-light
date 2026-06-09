@@ -131,3 +131,23 @@ Nach jeder Landing-/JSON-LD-Änderung: sichtbare FAQ und `FAQPage`-JSON-LD
 synchron halten (`tests/Landing.test.tsx` schützt die sichtbare Seite;
 das JSON-LD in `index.html` ist manuell gepflegt — bei Änderung beide
 anfassen).
+
+### Update (2026-06-09) — Bilingual DE+EN + GEO-Politur
+
+- **Zweisprachig DE+EN**: geteiltes `frontend/src/i18n/content.ts` (Single
+  Source), `Landing` locale-aware, `/en`-Route + Flat-File `en.html`,
+  hreflang-Cluster (`de`/`en`/`x-default`=`/en`), Header-Sprachumschalter.
+  Die `/en`-Seite setzt außerdem `<html lang="en">` + `og:locale=en_US`.
+- **JSON-LD aus CONTENT generiert** (`structuredData.ts`): SoftwareApplication
+  + FAQPage + neue **HowTo**, pro Locale, `inLanguage` gesetzt — FAQ und Markup
+  per Konstruktion deckungsgleich (alte „manuell synchron halten"-Falle weg).
+  Injektion im Prerender gehärtet: Funktion statt String-Replace (sicher gegen
+  `$` im Inhalt), `<`→`<`-Escaping im JSON-LD-Output.
+- **Keyword-Schärfung**: H1/Title DE „kostenlose Lightroom-Alternative",
+  EN „free Lightroom alternative"; +3 FAQ (Open Source / Installation / Kameras).
+- **/marketplace prerendert** echten Intro-Inhalt (`MarketplaceIntro`,
+  SSR-sicher) statt Landing-Fallback.
+- **`public/llms.txt`** für AI-Engines.
+- **nginx**: Junk-/Scan-Pfade (`*.php`, `.env`, `/wp-*`, `/.git`) → 404.
+- Damit Befunde #1–#7 des 2026-06-09-Reviews geschlossen (außer #7
+  Pro-Preset-Detailseiten — bleibt bewusst offen).
