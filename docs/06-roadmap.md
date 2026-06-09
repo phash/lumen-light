@@ -26,6 +26,7 @@ Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Anna
 | F1 | Preset-Marketplace (publish/apply/fork/report, Auto-Hide, Profil) | ✓ abgeschlossen |
 | D1/D2/D4/D6 | Editor-Refactor + Wireformat camelCase + Tests | ✓ abgeschlossen |
 | P1 | Bearbeitungs-Profile: YAML-Export/Import, Schritt-Checkboxen, Batch-Anwendung | ✓ abgeschlossen |
+| SEO1 | Bilingual DE+EN + GEO/SEO/AEO-Politur (2026-06-09) | ✓ abgeschlossen |
 
 ## Phase 1 · Bildverarbeitung im Browser ✓
 
@@ -84,6 +85,10 @@ Recherche-Output siehe `docs/superpowers/specs/2026-04-28-phase-g-pro-correction
 ## Phase P · Bearbeitungs-Profile ✓
 
 YAML-Export/Import von Presets (Client-seitig, Format-Version 1 `lumenProfile: 1`), granulare Schritt-Checkboxen beim Anwenden (8 Gruppen, Single-Source-JSON `backend/schemas/edit-groups.json`), nicht-destruktive Batch-Anwendung via `POST /presets/{id}/apply` auf mehrere Bilder gleichzeitig. Migration 009 (`009_preset_geometry`) ergaenzt `presets.geometry` JSONB fuer Crop/Straighten/Lens-Daten. Bibliothek zeigt Mehrfachauswahl + Batch-Apply-Modal.
+
+## Phase SEO1 · Bilingual DE+EN + GEO/SEO/AEO-Politur ✓ (2026-06-09)
+
+Geteiltes i18n-Content-Modul (`content.ts`) als Single Source für DE+EN-Strings und JSON-LD-Generierung. `Landing` locale-aware mit `lang`-Prop; `/en`-Route + prerenderte Flat-File `en.html` mit `<html lang="en">` + `og:locale=en_US`. hreflang-Cluster (`de`/`en`/`x-default`). Header-Sprachumschalter (native `<a>`, echte Navigation für locale-korrekte HTML). JSON-LD (SoftwareApplication + FAQPage + HowTo) pro Locale aus CONTENT generiert — FAQ und Structured Data per Konstruktion deckungsgleich. Marketplace-Intro SSR-sicher prerendert. `public/llms.txt` für AI-Engine-Crawler. nginx: Junk-/Scan-Pfade → 404 statt Soft-404-SPA-200.
 
 ## Aktuell offen (Stand 2026-04-28)
 

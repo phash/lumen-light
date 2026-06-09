@@ -26,7 +26,8 @@ export default function App() {
         <Header />
         <main>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<Landing lang="de" />} />
+            <Route path="/en" element={<Landing lang="en" />} />
             <Route path="/login" element={<Login />} />
             <Route path="/register" element={<Register />} />
             <Route path="/callback" element={<Callback />} />
