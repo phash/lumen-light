@@ -8,7 +8,7 @@ import { render } from "../src/entry-server";
 describe("entry-server render (Prerender-Quelle)", () => {
   it("rendert die Landing mit FAQ + Vergleich als HTML", () => {
     const html = render("/");
-    expect(html).toContain("RAW im Browser entwickeln");
+    expect(html).toContain("Die kostenlose Lightroom-Alternative im Browser");
     expect(html).toContain("Häufige Fragen");
     expect(html).toContain("Lumen oder Lightroom");
     // FAQ-Frage muss im statischen HTML stehen (AEO)

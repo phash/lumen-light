@@ -11,7 +11,7 @@ describe("MarketplaceIntro", () => {
       screen.getByRole("heading", { level: 1, name: CONTENT[loc].marketplace.heading }),
     ).toBeInTheDocument();
     expect(screen.getByTestId("marketplace-intro").textContent).toContain(
-      CONTENT[loc].marketplace.body.slice(0, 20),
+      CONTENT[loc].marketplace.body,
     );
   });
 });

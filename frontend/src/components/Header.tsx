@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "react-oidc-context";
-import { NavLink } from "react-router-dom";
+import { NavLink, useLocation } from "react-router-dom";
 
 import { useIsAdmin } from "../auth/useIsAdmin";
 import FeedbackDialog from "./FeedbackDialog";
@@ -16,6 +16,8 @@ const baseLinks: ReadonlyArray<{ to: string; label: string }> = [
 export default function Header() {
   const auth = useAuth();
   const isAdmin = useIsAdmin();
+  // Aktive Landing-Locale fuer den Sprachumschalter (EN-Landing liegt auf /en).
+  const isEnActive = useLocation().pathname.startsWith("/en");
   const [mobileOpen, setMobileOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   // Wird bei jedem Open inkrementiert — gibt dem Dialog einen neuen Key,
@@ -86,11 +88,31 @@ export default function Header() {
         <div className="flex items-center gap-3 text-sm">
           {/* Sprachumschalter — Landing DE auf /, EN auf /en */}
           <span className="hidden sm:flex items-center gap-1 text-xs" data-testid="lang-switch">
-            <a href="/" className="text-stone-400 hover:text-amber-200" hrefLang="de" aria-label="Deutsch">
+            <a
+              href="/"
+              className={
+                isEnActive
+                  ? "text-stone-400 hover:text-amber-200"
+                  : "text-amber-200 font-medium"
+              }
+              hrefLang="de"
+              aria-label="Deutsch"
+              aria-current={isEnActive ? undefined : "true"}
+            >
               DE
             </a>
             <span className="text-stone-600">/</span>
-            <a href="/en" className="text-stone-400 hover:text-amber-200" hrefLang="en" aria-label="English">
+            <a
+              href="/en"
+              className={
+                isEnActive
+                  ? "text-amber-200 font-medium"
+                  : "text-stone-400 hover:text-amber-200"
+              }
+              hrefLang="en"
+              aria-label="English"
+              aria-current={isEnActive ? "true" : undefined}
+            >
               EN
             </a>
           </span>
