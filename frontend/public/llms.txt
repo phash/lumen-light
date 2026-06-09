@@ -1,0 +1,21 @@
+# Lumen · light
+
+> A free, lightweight, self-hostable Lightroom alternative: develop RAW photos directly in your browser via WebGL2. No subscription, no forced cloud, open source (AGPL-3.0).
+
+## What it is
+- Free, browser-based RAW photo developer — a lightweight alternative to Adobe Lightroom.
+- Runs entirely in the browser (WebGL2). No desktop install, no plugin.
+- Self-hostable via Docker Compose (FastAPI, React, Postgres, Keycloak, S3-compatible Garage).
+- Images are processed locally in the browser and stay on your device unless you save them to your own storage.
+
+## Key facts
+- Price: free (0 EUR), no subscription.
+- License: AGPL-3.0, source on GitHub.
+- RAW formats: CR2, CR3, NEF, ARW, RAF, DNG, RW2, ORF (Canon, Nikon, Sony, Fujifilm, Panasonic, Olympus).
+- Editing: 10 classic sliders, HSL mixer, tone curve, up to 4 linear + 4 radial local masks, auto-tone, auto white balance, genre presets, full-resolution export.
+
+## Links
+- Home (German): https://lumen.mr-development.de/
+- Home (English): https://lumen.mr-development.de/en
+- Preset marketplace: https://lumen.mr-development.de/marketplace
+- Source code: https://github.com/phash/lumen-light
