@@ -35,6 +35,6 @@ describe("structuredData", () => {
     // Parsebar: alle JSON-Bloecke wieder einlesbar
     const jsons = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
     expect(jsons.length).toBe(3);
-    for (const m of jsons) expect(() => JSON.parse(m[1]!)).not.toThrow();
+    for (const m of jsons) expect(() => { JSON.parse(m[1]!); }).not.toThrow();
   });
 });
