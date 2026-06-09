@@ -15,9 +15,11 @@ import { AuthContext, type AuthContextProps } from "react-oidc-context";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import Header from "./components/Header";
+import { jsonLdScripts } from "./i18n/structuredData";
 import Datenschutz from "./pages/Datenschutz";
 import Impressum from "./pages/Impressum";
 import Landing from "./pages/Landing";
+import MarketplaceIntro from "./pages/MarketplaceIntro";
 
 const noop = () => undefined;
 const asyncNoop = () => Promise.resolve();
@@ -46,7 +48,13 @@ const ssrAuth = {
 } as unknown as AuthContextProps;
 
 // Routen, die prerendert werden. Single Source fuer prerender.mjs + sitemap.
-export const PRERENDER_ROUTES: readonly string[] = ["/", "/datenschutz", "/impressum"];
+export const PRERENDER_ROUTES: readonly string[] = [
+  "/",
+  "/en",
+  "/marketplace",
+  "/datenschutz",
+  "/impressum",
+];
 
 function Shell({ url }: { url: string }): ReactElement {
   return (
@@ -55,7 +63,18 @@ function Shell({ url }: { url: string }): ReactElement {
         <Header />
         <main>
           <Routes>
-            <Route path="/" element={<Landing />} />
+            <Route path="/" element={<Landing lang="de" />} />
+            <Route path="/en" element={<Landing lang="en" />} />
+            {/* Standalone-Prerender braucht eigenes px: MarketplaceIntro hat
+                bewusst kein horizontales Padding (live liefert die Section es). */}
+            <Route
+              path="/marketplace"
+              element={
+                <div className="px-8 py-8 max-w-6xl mx-auto">
+                  <MarketplaceIntro lang="de" />
+                </div>
+              }
+            />
             <Route path="/datenschutz" element={<Datenschutz />} />
             <Route path="/impressum" element={<Impressum />} />
           </Routes>
@@ -68,3 +87,15 @@ function Shell({ url }: { url: string }): ReactElement {
 export function render(url: string): string {
   return renderToString(<Shell url={url} />);
 }
+
+// Vom Node-Prerender (scripts/prerender.mjs) gelesen: locale-korrekte JSON-LD-
+// Bloecke + hreflang-Alternates. Single Source dafuer ist structuredData.ts.
+const BASE = "https://lumen.mr-development.de";
+export const LANDING_JSONLD: Record<"de" | "en", string> = {
+  de: jsonLdScripts("de"),
+  en: jsonLdScripts("en"),
+};
+export const HREFLANG_HTML =
+  `<link rel="alternate" hreflang="de" href="${BASE}/" />\n` +
+  `    <link rel="alternate" hreflang="en" href="${BASE}/en" />\n` +
+  `    <link rel="alternate" hreflang="x-default" href="${BASE}/en" />`;
