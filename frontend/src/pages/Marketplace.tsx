@@ -21,6 +21,7 @@ import { wireToMasks } from "../editor/maskSerializer";
 import { useEditorStore } from "../editor/store";
 
 import { ALL_GENRES, GENRE_LABEL } from "../editor/genreLabel";
+import MarketplaceIntro from "./MarketplaceIntro";
 
 export default function Marketplace() {
   const api = useApi();
@@ -110,6 +111,7 @@ export default function Marketplace() {
 
   return (
     <section data-testid="page-marketplace" className="px-8 py-8 max-w-6xl mx-auto">
+      <MarketplaceIntro lang="de" />
       <h1 className="text-3xl text-stone-100">Marketplace</h1>
       <p className="mt-2 text-sm text-stone-500">
         Öffentliche Presets aus der Community — anwenden, in eigene Bibliothek
