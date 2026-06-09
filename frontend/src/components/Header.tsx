@@ -84,6 +84,16 @@ export default function Header() {
         </button>
 
         <div className="flex items-center gap-3 text-sm">
+          {/* Sprachumschalter — Landing DE auf /, EN auf /en */}
+          <span className="hidden sm:flex items-center gap-1 text-xs" data-testid="lang-switch">
+            <a href="/" className="text-stone-400 hover:text-amber-200" hrefLang="de" aria-label="Deutsch">
+              DE
+            </a>
+            <span className="text-stone-600">/</span>
+            <a href="/en" className="text-stone-400 hover:text-amber-200" hrefLang="en" aria-label="English">
+              EN
+            </a>
+          </span>
           {auth.isAuthenticated ? (
             <>
               <span
