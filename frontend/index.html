@@ -13,6 +13,7 @@
       content="Lumen · light ist ein selbst-gehosteter, browser-basierter RAW-Foto-Editor — eine schlanke, abofreie Lightroom-Alternative. RAW-Entwicklung, lokale Masken, HSL & Tonkurve direkt im Browser via WebGL2."
     />
     <link rel="canonical" href="https://lumen.mr-development.de/" />
+    <!-- HREFLANG_SLOT -->
     <meta name="robots" content="index, follow, max-image-preview:large" />
 
     <!-- Open Graph -->
@@ -43,46 +44,9 @@
     <link rel="apple-touch-icon" href="/lumen-icon.svg" />
 
     <!-- Strukturierte Daten: liegen im rohen HTML und sind damit auch fuer
-         JS-lose Crawler/KI-Engines lesbar (GEO/AEO). -->
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "SoftwareApplication",
-      "name": "Lumen · light",
-      "applicationCategory": "MultimediaApplication",
-      "applicationSubCategory": "RAW Photo Editor",
-      "operatingSystem": "Web",
-      "url": "https://lumen.mr-development.de/",
-      "description": "Selbst-gehosteter, browser-basierter RAW-Foto-Editor (Lightroom-Alternative). RAW-Entwicklung, lokale Masken, HSL und Tonkurve direkt im Browser via WebGL2.",
-      "offers": { "@type": "Offer", "price": "0", "priceCurrency": "EUR" },
-      "featureList": [
-        "RAW-Decoding (CR2, CR3, NEF, ARW, RAF, DNG, RW2, ORF)",
-        "WebGL2-Bildpipeline",
-        "Lineare und radiale Masken",
-        "HSL-Mischer und Tonkurve",
-        "Auto-Tone und Auto-Weissabgleich",
-        "Preset-Marketplace",
-        "Selbst-hostbar via Docker"
-      ],
-      "softwareVersion": "0.1.0",
-      "author": { "@type": "Person", "name": "Manuel Rödig" },
-      "sameAs": ["https://github.com/phash/lumen-light"]
-    }
-    </script>
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
-      "@type": "FAQPage",
-      "mainEntity": [
-        { "@type": "Question", "name": "Was ist Lumen · light?", "acceptedAnswer": { "@type": "Answer", "text": "Lumen ist ein selbst-gehosteter, browser-basierter RAW-Foto-Editor — eine schlanke Lightroom-Alternative. RAW-Dateien werden direkt im Browser via WebGL2 entwickelt, ohne Cloud-Zwang." } },
-        { "@type": "Question", "name": "Welche RAW-Formate unterstützt Lumen?", "acceptedAnswer": { "@type": "Answer", "text": "CR2, CR3, NEF, ARW, RAF, DNG, RW2 und ORF — geöffnet via libraw-wasm direkt im Browser." } },
-        { "@type": "Question", "name": "Ist Lumen eine Lightroom-Alternative?", "acceptedAnswer": { "@type": "Answer", "text": "Ja. Lumen bietet die klassischen Regler (Belichtung, Kontrast, Lichter, Tiefen, HSL, Tonkurve), lokale Masken und Presets — als selbst-hostbare, abofreie Web-App." } },
-        { "@type": "Question", "name": "Kann ich Lumen selbst hosten?", "acceptedAnswer": { "@type": "Answer", "text": "Ja, via Docker Compose (FastAPI, React, Postgres, Keycloak, S3). Läuft auf einem kleinen VPS." } },
-        { "@type": "Question", "name": "Kostet Lumen etwas?", "acceptedAnswer": { "@type": "Answer", "text": "Nein. Lumen ist kostenlos und selbst-hostbar — kein Abo, keine Cloud-Pflicht." } },
-        { "@type": "Question", "name": "Bleiben meine Bilder privat?", "acceptedAnswer": { "@type": "Answer", "text": "Ja. Die Bildverarbeitung läuft lokal im Browser; Bilder bleiben auf deinem Gerät, außer du sicherst sie bewusst im eigenen Storage." } }
-      ]
-    }
-    </script>
+         JS-lose Crawler/KI-Engines lesbar (GEO/AEO). Locale-korrekt beim
+         Prerender injiziert (structuredData.ts via entry-server.tsx). -->
+    <!-- LD_JSON_SLOT -->
 
     <!-- Run-Time-Konfiguration MUSS vor dem Entry-Modul laufen (siehe Kommentar
          frueher): blockierend im <head>. -->
