@@ -62,9 +62,13 @@ export function buildJsonLd(locale: Locale): JsonLdBlock[] {
 // das aus dem SSR-Bundle).
 export function jsonLdScripts(locale: Locale): string {
   return buildJsonLd(locale)
-    .map(
-      (block) =>
-        `<script type="application/ld+json">\n${JSON.stringify(block, null, 2)}\n</script>`,
-    )
+    .map((block) => {
+      // `<` in der JSON-Nutzlast als < escapen — sonst koennte ein
+      // kuenftiger Inhalt mit "</script>" das Script-Element vorzeitig
+      // schliessen. Standard-Haertung fuer eingebettetes ld+json; nur die
+      // Nutzlast, nicht die <script>-Tags selbst.
+      const payload = JSON.stringify(block, null, 2).replace(/</g, "\\u003c");
+      return `<script type="application/ld+json">\n${payload}\n</script>`;
+    })
     .join("\n    ");
 }

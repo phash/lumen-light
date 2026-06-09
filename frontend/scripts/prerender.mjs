@@ -61,13 +61,16 @@ if (!ROOT_RE.test(template)) {
 
 // Ersetzt genau ein Vorkommen und wirft, falls das Muster fehlt (fail-loud:
 // faengt Template-Drift in index.html, statt still Landing-Defaults zu lassen).
+// Replacement als Funktion: verhindert, dass `$`-Sequenzen im injizierten
+// Inhalt (z. B. "~$10/month") von String.replace als Backreference gedeutet
+// werden — der Inhalt wird immer literal eingesetzt.
 function replaceOnce(html, re, repl, route, label) {
   if (!re.test(html)) {
     throw new Error(
       `prerender: Head-Muster '${label}' nicht im Template gefunden (Route ${route})`,
     );
   }
-  return html.replace(re, repl);
+  return html.replace(re, () => repl);
 }
 
 function applyHead(html, route) {
@@ -119,22 +122,28 @@ function applyHead(html, route) {
     "og:url",
   );
 
-  // hreflang nur fuer das de/en-Landing-Cluster; Rechtsseiten/Marketplace ohne.
-  const HREFLANG_RE = /\s*<!-- HREFLANG_SLOT -->/;
+  // Seiten-Sprachsignale fuer das de/en-Landing-Cluster locale-korrekt setzen.
+  // Rechtsseiten/Marketplace bleiben deutsch (kein meta.locale -> unveraendert).
   if (meta.locale) {
-    out = replaceOnce(out, HREFLANG_RE, `\n    ${HREFLANG_HTML}`, route, "hreflang");
-  } else if (HREFLANG_RE.test(out)) {
-    out = out.replace(HREFLANG_RE, "");
+    const OG_LOCALE = { de: "de_DE", en: "en_US" };
+    out = replaceOnce(out, /<html lang="[^"]*">/, `<html lang="${meta.locale}">`, route, "html-lang");
+    out = replaceOnce(
+      out,
+      /<meta\s+property="og:locale"[\s\S]*?\/>/,
+      `<meta property="og:locale" content="${OG_LOCALE[meta.locale]}" />`,
+      route,
+      "og:locale",
+    );
   }
 
-  // JSON-LD: Landing-Locales bekommen den generierten Block, alle anderen Routen
-  // bekommen KEIN JSON-LD (Slot leer entfernen) — verhindert FAQPage ohne FAQ.
+  // hreflang + JSON-LD: Landing-Locales bekommen den generierten Block, alle
+  // anderen Routen bekommen leere Slots. Beide Zweige laufen ueber replaceOnce
+  // (fail-loud) — fehlt ein Slot-Marker, bricht der Build statt still daneben.
+  const HREFLANG_RE = /\s*<!-- HREFLANG_SLOT -->/;
+  out = replaceOnce(out, HREFLANG_RE, meta.locale ? `\n    ${HREFLANG_HTML}` : "", route, "hreflang");
+
   const LD_RE = /\s*<!-- LD_JSON_SLOT -->/;
-  if (meta.locale) {
-    out = replaceOnce(out, LD_RE, `\n    ${LANDING_JSONLD[meta.locale]}`, route, "ld-json");
-  } else if (LD_RE.test(out)) {
-    out = out.replace(LD_RE, "");
-  }
+  out = replaceOnce(out, LD_RE, meta.locale ? `\n    ${LANDING_JSONLD[meta.locale]}` : "", route, "ld-json");
   return out;
 }
 
