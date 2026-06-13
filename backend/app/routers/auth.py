@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import current_user
 from app.database import get_db
 from app.keycloak_admin import delete_user as kc_delete_user
-from app.models import Image, Preset, PresetReport, User
+from app.models import Feedback, Image, ImageEdit, Preset, PresetReport, User
 from app.rate_limit import limiter
 from app.schemas import (
     CAMEL_BASE_CONFIG,
@@ -48,8 +48,15 @@ async def update_profile(
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> ProfileOut:
-    user.handle = payload.handle
-    user.bio = payload.bio
+    # PATCH ist partiell: nur tatsaechlich gesendete Felder anfassen, sonst
+    # loescht ein PATCH, der z.B. nur bio schickt, stillschweigend den handle
+    # (= oeffentlicher Marketplace-Creator-Name). exclude_unset trennt
+    # "nicht gesendet" sauber von "explizit auf null gesetzt".
+    data = payload.model_dump(exclude_unset=True)
+    if "handle" in data:
+        user.handle = data["handle"]
+    if "bio" in data:
+        user.bio = data["bio"]
     try:
         await db.commit()
     except IntegrityError:
@@ -137,6 +144,10 @@ class ImageExport(BaseModel):
     confirmed_at: datetime | None
     download_url: str
     download_url_expires_in: int
+    # Persistierter Editor-Bearbeitungsstand (C1) — User-erzeugter Inhalt,
+    # gehoert in einen vollstaendigen Art.-15/20-Export. None, wenn das Bild
+    # nie im Editor bearbeitet/gespeichert wurde.
+    edit_state: dict | None = None
 
 
 class PresetExport(BaseModel):
@@ -147,6 +158,9 @@ class PresetExport(BaseModel):
     name: str
     adjustments: dict
     masks: list
+    # Crop/Straighten/Lens-Geometrie ist User-erzeugter Inhalt (Migration
+    # 009) und gehoert in den Export.
+    geometry: dict | None
     visibility: str
     genre: str | None
     description: str | None
@@ -169,6 +183,19 @@ class ReportExport(BaseModel):
     created_at: datetime
 
 
+class FeedbackExport(BaseModel):
+    """Vom User abgegebenes Feedback. Der Message-Text ist freier User-Inhalt
+    und auskunfts-/uebertragbarkeitspflichtig (Art. 15 + 20) — und bleibt bei
+    Loeschung nur anonymisiert erhalten, ist also gerade vorher exportwichtig."""
+    model_config = CAMEL_OUT_CONFIG
+    id: UUID
+    kind: str
+    message: str
+    page: str | None
+    status: str
+    created_at: datetime
+
+
 class MeExport(BaseModel):
     model_config = CAMEL_BASE_CONFIG
     id: UUID
@@ -179,6 +206,7 @@ class MeExport(BaseModel):
     presets: list[PresetExport]
     images: list[ImageExport]
     submitted_reports: list[ReportExport]
+    feedbacks: list[FeedbackExport]
 
 
 @router.get("/me/export", response_model=MeExport)
@@ -202,8 +230,20 @@ async def export_me(
     images_result = await db.execute(
         select(Image).where(Image.user_id == user.id).order_by(Image.created_at)
     )
+    image_rows = images_result.scalars().all()
+
+    # Edit-States der eigenen Bilder in einer Query (image_id -> state).
+    edits_by_image: dict[UUID, dict] = {}
+    if image_rows:
+        edit_rows = await db.execute(
+            select(ImageEdit).where(
+                ImageEdit.image_id.in_([img.id for img in image_rows])
+            )
+        )
+        edits_by_image = {e.image_id: e.state for e in edit_rows.scalars().all()}
+
     images: list[ImageExport] = []
-    for img in images_result.scalars().all():
+    for img in image_rows:
         url, expires = storage.presign_get(img.bucket_key)
         images.append(ImageExport(
             id=img.id,
@@ -215,6 +255,7 @@ async def export_me(
             confirmed_at=img.confirmed_at,
             download_url=url,
             download_url_expires_in=expires,
+            edit_state=edits_by_image.get(img.id),
         ))
 
     reports_result = await db.execute(
@@ -223,6 +264,15 @@ async def export_me(
         .order_by(PresetReport.created_at)
     )
     reports = [ReportExport.model_validate(r) for r in reports_result.scalars().all()]
+
+    feedback_result = await db.execute(
+        select(Feedback)
+        .where(Feedback.user_id == user.id)
+        .order_by(Feedback.created_at)
+    )
+    feedbacks = [
+        FeedbackExport.model_validate(f) for f in feedback_result.scalars().all()
+    ]
 
     return MeExport(
         id=user.id,
@@ -233,4 +283,5 @@ async def export_me(
         presets=presets,
         images=images,
         submitted_reports=reports,
+        feedbacks=feedbacks,
     )

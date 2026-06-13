@@ -9,6 +9,7 @@ import {
   type PresetGeometryWire,
 } from "../api/client";
 import { useApi } from "../api/use-api";
+import Modal from "../components/Modal";
 import StepCheckboxes from "./StepCheckboxes";
 import { masksToWire } from "./maskSerializer";
 import { defaultEnabledGroups } from "./profileGroups";
@@ -333,17 +334,15 @@ export default function PresetDialog({
       : null;
 
   return (
-    <div
-      data-testid="preset-dialog"
-      className="absolute inset-0 z-30 flex items-center justify-center bg-black/60"
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      testId="preset-dialog"
+      labelledBy="preset-dialog-title"
+      backdropClassName="absolute inset-0 z-30 flex items-center justify-center bg-black/60"
+      cardClassName="relative w-[420px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
     >
-      <div
-        className="relative w-[420px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
-        onClick={(e) => e.stopPropagation()}
-      >
         <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
-          <h2 className="text-stone-200">Presets</h2>
+          <h2 id="preset-dialog-title" className="text-stone-200">Presets</h2>
           <button
             type="button"
             data-testid="preset-close"
@@ -629,7 +628,6 @@ export default function PresetDialog({
             </div>
           </div>
         )}
-      </div>
-    </div>
+    </Modal>
   );
 }

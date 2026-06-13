@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { stripJpegExifBytes } from "../src/api/exifStrip";
+import { stripExifIfJpeg, stripJpegExifBytes } from "../src/api/exifStrip";
 
 /**
  * Konstruiert ein minimales JPEG-Skelett mit konfigurierbaren Segmenten.
@@ -107,5 +107,34 @@ describe("stripJpegExifBytes", () => {
     expect(out[out.length - 2]).toBe(0xff);
     expect(out[out.length - 1]).toBe(0xd9);
     expect(Array.from(out).includes(0xab)).toBe(true);
+  });
+});
+
+describe("stripExifIfJpeg (File-Wrapper-Gate)", () => {
+  it("strippt JPEG auch bei leerem MIME-Type und Grossbuchstaben-Endung", async () => {
+    // Datei mit EXIF (APP1), aber type="" und Name "foto.JPG" — das Gate muss
+    // anhand der Endung greifen, sonst landet GPS/EXIF ungestrippt im Upload.
+    const withExif = jpeg([[0xe1, new Uint8Array(20).fill(0x42)]]);
+    const file = new File([new Uint8Array(withExif)], "foto.JPG", { type: "" });
+    const out = await stripExifIfJpeg(file);
+    const outBytes = new Uint8Array(await out.arrayBuffer());
+    expect(outBytes.length).toBeLessThan(withExif.length);
+    // Ergebnis-File traegt einen JPEG-Type (Fallback, da Original leer war).
+    expect(out.type).toBe("image/jpeg");
+  });
+
+  it("laesst Nicht-JPEG (PNG) als identische Objekt-Referenz zurueck", async () => {
+    const png = new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
+    const file = new File([png], "bild.png", { type: "image/png" });
+    const out = await stripExifIfJpeg(file);
+    expect(out).toBe(file);
+  });
+
+  it("gibt JPEG ohne EXIF unveraendert (gleiche Referenz) zurueck", async () => {
+    // Nur JFIF/APP0, kein APP1 -> stripJpegExifBytes ist ein No-op.
+    const noExif = jpeg([[0xe0, new Uint8Array([0x4a, 0x46, 0x49, 0x46, 0x00])]]);
+    const file = new File([new Uint8Array(noExif)], "clean.jpg", { type: "image/jpeg" });
+    const out = await stripExifIfJpeg(file);
+    expect(out).toBe(file);
   });
 });

@@ -12,7 +12,7 @@ export default function Datenschutz() {
   return (
     <section data-testid="page-datenschutz" className="px-8 py-12 max-w-3xl mx-auto text-stone-300">
       <h1 className="text-3xl text-stone-100">Datenschutz</h1>
-      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-05-29</p>
+      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-06-13</p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">1. Verantwortlicher</h2>
       <p className="mt-3">
@@ -60,8 +60,26 @@ export default function Datenschutz() {
           MIME-Type, Größe, Upload-Zeitpunkt. Bilder verbleiben in
           deinem privaten Bucket-Bereich; sie werden nicht öffentlich
           ausgeliefert. EXIF-Metadaten in JPEG werden auf Wunsch beim
-          Upload entfernt (Toggle in der Bibliothek). RAW-Metadaten
-          bleiben erhalten.
+          Upload entfernt (Toggle in der Bibliothek, standardmäßig an).
+          <span className="text-stone-200"> Bei RAW-Dateien werden Metadaten
+          (inkl. eventueller GPS-/Standortdaten) clientseitig nicht entfernt
+          und bleiben in der Originaldatei erhalten</span> — sie liegen jedoch
+          ausschließlich in deinem privaten Bereich und werden nie öffentlich
+          ausgeliefert.
+        </li>
+        <li>
+          <span className="text-stone-200">Bearbeitungsstand:</span> wenn du
+          ein Bild im Editor bearbeitest, kann der Bearbeitungsstand
+          (Slider-Werte, Masken, Crop) optional in deinem Account gespeichert
+          werden, damit du auf einem zweiten Gerät weiterarbeiten kannst. Inhalt
+          ist keine PII; Löschung mit dem Bild.
+        </li>
+        <li>
+          <span className="text-stone-200">Feedback:</span> wenn du über den
+          Feedback-Dialog eine Meldung schickst, speichern wir Art (Bug/Idee/
+          Sonstiges), deinen Freitext, die aufgerufene Seite und deine User-ID
+          zur Produktverbesserung. Rechtsgrundlage: Art. 6 Abs. 1 lit. f
+          (berechtigtes Interesse an der Verbesserung des Dienstes).
         </li>
         <li>
           <span className="text-stone-200">Server-Logs:</span>
@@ -89,10 +107,12 @@ export default function Datenschutz() {
         <span className="text-stone-200">Drittlandtransfer:</span> Wenn du
         die optionale Smart-Preset-Erkennung aktivierst (Account › Smart
         Suggestion, deaktiviert per default), lädt dein Browser einmalig
-        ein Modell von Google&apos;s TensorFlow-CDN
-        (<code className="text-stone-400">storage.googleapis.com</code>,
-        USA). Dabei wird deine IP-Adresse + User-Agent an Google
-        übermittelt — Drittlandtransfer im Sinne von Art. 44 DSGVO.
+        ein Modell von Google&apos;s/Kaggle&apos;s TensorFlow-Hosting
+        (<code className="text-stone-400">storage.googleapis.com</code>,{" "}
+        <code className="text-stone-400">tfhub.dev</code>,{" "}
+        <code className="text-stone-400">www.kaggle.com</code> — alle USA, je
+        nach TF.js-Routing). Dabei wird deine IP-Adresse + User-Agent an
+        Google/Kaggle übermittelt — Drittlandtransfer im Sinne von Art. 44 DSGVO.
         Rechtsgrundlage: Art. 6 Abs. 1 lit. a + Art. 49 Abs. 1 lit. a
         (ausdrückliche Einwilligung). Die eigentliche Bilderkennung
         läuft danach lokal in deinem Browser; deine Bilder verlassen
@@ -101,6 +121,14 @@ export default function Datenschutz() {
       <p className="mt-3">
         Zur anonymen Reichweitenmessung nutzen wir Matomo (siehe 4b) —
         keine weiteren Tracking-, Werbe- oder Profiling-Dienste.
+      </p>
+      <p className="mt-3">
+        <span className="text-stone-200">Externer Spenden-Link:</span> Im Footer
+        verlinken wir freiwillig „Buy me a coffee“
+        (<code className="text-stone-400">buymeacoffee.com</code>, USA). Erst
+        wenn du diesen Link aktiv anklickst, verlässt du Lumen und gelangst zu
+        einem US-Dienst, der eigene Datenschutzbestimmungen hat und dort eigene
+        Daten erhebt. Auf der Lumen-Seite selbst ist davon nichts eingebettet.
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">4a. Marketplace-Sichtbarkeit</h2>
@@ -128,9 +156,11 @@ export default function Datenschutz() {
         (<code className="text-stone-400">musikersuche.org/matomo</code>) zur
         anonymen Reichweitenmessung. Matomo läuft{" "}
         <span className="text-stone-200">cookieless</span> (es werden keine
-        Cookies gesetzt), respektiert den{" "}
-        <span className="text-stone-200">Do-Not-Track</span>-Header deines
-        Browsers, und die IP-Adresse wird serverseitig anonymisiert (letzte
+        Cookies gesetzt) und ist so konfiguriert, dass es den{" "}
+        <span className="text-stone-200">Do-Not-Track</span>-Header
+        berücksichtigt, sofern dein Browser ihn noch sendet (viele moderne
+        Browser haben DNT inzwischen entfernt — verlasse dich daher nicht
+        allein darauf). Die IP-Adresse wird serverseitig anonymisiert (letzte
         Oktette entfernt). Erfasst werden nur aggregierte, nicht auf dich
         rückführbare Besuchsdaten (aufgerufene Seiten, ungefähre Region,
         Browser-/Geräte-Typ), gespeichert für maximal 24 Monate. Die Daten
@@ -151,9 +181,12 @@ export default function Datenschutz() {
         die du abgegeben hast, werden bei Account-Löschung
         anonymisiert (reporter_user_id auf NULL gesetzt), damit die
         Moderationsspur für den gemeldeten Creator erhalten bleibt;
-        deine Identität ist danach nicht mehr verknüpft. Server-Logs
-        werden durch die Rotation automatisch nach wenigen Wochen
-        überschrieben.
+        deine Identität ist danach nicht mehr verknüpft. Ebenso bleibt
+        von dir abgegebenes Feedback nach der Löschung erhalten, jedoch
+        anonymisiert (User-ID auf NULL gesetzt) — der Freitext selbst
+        bleibt gespeichert, ist aber nicht mehr mit dir verknüpft.
+        Server-Logs werden durch die Rotation automatisch nach wenigen
+        Wochen überschrieben.
       </p>
       <p className="mt-3 text-sm text-stone-400">
         Hinweis: Der separate Keycloak-Account (Login-Daten) wird nicht

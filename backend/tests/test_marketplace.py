@@ -233,6 +233,54 @@ async def test_marketplace_fork_creates_private_copy(client, user_a, user_b):
     assert fork["previewImageId"] is None
 
 
+async def test_marketplace_fork_404_for_private_preset(client, user_a, user_b):
+    """Fork laeuft ueber _load_public_preset — ein privates/unbekanntes Preset
+    darf nicht forkbar sein (sonst Inhalts-Leak: Adjustments/Masks)."""
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "priv-fork", "adjustments": ZERO_ADJ},
+    )
+    private_id = r.json()["id"]
+    r2 = await client.post(
+        f"/api/v1/marketplace/presets/{private_id}/fork", headers=user_b["headers"]
+    )
+    assert r2.status_code == 404
+
+
+async def test_marketplace_fork_copies_geometry(client, user_a, user_b):
+    """Fork muss die Geometrie (Crop/Straighten/Lens) des Originals mitkopieren
+    — sonst verliert der Fork stillschweigend Crop/Lens-Einstellungen."""
+    image_id = await _upload_image(client, user_a["headers"], filename="geo.jpg")
+    create = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={
+            "name": "geo-look",
+            "adjustments": ZERO_ADJ,
+            "geometry": {
+                "crop": {"x0": 0.1, "y0": 0.1, "x1": 0.9, "y1": 0.9},
+                "straightenAngle": 0.05,
+            },
+            "visibility": "public",
+            "genre": "portrait",
+            "description": "Preset mit Crop-Geometrie zum Forken.",
+            "previewImageId": image_id,
+        },
+    )
+    assert create.status_code == 201, create.text
+    pid = create.json()["id"]
+
+    fork = await client.post(
+        f"/api/v1/marketplace/presets/{pid}/fork", headers=user_b["headers"]
+    )
+    assert fork.status_code == 201, fork.text
+    geo = fork.json()["geometry"]
+    assert geo is not None
+    assert geo["crop"] == {"x0": 0.1, "y0": 0.1, "x1": 0.9, "y1": 0.9}
+    assert geo["straightenAngle"] == 0.05
+
+
 async def test_marketplace_fork_handles_name_collision(client, user_a, user_b):
     src = await _create_public_preset(client, user_a["headers"], name="busy")
     # Erster Fork
@@ -282,6 +330,60 @@ async def test_marketplace_auto_hides_after_three_reports(
         f"/api/v1/marketplace/presets/{pid}", headers=user_a["headers"]
     )
     assert detail.status_code == 404
+
+
+async def test_marketplace_report_404_for_private_preset(client, user_a, user_b):
+    """Report laeuft ebenfalls ueber _load_public_preset — auf ein privates
+    Preset darf keine Meldung abgesetzt werden (sonst Report-Abuse / DB-Write
+    auf fremde private Daten)."""
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "priv-report", "adjustments": ZERO_ADJ},
+    )
+    private_id = r.json()["id"]
+    r2 = await client.post(
+        f"/api/v1/marketplace/presets/{private_id}/report",
+        headers=user_b["headers"],
+        json={"reason": "Spam"},
+    )
+    assert r2.status_code == 404
+
+
+async def test_update_preset_cannot_republish_after_autohide(
+    client, user_a, user_b, user_c, make_keycloak_user
+):
+    """Ein nach >=3 Meldungen auto-verstecktes Preset darf vom Creator NICHT
+    einfach per PUT wieder oeffentlich geschaltet werden (409) — sonst laesst
+    sich die Moderation trivial umgehen."""
+    src = await _create_public_preset(client, user_a["headers"], name="moderate-me")
+    pid = src["id"]
+    for headers in (
+        user_b["headers"],
+        user_c["headers"],
+        make_keycloak_user("erik@example.com")["headers"],
+    ):
+        rr = await client.post(
+            f"/api/v1/marketplace/presets/{pid}/report",
+            headers=headers,
+            json={"reason": "Spam"},
+        )
+        assert rr.status_code == 204
+
+    # Auto-hidden -> privat. Re-Publish-Versuch des Creators muss 409 sein.
+    put = await client.put(
+        f"/api/v1/presets/{pid}",
+        headers=user_a["headers"],
+        json={
+            "name": "moderate-me",
+            "adjustments": ZERO_ADJ,
+            "visibility": "public",
+            "genre": "portrait",
+            "description": "Ein Portrait-Preset mit warmen Hauttoenen.",
+            "previewImageId": src["previewImageId"],
+        },
+    )
+    assert put.status_code == 409, put.text
 
 
 async def test_marketplace_invalid_cursor_returns_422(client, user_a):

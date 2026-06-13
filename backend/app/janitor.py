@@ -1,10 +1,16 @@
-"""Janitor — periodische Cleanup-Tasks fuer pending Uploads.
+"""Janitor — periodische Cleanup-Tasks fuer haengengebliebene Uploads.
 
 Pre-Signed-URLs haben keine Content-Length-Range-Constraint, also kann
 ein Browser einen `init_upload` aufrufen und den `confirm` nie senden.
 Die DB-Row und ein potentiell schon hochgeladenes S3-Object bleiben
 dann zurueck (Bucket-Bloat). Dieser Janitor raeumt sie ab einem
 Schwellenalter (Default: 15 min) weg.
+
+Geraeumt werden zwei Zustaende:
+- `pending`: nie bestaetigte Uploads (Browser hat confirm nie geschickt).
+- `failed`: DELETE-Versuche, bei denen das S3-Delete fehlschlug und die
+  Row als `failed` markiert wurde (Object evtl. noch da). Sonst bliebe ein
+  verwaistes Object ohne DB-Referenz dauerhaft liegen.
 
 Das Modul stellt eine reine async-Funktion `prune_pending_uploads()`
 bereit; aufgerufen wird sie von `backend/scripts/janitor.py` (Cron).
@@ -26,7 +32,7 @@ PENDING_TTL = timedelta(minutes=15)
 
 @dataclass
 class PruneResult:
-    candidates: int          # gefundene pending-Rows aelter als TTL
+    candidates: int          # gefundene pending/failed-Rows aelter als TTL
     storage_deleted: int     # erfolgreich aus S3 entfernt
     storage_errors: int      # S3-Fehler (best effort, DB-Row bleibt drin)
     db_deleted: int          # tatsaechlich aus DB entfernt
@@ -39,7 +45,8 @@ async def prune_pending_uploads(
     ttl: timedelta = PENDING_TTL,
     now: datetime | None = None,
 ) -> PruneResult:
-    """Loescht pending Uploads aelter als ttl aus S3 und DB.
+    """Loescht haengengebliebene Uploads (pending + failed) aelter als ttl
+    aus S3 und DB.
 
     Reihenfolge: erst S3-Object weg, dann DB-Row. Wenn S3 wirft, bleibt
     die DB-Row stehen (naechster Lauf versucht's wieder). Das ist
@@ -49,7 +56,7 @@ async def prune_pending_uploads(
     threshold = (now or datetime.now(timezone.utc)) - ttl
     result = await db.execute(
         select(Image).where(
-            Image.upload_state == "pending",
+            Image.upload_state.in_(("pending", "failed")),
             Image.created_at < threshold,
         )
     )

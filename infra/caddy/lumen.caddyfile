@@ -12,6 +12,10 @@
 
 lumen.mr-development.de {
     encode gzip zstd
+    # security_headers (HSTS-preload, X-Content-Type-Options, Referrer-Policy,
+    # Permissions-Policy, ...) ist global in /opt/caddyserver/Caddyfile
+    # definiert. Reviewbare Referenz: infra/caddy/security_headers.snippet.caddy
+    # (synchron halten).
     import security_headers
 
     # API -> FastAPI
@@ -44,6 +48,11 @@ lumen.mr-development.de {
     }
 
     # SPA (nginx) — strikte CSP NUR fuer die App-Antworten (nicht /auth).
+    # Trade-off (bewusst, Selfhost): script-src erlaubt die self-gehostete
+    # Matomo-Origin musikersuche.org, weil der Tracker matomo.js von dort
+    # geladen wird. Kein 'unsafe-inline'/'unsafe-eval' im script-src. Haertung
+    # bei public-Launch: matomo.js unter 'self' co-hosten (dann musikersuche.org
+    # aus script-src raus) oder Subresource-Integrity ergaenzen.
     handle {
         header {
             Content-Security-Policy "default-src 'self'; img-src 'self' blob: data: https://musikersuche.org; media-src 'self' blob:; connect-src 'self' https://musikersuche.org https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self' https://musikersuche.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"

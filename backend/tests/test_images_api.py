@@ -58,6 +58,22 @@ async def test_init_too_large_returns_413(client, user_a):
     assert r.status_code == 413
 
 
+async def test_init_pending_quota_returns_429(client, user_a, monkeypatch):
+    """Soft-Quota: ab max_pending_uploads_per_user offenen Pending-Uploads
+    wird init mit 429 abgelehnt (Schutz vor Zombie-Row-/Bucket-Flooding)."""
+    from app.config import settings as app_settings
+
+    monkeypatch.setattr(app_settings, "max_pending_uploads_per_user", 2)
+    await _init(client, user_a["headers"], filename="p1.jpg")
+    await _init(client, user_a["headers"], filename="p2.jpg")
+    r = await client.post(
+        "/api/v1/images",
+        headers=user_a["headers"],
+        json={"filename": "p3.jpg", "contentType": "image/jpeg", "sizeBytes": 1024},
+    )
+    assert r.status_code == 429, r.text
+
+
 async def test_init_unsupported_type_returns_415(client, user_a):
     r = await client.post(
         "/api/v1/images",
@@ -251,3 +267,85 @@ async def test_unauthorized_init_returns_401(client):
         json={"filename": "x.jpg", "contentType": "image/jpeg", "sizeBytes": 1},
     )
     assert r.status_code == 401
+
+
+async def test_user_b_cannot_confirm_user_a_image(client, user_a, user_b):
+    """Tenant-Isolation auch auf dem confirm-Mutationspfad: User B darf ein
+    von User A initialisiertes/hochgeladenes Bild nicht bestaetigen (404).
+    Sonst koennte ein Fremder fremde Pending-Uploads auf 'ready' schalten."""
+    payload = b"\xff\xd8\xff\xe0mine"
+    init = await _init(
+        client, user_a["headers"], filename="mine.jpg",
+        content_type="image/jpeg", size=len(payload),
+    )
+    _put_to_url(init["uploadUrl"], payload, "image/jpeg")
+
+    foreign = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_b["headers"]
+    )
+    assert foreign.status_code == 404, foreign.text
+
+    # Der Eigentuemer kann danach normal bestaetigen.
+    own = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert own.status_code == 200, own.text
+
+
+async def test_confirm_is_idempotent_when_already_ready(client, user_a):
+    """Erneuter confirm auf ein bereits bestaetigtes Bild liefert idempotent
+    200 zurueck (Early-Return), ohne erneute S3-Roundtrips."""
+    image_id = await _full_upload(client, user_a["headers"])
+    again = await client.post(
+        f"/api/v1/images/{image_id}/confirm", headers=user_a["headers"]
+    )
+    assert again.status_code == 200, again.text
+    assert again.json()["uploadState"] == "ready"
+
+
+async def test_list_images_invalid_sort_returns_422(client, user_a):
+    """Ein nicht-whitelisteter sort-Wert muss sauber mit 422 abgewiesen
+    werden (statt KeyError/500 in SORT_FIELDS)."""
+    r = await client.get(
+        "/api/v1/images?sort=bogus", headers=user_a["headers"]
+    )
+    assert r.status_code == 422
+
+
+async def test_delete_image_s3_error_marks_failed_and_keeps_row(
+    client, user_a, monkeypatch,
+):
+    """Schlaegt das S3-Delete fehl, darf die DB-Row NICHT geloescht werden
+    (sonst verwaistes Object). Stattdessen: Row bleibt als 'failed', Endpoint
+    liefert 502, und ein erneutes DELETE mit funktionierendem Storage raeumt
+    sauber auf."""
+    from app import storage as storage_module
+
+    image_id = await _full_upload(client, user_a["headers"])
+    storage = storage_module.get_storage()
+
+    def _boom(_key: str) -> None:
+        raise RuntimeError("S3 backend down")
+
+    monkeypatch.setattr(storage, "delete", _boom)
+    r = await client.delete(
+        f"/api/v1/images/{image_id}", headers=user_a["headers"]
+    )
+    assert r.status_code == 502, r.text
+
+    listing = await client.get(
+        "/api/v1/images?state=all", headers=user_a["headers"]
+    )
+    item = next(it for it in listing.json() if it["id"] == image_id)
+    assert item["uploadState"] == "failed"
+
+    # Storage wieder heil -> erneutes DELETE raeumt Row + Object weg.
+    monkeypatch.undo()
+    r2 = await client.delete(
+        f"/api/v1/images/{image_id}", headers=user_a["headers"]
+    )
+    assert r2.status_code == 204, r2.text
+    listing2 = await client.get(
+        "/api/v1/images?state=all", headers=user_a["headers"]
+    )
+    assert image_id not in [it["id"] for it in listing2.json()]

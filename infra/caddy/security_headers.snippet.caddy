@@ -1,0 +1,33 @@
+# security_headers — versionierte Referenz des global in
+# /opt/caddyserver/Caddyfile definierten Snippets, das lumen.caddyfile via
+# `import security_headers` einbindet.
+#
+# Zweck: der Prod-Header-Satz (HSTS, Permissions-Policy, ...) war bisher nur
+# auf dem Server vorhanden und damit nicht reviewbar. Diese Datei haelt den
+# erwarteten Inhalt fest. WICHTIG: Sie wird NICHT automatisch importiert —
+# sie muss mit dem Snippet im globalen Caddyfile uebereinstimmen. Bei
+# Aenderungen beide Stellen synchron halten (oder dieses File per
+# `import infra/caddy/security_headers.snippet.caddy` direkt einbinden, dann
+# das globale Duplikat entfernen).
+#
+# Hinweis: Die strikte Content-Security-Policy wird NICHT hier, sondern
+# pro App-Antwort in lumen.caddyfile gesetzt (sie gilt bewusst nicht fuer
+# die /auth-Keycloak-Seiten).
+
+(security_headers) {
+    header {
+        # HSTS inkl. Subdomains + Preload (2 Jahre).
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        # MIME-Sniffing unterbinden.
+        X-Content-Type-Options "nosniff"
+        # Clickjacking-Schutz (redundant zu CSP frame-ancestors 'none',
+        # aber fuer aeltere Clients ohne CSP-Support).
+        X-Frame-Options "DENY"
+        # Referrer minimieren.
+        Referrer-Policy "strict-origin-when-cross-origin"
+        # Sensible Browser-Features per Default verbieten.
+        Permissions-Policy "camera=(), microphone=(), geolocation=(), interest-cohort=()"
+        # Server-Banner entfernen.
+        -Server
+    }
+}

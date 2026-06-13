@@ -85,6 +85,69 @@ def test_merge_geometry_group_pulls_from_preset_geometry():
     assert merged["straightenAngle"] == 0.05
 
 
+def _linear_mask(exposure: float = 0.2) -> dict:
+    return {
+        "type": "linear",
+        "mask": {"p1": {"u": 0, "v": 0}, "p2": {"u": 1, "v": 1}, "feather": 0.5},
+        "localAdj": {
+            "exposure": exposure, "contrast": 0, "saturation": 0, "temperature": 0,
+        },
+    }
+
+
+def test_merge_masks_group_pulls_preset_masks():
+    # 'masks'-Gruppe angehakt -> die Preset-Masken ersetzen die Bild-Masken.
+    base = _default_state()
+    preset_masks = [_linear_mask(0.3)]
+    merged = merge_edit_state(
+        base_state=base,
+        preset_adjustments=_preset_adjustments(),
+        preset_masks=preset_masks,
+        preset_geometry=None,
+        enabled=["masks"],
+    )
+    assert merged["masks"] == preset_masks
+    # Ergebnis muss durch die strikte Validierung gehen (Mask-Caps/Ranges).
+    assert ImageEditState.model_validate(merged).masks[0].type == "linear"
+
+
+def test_merge_masks_group_disabled_keeps_base_masks():
+    base = _default_state()
+    base["masks"] = [_linear_mask(0.9)]
+    merged = merge_edit_state(
+        base_state=base,
+        preset_adjustments=_preset_adjustments(),
+        preset_masks=[_linear_mask(0.1)],
+        preset_geometry=None,
+        enabled=["tone"],  # 'masks' NICHT angehakt
+    )
+    assert merged["masks"][0]["localAdj"]["exposure"] == 0.9
+
+
+def test_merge_lens_group_pulls_preset_lens_fields():
+    # 'lens'-Gruppe deckt lensCorrection/lensProfileId/manualLensOverride ab.
+    base = _default_state()
+    geo = {
+        "crop": None,
+        "straightenAngle": 0.0,
+        "lensCorrection": {"distortion": 0.2, "vignette": -0.1, "tcaR": 0.0, "tcaB": 0.0},
+        "lensProfileId": "canon-ef-35",
+        "manualLensOverride": True,
+    }
+    merged = merge_edit_state(
+        base_state=base,
+        preset_adjustments=_preset_adjustments(),
+        preset_masks=[],
+        preset_geometry=geo,
+        enabled=["lens"],
+    )
+    assert merged["lensProfileId"] == "canon-ef-35"
+    assert merged["manualLensOverride"] is True
+    assert merged["lensCorrection"]["distortion"] == 0.2
+    # crop/straighten bleiben unberuehrt (gehoeren zur 'crop'-Gruppe).
+    assert merged["crop"] is None
+
+
 def test_batch_apply_in_rejects_unknown_group():
     import pytest
     from pydantic import ValidationError

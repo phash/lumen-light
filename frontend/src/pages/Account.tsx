@@ -31,6 +31,10 @@ export default function Account() {
   );
   const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
   const [published, setPublished] = useState<Preset[]>([]);
+  // Nicht-blockierender Lade-Hinweis fuer Profil/veroeffentlichte Presets —
+  // sonst sieht der User bei einem Backend-Ausfall leere Felder/Listen, ohne
+  // zu wissen, dass das Laden fehlschlug.
+  const [loadNotice, setLoadNotice] = useState<string | null>(null);
   const [faceConsent, setFaceConsent] = useState<boolean>(() =>
     isFaceDetectionConsented(),
   );
@@ -65,7 +69,9 @@ export default function Account() {
         setProfileDraft({ handle: p.handle ?? "", bio: p.bio ?? "" });
       })
       .catch(() => {
-        /* Profil-Fehler nicht blockierend — Block ist optional. */
+        // Nicht blockierend, aber sichtbar: der User soll wissen, dass das
+        // Profil nicht geladen wurde (statt leerer Felder ohne Hinweis).
+        if (!cancelled) setLoadNotice("Einige Kontodaten konnten nicht geladen werden.");
       });
     void api
       .listPublishedPresets()
@@ -73,7 +79,7 @@ export default function Account() {
         if (!cancelled) setPublished(list);
       })
       .catch(() => {
-        /* Empty bleibt OK. */
+        if (!cancelled) setLoadNotice("Einige Kontodaten konnten nicht geladen werden.");
       });
     return () => {
       cancelled = true;
@@ -280,6 +286,11 @@ export default function Account() {
 
         <section data-testid="account-published">
           <h2 className="text-stone-300 italic">Meine veröffentlichten Presets</h2>
+          {loadNotice && (
+            <p data-testid="account-load-notice" className="mt-2 text-sm text-amber-200/80">
+              {loadNotice}
+            </p>
+          )}
           {published.length === 0 ? (
             <p className="mt-2 text-sm text-stone-500">
               Du hast aktuell keine Presets im Marketplace.

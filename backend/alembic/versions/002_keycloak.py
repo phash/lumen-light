@@ -53,6 +53,11 @@ def downgrade() -> None:
     op.create_index("idx_refresh_tokens_token_hash", "refresh_tokens", ["token_hash"])
 
     # users: password_hash wieder rein, keycloak_sub raus
+    # ACHTUNG: Dieser Downgrade ist NICHT datenneutral. Bestehende User
+    # bekommen einen leeren password_hash (server_default="") — Keycloak-only-
+    # Accounts haben kein lokales Passwort, das wiederhergestellt werden
+    # koennte. Der Reverse-Pfad ist nur fuer leere/Dev-DBs gedacht; in Prod
+    # nie ausfuehren.
     op.add_column(
         "users",
         sa.Column("password_hash", sa.String(length=255), nullable=False, server_default=""),

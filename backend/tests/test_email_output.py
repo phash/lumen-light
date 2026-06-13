@@ -35,5 +35,6 @@ def test_me_export_accepts_special_use_tld() -> None:
         presets=[],
         images=[],
         submitted_reports=[],
+        feedbacks=[],
     )
     assert out.email == "legacy@example.invalid"

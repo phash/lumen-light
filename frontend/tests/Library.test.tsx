@@ -111,7 +111,10 @@ describe("Library", () => {
     await waitFor(() =>
       expect(screen.getByTestId("image-row-i-99")).toBeInTheDocument(),
     );
-    await userEvent.click(screen.getByRole("button", { name: "Löschen" }));
+    // Zweistufig: erst „Löschen" (zeigt Confirm), dann „Wirklich löschen?".
+    await userEvent.click(screen.getByTestId("image-delete-i-99"));
+    expect(api.deleteImage).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("image-delete-confirm-i-99"));
     expect(api.deleteImage).toHaveBeenCalledWith("i-99");
     // Mind. 2 listImages-Calls (initial + nach delete)
     expect(api.listImages).toHaveBeenCalledTimes(2);

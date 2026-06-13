@@ -1,3 +1,5 @@
+import { useEffect } from "react";
+
 import type { ExportFormat } from "./export";
 
 interface Props {
@@ -29,12 +31,27 @@ export default function ExportDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  // Escape schliesst das Popover (A11y/Konsistenz). stopPropagation, damit
+  // kein Editor-Shortcut zusaetzlich feuert.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onCancel();
+      }
+    };
+    document.addEventListener("keydown", onKey, true);
+    return () => document.removeEventListener("keydown", onKey, true);
+  }, [onCancel]);
+
   return (
     <div
       data-testid="export-dialog"
+      role="dialog"
+      aria-labelledby="export-dialog-title"
       className="absolute bottom-20 left-6 w-72 bg-stone-900/95 backdrop-blur border border-stone-700 p-4 text-sm space-y-3"
     >
-      <h2 className="text-stone-200">Export</h2>
+      <h2 id="export-dialog-title" className="text-stone-200">Export</h2>
 
       <label className="block">
         <span className="text-stone-400 text-xs">Format</span>

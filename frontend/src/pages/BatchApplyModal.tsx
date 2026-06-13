@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { Preset } from "../api/client";
 import { useApi } from "../api/use-api";
+import Modal from "../components/Modal";
 import StepCheckboxes from "../editor/StepCheckboxes";
 import { defaultEnabledGroups } from "../editor/profileGroups";
 
@@ -72,16 +73,14 @@ export default function BatchApplyModal({ imageIds, onClose, onApplied }: Props)
   };
 
   return (
-    <div
-      data-testid="batch-apply-modal"
-      className="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      testId="batch-apply-modal"
+      labelledBy="batch-apply-title"
+      backdropClassName="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
+      cardClassName="w-[380px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
     >
-      <div
-        className="w-[380px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="px-4 py-3 border-b border-stone-800 text-stone-200">
+        <div id="batch-apply-title" className="px-4 py-3 border-b border-stone-800 text-stone-200">
           Profil auf {imageIds.length}{" "}
           {imageIds.length === 1 ? "Bild" : "Bilder"} anwenden
         </div>
@@ -124,7 +123,6 @@ export default function BatchApplyModal({ imageIds, onClose, onApplied }: Props)
             Anwenden
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

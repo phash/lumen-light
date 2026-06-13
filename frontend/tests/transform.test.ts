@@ -129,6 +129,14 @@ describe("invertUvTransform", () => {
     expect(back.x).toBeCloseTo(0.3, 4);
     expect(back.y).toBeCloseTo(0.7, 4);
   });
+
+  it("liefert bei degeneriertem Crop (det≈0) die Identitaet statt Inf/NaN", () => {
+    // a=b=c=d=0 -> det=0 -> Guard greift, sonst spuckt der Picker Inf raus.
+    const degenerate = new Float32Array([0, 0, 0, 0, 0, 0, 0.5, 0.5, 1]);
+    const inv = invertUvTransform(degenerate);
+    expect(Array.from(inv)).toEqual([1, 0, 0, 0, 1, 0, 0, 0, 1]);
+    for (const v of inv) expect(Number.isFinite(v)).toBe(true);
+  });
 });
 
 describe("updateCropOnDrag", () => {
