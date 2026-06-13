@@ -304,7 +304,14 @@ export default function Editor() {
     try {
       const list = await api.listPresets();
       const preset = list.find((p) => p.name === genre);
-      if (!preset) return;
+      if (!preset) {
+        // Das nach Genre benannte Default-Preset existiert nicht mehr (vom
+        // User umbenannt/geloescht). Statt stillem No-op den User informieren.
+        setError(
+          `Vorgeschlagenes Preset „${genre}" nicht gefunden — vermutlich umbenannt oder gelöscht.`,
+        );
+        return;
+      }
       useEditorStore.getState().applyAdjustments(preset.adjustments);
       setLoadedPresetId(preset.id);
     } catch (err) {
@@ -317,12 +324,16 @@ export default function Editor() {
       setCompareSnapshot(null);
       return;
     }
+    // Kein Snapshot ohne fertig dekodiertes Bild — sonst erwischt der
+    // Bypass-Snapshot ein leeres Canvas (Race beim schnellen Klick waehrend
+    // des Decodings).
+    if (!hasImage || decoding) return;
     const url = canvasHandleRef.current?.takeBypassSnapshot?.();
     if (url) {
       setCompareSnapshot(url);
       setSplitX(0.5);
     }
-  }, [compareSnapshot]);
+  }, [compareSnapshot, hasImage, decoding]);
 
   const onAutoTone = useCallback(() => {
     if (!canvasElement) return;

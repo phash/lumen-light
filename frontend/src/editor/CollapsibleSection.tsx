@@ -45,6 +45,7 @@ export default function CollapsibleSection({
     }
   };
 
+  const panelId = `section-panel-${id}`;
   return (
     <div className="mb-5" data-testid={testId}>
       <button
@@ -53,6 +54,7 @@ export default function CollapsibleSection({
         data-testid={testId ? `${testId}-toggle` : undefined}
         className="w-full flex items-center gap-2 mb-2 text-left"
         aria-expanded={open}
+        aria-controls={panelId}
       >
         <span className="text-stone-300 italic">{title}</span>
         <div className="flex-1 h-px bg-stone-800" />
@@ -63,7 +65,7 @@ export default function CollapsibleSection({
           {open ? "▾" : "▸"}
         </span>
       </button>
-      {open && children}
+      {open && <div id={panelId}>{children}</div>}
     </div>
   );
 }

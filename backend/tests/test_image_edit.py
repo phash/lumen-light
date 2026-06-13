@@ -134,3 +134,16 @@ async def test_put_rejects_too_many_masks(client, user_a):
         json={"adjustments": {}, "masks": too_many_linear},
     )
     assert put.status_code == 422
+
+
+async def test_put_rejects_straighten_angle_out_of_bounds(client, user_a):
+    """ImageEditState.straightenAngle ist auf +-3.15 rad geklemmt — ein
+    extremer Winkel wuerde sonst im JSONB landen und den Renderer beim Resume
+    kippen."""
+    image_id = await _upload(client, user_a["headers"])
+    put = await client.put(
+        f"/api/v1/images/{image_id}/edit",
+        headers=user_a["headers"],
+        json={"adjustments": {}, "straightenAngle": 4.0},
+    )
+    assert put.status_code == 422

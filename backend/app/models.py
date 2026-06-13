@@ -53,6 +53,10 @@ class Preset(Base):
             "visibility IN ('private','public')",
             name="ck_presets_visibility",
         ),
+        # In Migration 001 angelegt — hier gespiegelt, damit Modell == Schema
+        # und `alembic revision --autogenerate` den Index nicht faelschlich
+        # als "zu droppen" erkennt.
+        Index("idx_presets_user_id", "user_id"),
     )
 
     id: Mapped[UUID] = mapped_column(PG_UUID(as_uuid=True), primary_key=True, default=uuid4)
@@ -107,6 +111,9 @@ class Image(Base):
             "upload_state IN ('pending','ready','failed')",
             name="ck_images_upload_state",
         ),
+        # In Migration 003 angelegt — hier gespiegelt (Modell == Schema).
+        Index("idx_images_user_id", "user_id"),
+        Index("idx_images_state", "upload_state"),
     )
 
     id: Mapped[UUID] = mapped_column(

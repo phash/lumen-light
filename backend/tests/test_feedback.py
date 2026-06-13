@@ -56,6 +56,28 @@ async def test_honeypot_silently_drops(client, user_a, db_session):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("honey", ["", "   "])
+async def test_empty_honeypot_still_persists(client, user_a, db_session, honey):
+    """Die echte UI schickt das Honeypot-Feld 'website' leer mit. Leerer oder
+    reiner Whitespace-Wert MUSS als legitime Submission durchgehen (sonst geht
+    jedes echte Feedback still verloren)."""
+    r = await client.post(
+        "/api/v1/feedback",
+        headers=user_a["headers"],
+        json={
+            "kind": "other",
+            "message": "Legitime Meldung mit leerem Honeypot-Feld.",
+            "website": honey,
+        },
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["id"] is not None
+
+    rows = (await db_session.execute(select(Feedback))).scalars().all()
+    assert len(rows) == 1
+
+
+@pytest.mark.asyncio
 async def test_message_too_short_rejected(client, user_a):
     r = await client.post(
         "/api/v1/feedback",

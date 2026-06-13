@@ -57,7 +57,7 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
     title: "2. Auto-Ton",
     body:
       "Ein Klick — Lumen analysiert das Bild und setzt Belichtung, Kontrast, " +
-      "Schwarz und Weiss automatisch. Guter Startpunkt, von dem aus du " +
+      "Schwarz und Weiß automatisch. Guter Startpunkt, von dem aus du " +
       "feinjustierst.",
   },
   {
@@ -79,7 +79,7 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
     title: "4. Vorher / Nachher",
     body:
       "Bypass-Button gedrückt halten zeigt das Original. Tastenkürzel: " +
-      "B. Daneben gibt's einen Compare-Split-Slider für den Side-by-Side-Blick.",
+      "\\ (Backslash). Daneben gibt's einen Compare-Split-Slider für den Side-by-Side-Blick.",
   },
   {
     id: "crop",
@@ -117,7 +117,7 @@ export const ONBOARDING_STEPS: ReadonlyArray<OnboardingStep> = [
   {
     id: "done",
     kind: "modal",
-    title: "Fertig — viel Spass!",
+    title: "Fertig — viel Spaß!",
     body:
       "Im Header findest du den Marketplace für geteilte Presets, und " +
       "den Feedback-Button oben rechts, falls etwas hakt. Die Tour kannst " +

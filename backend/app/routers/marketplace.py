@@ -67,7 +67,10 @@ def _preview_url(
     db_session: AsyncSession,  # noqa: ARG001 — Hook fuer spaetere Caches
     image: Image | None,
 ) -> str | None:
-    if image is None:
+    # Nur bestaetigte Uploads als Vorschau ausliefern. Ein pending/failed
+    # Object koennte (vor confirm) beliebige, nicht magic-byte-gepruefte Bytes
+    # enthalten — die werden im Marketplace same-origin im <img> gerendert.
+    if image is None or image.upload_state != "ready":
         return None
     url, _ = storage.presign_get(image.bucket_key)
     return url
@@ -237,6 +240,10 @@ async def fork_marketplace_preset(
         name=name,
         adjustments=dict(src.adjustments),
         masks=list(src.masks),
+        # Geometrie (Crop/Straighten/Lens) ist Teil des Preset-Inhalts und
+        # muss mitkopiert werden — sonst verliert der Fork stillschweigend
+        # die Crop/Lens-Einstellungen des Originals.
+        geometry=dict(src.geometry) if src.geometry else None,
         visibility="private",
         # Genre/Description/Preview NICHT mitkopieren — der Fork ist privat.
     )
@@ -271,19 +278,28 @@ async def report_marketplace_preset(
         await db.rollback()
         raise HTTPException(status_code=409, detail="Du hast dieses Preset bereits gemeldet.")
 
-    # Auto-Hide-Trigger.
+    # Auto-Hide-Trigger. Die Preset-Row sperren (FOR UPDATE), bevor wir den
+    # denormalisierten report_count read-modify-write aktualisieren — sonst
+    # ueberschreiben zwei parallele Reports verschiedener Reporter den Counter
+    # mit einem veralteten Snapshot (Lost-Update), und die Auto-Hide-Schwelle
+    # kann verpasst werden, obwohl genug echte Reports existieren.
+    locked = (
+        await db.execute(
+            select(Preset).where(Preset.id == preset.id).with_for_update()
+        )
+    ).scalar_one()
     count = (
         await db.execute(
             select(func.count())
             .select_from(PresetReport)
-            .where(PresetReport.preset_id == preset.id)
+            .where(PresetReport.preset_id == locked.id)
         )
     ).scalar_one()
-    preset.report_count = int(count)
-    if count >= REPORT_AUTOHIDE_THRESHOLD and preset.visibility == "public":
-        preset.visibility = "private"
-        preset.published_at = None
+    locked.report_count = int(count)
+    if count >= REPORT_AUTOHIDE_THRESHOLD and locked.visibility == "public":
+        locked.visibility = "private"
+        locked.published_at = None
         logger.warning(
-            "preset %s auto-hidden after %d reports", preset.id, count
+            "preset %s auto-hidden after %d reports", locked.id, count
         )
     await db.commit()

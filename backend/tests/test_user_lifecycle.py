@@ -103,3 +103,61 @@ async def test_export_me_returns_user_presets_images(client, user_a):
     img = next(i for i in body["images"] if i["id"] == image_id)
     assert img["downloadUrl"].startswith("http")
     assert img["downloadUrlExpiresIn"] > 0
+
+
+async def test_export_me_includes_feedback_edit_state_and_geometry(client, user_a):
+    """DSGVO Art. 15/20: der Export muss auch abgegebenes Feedback, den
+    persistierten Editor-Bearbeitungsstand und die Preset-Geometrie enthalten
+    — alles User-erzeugter Inhalt."""
+    image_id = await _upload_image(client, user_a["headers"])
+
+    # Editor-Bearbeitungsstand speichern.
+    put = await client.put(
+        f"/api/v1/images/{image_id}/edit",
+        headers=user_a["headers"],
+        json={"adjustments": {"exposure": 0.42}, "straightenAngle": 0.05},
+    )
+    assert put.status_code == 204, put.text
+
+    # Preset MIT Geometrie anlegen.
+    preset = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={
+            "name": "Geo-Export",
+            "adjustments": {
+                "exposure": 0, "contrast": 0, "highlights": 0, "shadows": 0,
+                "whites": 0, "blacks": 0, "temperature": 0, "tint": 0,
+                "vibrance": 0, "saturation": 0,
+            },
+            "geometry": {"crop": {"x0": 0.0, "y0": 0.0, "x1": 0.8, "y1": 0.8}},
+        },
+    )
+    assert preset.status_code == 201, preset.text
+
+    # Feedback abgeben.
+    fb = await client.post(
+        "/api/v1/feedback",
+        headers=user_a["headers"],
+        json={"kind": "idea", "message": "Bitte Export um Edit-State erweitern."},
+    )
+    assert fb.status_code == 201, fb.text
+
+    r = await client.get("/api/v1/auth/me/export", headers=user_a["headers"])
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    # Edit-State am Bild
+    img = next(i for i in body["images"] if i["id"] == image_id)
+    assert img["editState"] is not None
+    assert img["editState"]["adjustments"]["exposure"] == 0.42
+
+    # Geometrie am Preset
+    geo_preset = next(p for p in body["presets"] if p["name"] == "Geo-Export")
+    assert geo_preset["geometry"] is not None
+    assert geo_preset["geometry"]["crop"]["x1"] == 0.8
+
+    # Feedback enthalten
+    assert any(
+        f["message"].startswith("Bitte Export") for f in body["feedbacks"]
+    )

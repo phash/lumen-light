@@ -31,6 +31,15 @@ export default function Login() {
         Single-Sign-On. Klick auf „Mit Keycloak anmelden&ldquo; leitet dich zum
         Keycloak-Login weiter und nach erfolgreicher Anmeldung zurück.
       </p>
+      {auth.error && (
+        <p
+          data-testid="login-error"
+          role="alert"
+          className="mt-4 text-sm text-red-400"
+        >
+          Anmeldung fehlgeschlagen — bitte erneut versuchen.
+        </p>
+      )}
       <button
         type="button"
         onClick={onLogin}

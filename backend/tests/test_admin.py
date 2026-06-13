@@ -126,6 +126,53 @@ async def test_admin_feedback_inbox(client, admin_user, user_a):
 
 
 @pytest.mark.asyncio
+async def test_disabled_admin_cannot_use_admin_endpoints(
+    client, admin_user, db_session
+):
+    """Lockout-Schutz: auch ein Admin mit gueltigem Token + admin-Rolle wird
+    geblockt (403), sobald sein Account deaktiviert ist. Deckt den separaten
+    is_disabled-Block in current_admin ab (nicht nur den in current_user)."""
+    from sqlalchemy import select
+
+    from app.models import User
+
+    u = (
+        await db_session.execute(
+            select(User).where(User.id == admin_user["user"]["id"])
+        )
+    ).scalar_one()
+    u.is_disabled = True
+    await db_session.commit()
+
+    r = await client.get("/api/v1/admin/users", headers=admin_user["headers"])
+    assert r.status_code == 403, r.text
+
+
+def test_has_admin_role_realm_access():
+    from app.auth import _has_admin_role
+
+    assert _has_admin_role({"realm_access": {"roles": ["admin", "user"]}}) is True
+
+
+def test_has_admin_role_resource_access_fallback():
+    """Admin-Rolle nur als Client-Role unter resource_access.<client>.roles —
+    der Fallback-Pfad in _has_admin_role muss sie ebenfalls erkennen."""
+    from app.auth import _has_admin_role
+
+    assert (
+        _has_admin_role({"resource_access": {"lumen-api": {"roles": ["admin"]}}})
+        is True
+    )
+
+
+def test_has_admin_role_absent():
+    from app.auth import _has_admin_role
+
+    assert _has_admin_role({"realm_access": {"roles": ["user"]}}) is False
+    assert _has_admin_role({}) is False
+
+
+@pytest.mark.asyncio
 async def test_admin_feedback_patch_invalid_id_404(client, admin_user):
     r = await client.patch(
         "/api/v1/admin/feedback/00000000-0000-0000-0000-000000000000",

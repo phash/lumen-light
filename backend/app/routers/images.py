@@ -4,7 +4,7 @@ from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
@@ -96,6 +96,24 @@ async def init_upload(
             detail=f"size_bytes ueber Maximum {settings.max_image_size_bytes}.",
         )
 
+    # Soft-Quota gegen Zombie-Pending-Rows: ein Client koennte bis zum
+    # Rate-Limit pending Uploads anlegen, die erst der Janitor (>15 min) wegraeumt.
+    pending_count = (
+        await db.execute(
+            select(func.count())
+            .select_from(Image)
+            .where(Image.user_id == user.id, Image.upload_state == "pending")
+        )
+    ).scalar_one()
+    if pending_count >= settings.max_pending_uploads_per_user:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=(
+                "Zu viele offene Uploads — bitte bestehende bestaetigen oder "
+                "kurz warten."
+            ),
+        )
+
     image_id = uuid4()
     bucket_key = storage.make_key(user.id, image_id)
 
@@ -132,6 +150,11 @@ async def confirm_upload(
     if image is None:
         raise HTTPException(status_code=404, detail="Image nicht gefunden.")
     _ensure_owns_key(image, user)
+
+    # Bereits bestaetigt -> idempotent zurueckgeben, ohne erneute S3-Roundtrips
+    # (HEAD + Magic-Byte-Read) und ohne confirmed_at zu ueberschreiben.
+    if image.upload_state == "ready":
+        return ImageOut.model_validate(image)
 
     try:
         # boto3 ist blockierend -> Threadpool, sonst steht der Event-Loop.
@@ -308,12 +331,19 @@ async def delete_image(
 
     try:
         await run_in_threadpool(storage.delete, image.bucket_key)
-    except Exception:
-        # S3-Fehler: DB-Row als 'failed' markieren, kein Hard-Fail —
-        # erneute DELETE-Calls funktionieren idempotent.
+    except Exception as exc:
+        # S3-Fehler: DB-Row als 'failed' markieren statt sie zu loeschen —
+        # sonst entstuende ein verwaistes S3-Object ohne DB-Referenz, das nie
+        # wieder aufgeraeumt wird. Der Janitor sammelt 'failed'-Rows aelter als
+        # TTL nachtraeglich ein. Kontrolliertes 502 (statt nacktem 500), damit
+        # der Client einen Retry-Hinweis bekommt; erneute DELETE-Calls
+        # funktionieren idempotent.
         image.upload_state = "failed"
         await db.commit()
-        raise
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Speicher-Backend nicht erreichbar — bitte erneut versuchen.",
+        ) from exc
 
     await db.delete(image)
     await db.commit()

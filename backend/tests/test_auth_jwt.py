@@ -33,25 +33,56 @@ async def test_endpoint_with_token_signed_by_wrong_key_returns_401(client, user_
     assert r.status_code == 401
 
 
-async def test_endpoint_with_expired_token_returns_401(client, make_keycloak_user, keycloak_oid):
-    """Direct-Grant-Token holen, dann lange genug warten oder Lifespan
-    senken, ist beides langsam — daher: wir signieren ein Test-Token
-    mit dem REALEN Keycloak-Schluessel, aber mit `exp` in der Vergangenheit.
-    Stattdessen einfacher: wir haengen ein altes Token an und rotieren
-    den Realm-Key, was zu komplex ist. Daher pragmatisch: Token, dem
-    `exp` direkt um eine Minute in der Vergangenheit liegt — Backend
-    muss dafuer schon ein gueltig signiertes Token sehen, das ist ohne
-    Realm-Tokens schwer.
+async def test_truly_expired_token_returns_401(client, monkeypatch):
+    """Echter exp-Pfad ohne langsames Warten: wir signieren ein Token mit
+    einem eigenen RSA-Key und injizieren dessen JWK in den Cache (Signatur
+    verifiziert also korrekt). aud/iss sind gueltig — nur `exp` liegt jenseits
+    der 30s-leeway in der Vergangenheit. Damit feuert genau der
+    jwt.decode-Expired-Branch -> 401 (statt eines unspezifischen Verify-Fails
+    wie beim wrong-key/wrong-aud-Test)."""
+    import json
 
-    Pragmatischer Test: ein Token, dessen Issuer falsch ist, deckt den
-    selben Code-Pfad (jose-Verify-Fail) ab. Den expliziten Expired-Test
-    ergaenzen wir, sobald ein einfacher Mechanismus dafuer da ist."""
-    info = make_keycloak_user(f"expired-{int(time.time())}@example.com")
-    # Hier reicht der unmodifizierte Token, um den Endpoint einmal positiv
-    # zu treffen. Echter Expired-Test folgt in einer eigenen Iteration,
-    # sobald wir Token-Lifespan auf Realm-Ebene per Test-Hook senken.
-    r = await client.get("/api/v1/auth/me", headers=info["headers"])
-    assert r.status_code == 200
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from app import auth
+    from app.config import settings
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
+    jwk["kid"] = "test-expired-key"
+    # Cache-Lookup so umbiegen, dass unser JWK fuer jede kid geliefert wird.
+    monkeypatch.setattr(auth._jwk_cache, "get", lambda _kid: jwk)
+
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "sub": "00000000-0000-0000-0000-000000000000",
+            "email": "expired@example.com",
+            "iss": settings.keycloak_issuer,
+            "aud": settings.keycloak_audience,
+            "iat": now - 3600,
+            "exp": now - 120,  # 2 min in der Vergangenheit, > leeway(30s)
+        },
+        private_key,
+        algorithm="RS256",
+        headers={"kid": "test-expired-key"},
+    )
+    r = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 401, r.text
+
+
+async def test_token_without_kid_returns_401(client):
+    """Ein JWT ohne kid-Header kann keinem JWK zugeordnet werden -> 401
+    (Token ohne kid-Header)."""
+    token = jwt.encode(
+        {"sub": "x", "email": "x@example.com"}, "secret", algorithm="HS256"
+    )
+    r = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 401
 
 
 async def test_endpoint_with_wrong_audience_returns_401(client, user_a):

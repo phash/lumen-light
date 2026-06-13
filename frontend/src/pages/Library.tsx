@@ -29,6 +29,10 @@ export default function Library() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [batchOpen, setBatchOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Zweistufiges Loeschen: erst Klick auf „Löschen" merkt sich die ID, der
+  // zweite Klick auf „Wirklich löschen?" loescht tatsaechlich. Schuetzt vor
+  // Fehlklick — das Original im Cloud-Speicher ist unwiderruflich weg.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   const toggleSelected = (id: string) => {
     setToast(null);
@@ -71,6 +75,7 @@ export default function Library() {
 
   const onDelete = async (id: string) => {
     setError(null);
+    setConfirmDeleteId(null);
     try {
       await api.deleteImage(id);
       await refresh();
@@ -191,13 +196,36 @@ export default function Library() {
               >
                 Im Editor öffnen
               </button>
-              <button
-                type="button"
-                onClick={() => void onDelete(img.id)}
-                className="text-stone-500 hover:text-red-400"
-              >
-                Löschen
-              </button>
+              {confirmDeleteId === img.id ? (
+                <span className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    data-testid={`image-delete-confirm-${img.id}`}
+                    onClick={() => void onDelete(img.id)}
+                    className="text-red-400 hover:text-red-300"
+                  >
+                    Wirklich löschen?
+                  </button>
+                  <button
+                    type="button"
+                    data-testid={`image-delete-cancel-${img.id}`}
+                    onClick={() => setConfirmDeleteId(null)}
+                    className="text-stone-500 hover:text-stone-300"
+                  >
+                    Abbrechen
+                  </button>
+                </span>
+              ) : (
+                <button
+                  type="button"
+                  data-testid={`image-delete-${img.id}`}
+                  aria-label={`„${img.originalFilename}" löschen`}
+                  onClick={() => { setError(null); setConfirmDeleteId(img.id); }}
+                  className="text-stone-500 hover:text-red-400"
+                >
+                  Löschen
+                </button>
+              )}
             </div>
           </li>
         ))}

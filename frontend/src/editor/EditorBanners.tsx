@@ -39,7 +39,7 @@ export default function EditorBanners({
             type="button"
             data-testid="editor-error-dismiss"
             onClick={onErrorDismiss}
-            aria-label="Fehler schliessen"
+            aria-label="Fehler schließen"
             className="text-red-400 hover:text-red-200"
           >
             ✕

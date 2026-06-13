@@ -17,6 +17,7 @@ import {
   type PresetGenre,
 } from "../api/client";
 import { useApi } from "../api/use-api";
+import Modal from "../components/Modal";
 import { wireToMasks } from "../editor/maskSerializer";
 import { useEditorStore } from "../editor/store";
 
@@ -145,6 +146,7 @@ export default function Marketplace() {
           value={sort}
           onChange={(e) => setSort(e.target.value as "new" | "popular")}
           data-testid="marketplace-sort"
+          aria-label="Sortierung"
           className="bg-stone-900 border border-stone-700 text-stone-300 text-sm px-2 py-1.5"
         >
           <option value="new">Neu</option>
@@ -155,6 +157,7 @@ export default function Marketplace() {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Suche..."
+          aria-label="Presets durchsuchen"
           data-testid="marketplace-search"
           className="bg-stone-900 border border-stone-700 text-stone-200 text-sm px-3 py-1.5 w-48"
         />
@@ -338,15 +341,13 @@ function DetailModal({
     };
 
     return (
-      <div
-        className="fixed inset-0 z-30 bg-black/70 flex items-center justify-center p-4"
-        onClick={onClose}
-        data-testid="marketplace-detail-modal"
+      <Modal
+        onClose={onClose}
+        testId="marketplace-detail-modal"
+        labelledBy="marketplace-detail-title"
+        backdropClassName="fixed inset-0 z-30 bg-black/70 flex items-center justify-center p-4"
+        cardClassName="bg-stone-950 border border-stone-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
       >
-        <div
-          className="bg-stone-950 border border-stone-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
-          onClick={(e) => e.stopPropagation()}
-        >
           {detail.previewUrl ? (
             <img
               src={detail.previewUrl}
@@ -359,7 +360,7 @@ function DetailModal({
           <div className="p-5 space-y-3 text-stone-300">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-xl text-stone-100">{detail.name}</h2>
+                <h2 id="marketplace-detail-title" className="text-xl text-stone-100">{detail.name}</h2>
                 <p className="text-sm text-stone-500">
                   {detail.creatorHandle ? `@${detail.creatorHandle}` : "Anonym"}
                   {detail.genre ? ` · ${GENRE_LABEL[detail.genre]}` : ""}
@@ -444,8 +445,7 @@ function DetailModal({
               </div>
             </details>
           </div>
-        </div>
-      </div>
+      </Modal>
     );
   }
 

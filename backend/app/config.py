@@ -32,6 +32,10 @@ class Settings(BaseSettings):
     garage_s3_secret_access_key: str = ""
     presigned_url_expires_in: int = 900
     max_image_size_bytes: int = 200 * 1024 * 1024  # 200 MB
+    # Soft-Quota: max. gleichzeitig offene (pending) Uploads pro User. Begrenzt
+    # zusammen mit Rate-Limit + Janitor das Anlegen vieler Zombie-Rows/Objekte
+    # (DB-/Bucket-DoS gegen den gemeinsamen Bucket).
+    max_pending_uploads_per_user: int = 50
 
     cors_origin: str = "http://localhost:5173"
 
