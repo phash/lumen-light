@@ -10,6 +10,20 @@ const SAMPLE_DIR = join(HERE, "..", "..", "tests-fixtures", "test-samples");
 const JPG_PATH = join(SAMPLE_DIR, "gradient.jpg");
 const PNG_PATH = join(SAMPLE_DIR, "gradient.png");
 
+// Onboarding auf "dismissed" vorsetzen: ein frischer Test-User triggert sonst
+// das Welcome-Modal beim ersten /editor-Render, dessen Overlay alle Klicks
+// (Reset-All, Slider, Masken-Toggles) abfaengt -> 30s-Timeouts. Cookies leeren
+// gegen KC-Session-Leak zwischen Tests. Gleiches Muster wie admin/feedback.spec.
+test.beforeEach(async ({ page, context }) => {
+  await context.clearCookies();
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "lumen.onboarding.v1",
+      JSON.stringify({ status: "dismissed" }),
+    );
+  });
+});
+
 test.describe("Editor", () => {
   test("JPG laden, Bypass-Toggle, Reset-All", async ({ page }) => {
     const user = await loginAsNewUser(page);
