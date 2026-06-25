@@ -19,7 +19,7 @@ jobs:
     name: Playwright E2E
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
 
       - name: Dev-Stack hochfahren (PG + Keycloak + MinIO)
         run: docker compose -f deployment/docker-compose.dev.yml up -d
