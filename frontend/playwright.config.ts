@@ -13,7 +13,10 @@ export default defineConfig({
   fullyParallel: false,
   retries: process.env.CI ? 2 : 0,
   workers: 1,
-  reporter: [["list"]],
+  // list = lesbare Konsolen-Ausgabe; html = durchsuchbarer Report mit
+  // eingebetteten Traces/Screenshots, der im nightly-Workflow als Artifact
+  // hochgeladen wird (sonst existiert kein playwright-report/-Verzeichnis).
+  reporter: [["list"], ["html", { open: "never" }]],
   use: {
     baseURL: BASE_URL,
     trace: "retain-on-failure",

@@ -2,6 +2,19 @@ import { test, expect } from "@playwright/test";
 
 import { cleanupUser, loginAsNewUser } from "./auth-helper";
 
+// Cookies leeren (KC-Session-Leak zwischen Tests) + Onboarding "dismissed":
+// nach dem Login landet man im Editor, dessen Welcome-Modal sonst den
+// Logout-Button-Klick abfaengt -> 30s-Timeout. Gleiches Muster wie admin.spec.
+test.beforeEach(async ({ page, context }) => {
+  await context.clearCookies();
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "lumen.onboarding.v1",
+      JSON.stringify({ status: "dismissed" }),
+    );
+  });
+});
+
 test.describe("Login-Flow gegen Keycloak", () => {
   test("ohne Login: /editor redirected auf /login", async ({ page }) => {
     await page.goto("/editor");

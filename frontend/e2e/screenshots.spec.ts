@@ -17,7 +17,26 @@ const SHOTS = join(HERE, "..", "..", "docs", "screenshots", "phase5");
 
 test.use({ viewport: { width: 1440, height: 900 } });
 
+// Doku-Screenshots sind kein CI-Test (siehe Header): nur explizit via
+// LUMEN_SCREENSHOTS=1 ausfuehren. Im nightly-Lauf wird der Test geskippt,
+// damit die fragile Doku-Sequenz (Preset speichern/anwenden, Masken) die
+// Suite nicht rot faerbt.
+const RUN_SCREENSHOTS = Boolean(process.env.LUMEN_SCREENSHOTS);
+
+// Onboarding "dismissed" vorsetzen, damit das Welcome-Modal beim explizit
+// gestarteten Lauf nicht die Editor-Klicks blockiert.
+test.beforeEach(async ({ page, context }) => {
+  await context.clearCookies();
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "lumen.onboarding.v1",
+      JSON.stringify({ status: "dismissed" }),
+    );
+  });
+});
+
 test("UI-Screenshots: Editor-Hauptzustaende fuer Phase-5-Doku", async ({ page }) => {
+  test.skip(!RUN_SCREENSHOTS, "Doku-Screenshots nur via LUMEN_SCREENSHOTS=1");
   const user = await loginAsNewUser(page);
   try {
     await page.goto("/editor");

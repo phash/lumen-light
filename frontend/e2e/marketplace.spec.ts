@@ -15,6 +15,19 @@ import { apiTokenFor, cleanupUser, loginAsNewUser } from "./auth-helper";
  * den Component-Tests (vitest) abgedeckt und wuerde im E2E-Setup
  * mehrere Sekunden plus Bilddatei-Auswahl kosten.
  */
+// Onboarding "dismissed" vorsetzen + Cookies leeren: sonst blockiert das
+// Welcome-Modal den Logout-Klick (Creator->Consumer-Wechsel) und KC-Sessions
+// leaken zwischen Tests. Gleiches Muster wie admin/feedback.spec.
+test.beforeEach(async ({ page, context }) => {
+  await context.clearCookies();
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "lumen.onboarding.v1",
+      JSON.stringify({ status: "dismissed" }),
+    );
+  });
+});
+
 test.describe("Marketplace", () => {
   test("Empty-State sichtbar wenn keine Presets veroeffentlicht", async ({
     page,
