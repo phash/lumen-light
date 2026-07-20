@@ -35,7 +35,7 @@ jobs:
           echo "Keycloak nicht ready"; docker compose -f deployment/docker-compose.dev.yml logs keycloak; exit 1
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@v7
         with:
           python-version: "3.12"
 
