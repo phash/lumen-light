@@ -1,0 +1,19 @@
+# Garage-Konfiguration fuer Production (lumen-garage, Single-Node).
+# Secrets NICHT hier: rpc_secret und admin_token kommen per Env
+# (GARAGE_RPC_SECRET / GARAGE_ADMIN_TOKEN aus deployment/.env).
+metadata_dir = "/var/lib/garage/meta"
+data_dir = "/var/lib/garage/data"
+db_engine = "sqlite"
+replication_factor = 1
+# Taeglicher Metadaten-Snapshot (Crash-Konsistenz der sqlite-DB).
+metadata_auto_snapshot_interval = "24h"
+
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+
+[admin]
+api_bind_addr = "[::]:3903"

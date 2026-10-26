@@ -180,3 +180,66 @@ async def test_admin_feedback_patch_invalid_id_404(client, admin_user):
         json={"status": "closed"},
     )
     assert r.status_code == 404
+
+
+def test_has_admin_role_ignoriert_fremde_clients():
+    """Eine admin-Rolle an einem beliebigen anderen Client macht niemanden
+    zum Lumen-Admin — nur realm_access oder der eigene API-Client zaehlen."""
+    from app.auth import _has_admin_role
+
+    assert (
+        _has_admin_role({"resource_access": {"other-app": {"roles": ["admin"]}}})
+        is False
+    )
+
+
+
+@pytest.mark.asyncio
+async def test_admin_kann_auto_verstecktes_preset_wiederherstellen(
+    client, admin_user, user_a, db_session, monkeypatch
+):
+    """Moderation: Admin sieht gemeldete Presets und kann die Meldungen
+    verwerfen; danach darf der Creator wieder veroeffentlichen."""
+    from sqlalchemy import update
+
+    from app.models import Preset
+
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json={"name": "zu-unrecht", "adjustments": {"exposure": 0}},
+    )
+    pid = r.json()["id"]
+    await db_session.execute(
+        update(Preset).where(Preset.id == pid).values(report_count=3)
+    )
+    await db_session.commit()
+
+    from uuid import UUID
+
+    from app.models import PresetReport
+
+    db_session.add(PresetReport(preset_id=UUID(pid), reason="Spam-Name"))
+    await db_session.commit()
+
+    listed = await client.get(
+        "/api/v1/admin/presets/reported", headers=admin_user["headers"]
+    )
+    assert listed.status_code == 200
+    entry = next(p for p in listed.json() if p["id"] == pid)
+    # Moderations-UI braucht Gruende + Creator (fuer "Nutzer sperren").
+    assert entry["reportCount"] == 3
+    assert entry["ownerEmail"] == user_a["user"]["email"]
+    assert entry["ownerId"] == user_a["user"]["id"]
+    assert [r["reason"] for r in entry["reports"]] == ["Spam-Name"]
+
+    cleared = await client.post(
+        f"/api/v1/admin/presets/{pid}/clear-reports", headers=admin_user["headers"]
+    )
+    assert cleared.status_code == 200, cleared.text
+    assert cleared.json()["reportCount"] == 0
+
+    forbidden = await client.get(
+        "/api/v1/admin/presets/reported", headers=user_a["headers"]
+    )
+    assert forbidden.status_code == 403

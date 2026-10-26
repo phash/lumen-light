@@ -56,3 +56,6 @@ package-lock.json
 # pytest-cov Artefakt
 .coverage
 backend/.coverage
+
+# Prod-Host: Backup-Passphrase (nie committen)
+deployment/.backup-passphrase

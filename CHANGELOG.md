@@ -6,6 +6,25 @@ Versionierung an [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased] — Pre-Beta
 
+### Sicherheit (2026-10-26)
+
+- **S3 auf Garage umgestellt** (Prod, Dev, Tests, CI) — MinIO ist EOL. Einrichtung per Admin-API (`scripts/garage_init.py`), Key ohne owner-Recht; `deploy.sh` migriert den Bucket einmalig aus MinIO (Objektzahl-Abgleich, Archiv bleibt liegen).
+- **Uploads per Pre-Signed POST** mit `content-length-range` (= angekuendigte Groesse), Key- und Content-Type-Bindung; Caddy laesst auf `/lumen-images` nur GET/HEAD/POST zu.
+- **Netztrennung**: nur `lumen-web` (nginx) ist im cluster-geteilten `caddy-proxy`-Netz; API, Keycloak und Garage sind fuer fremde Container nicht mehr erreichbar.
+- **Backups** gpg-verschluesselt (AES256), optional per rsync offsite (`BACKUP_REMOTE`); Bucket-Backup als Objekt-tar (`scripts/s3_archive.py`, auch fuer Restore).
+- **Admin-Moderation**: Tab „Meldungen" in `/admin` (Gruende, Creator, Meldungen verwerfen, Creator sperren).
+- Gesperrte User umgehen die Sperre nicht mehr per Selbstloeschung + Re-Login (Tombstone merkt die Sperre).
+
+- Dependency-Upgrades: Frontend (react 19.3, react-router 7.18.4, vite 8.3, vitest 5, jsdom 30, libraw-wasm 1.6, …) — `pnpm audit` von 69 auf 0 Findings; Backend (fastapi 0.162, PyJWT 2.15.1, sqlalchemy 2.1.6, pydantic 2.14, …) — `pip-audit` von 23 auf 0.
+- Uploads laufen ueber einen Staging-Key; Pruefung (Groesse, Magic-Bytes) am finalen Objekt, das der Client nie beschreiben kann.
+- Rate-Limit: echte Client-IP hinter Caddy (`--proxy-headers`), User-Bucket nur fuer signatur-verifizierte Tokens; JWKS-Refetch bei unbekanntem `kid` gedrosselt.
+- `DELETE /me` loescht den kompletten S3-Prefix (mit Janitor-Retry) und legt einen Tombstone gegen JIT-Wiederbelebung an (Migration 010).
+- Request-Body-Limit (1 MB App, 2 MB Caddy), Masken-Listen begrenzt; gesperrte User duerfen exportieren/loeschen; Presets gesperrter User nicht mehr oeffentlich; Report-Missbrauch erschwert; Fork-500er behoben.
+- Service-Worker cached keine privaten Bilder/`config.js` mehr; Cache wird bei Logout/Account-Loeschung geleert; Matomo bekommt keine Query-Parameter.
+- Caddy: Sandbox-CSP auf S3-Antworten, KC-Master-Realm/Admin-Konsole nicht oeffentlich, CSP auf exakte Matomo-Datei + `wasm-unsafe-eval`.
+- Prod-Compose: Container-Haertung (no-new-privileges, cap_drop, Limits), gepinnte Images (Keycloak 26.8.1, nginx 1.30.6, Postgres 16.15, Redis 7.4.11), Least-Privilege-S3-User; Keycloak-Realm gehaertet (Password-Policy, Events, exakte Redirect-URIs, kein `offline_access`).
+- CI: Actions auf SHA gepinnt, `permissions: contents: read`; Dependabot auch fuer Docker/Compose.
+
 ### Hinzugefuegt
 
 - **Phase E · Power-Tools**

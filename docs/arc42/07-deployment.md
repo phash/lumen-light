@@ -97,17 +97,16 @@ cp deployment/.env.example deployment/.env
 docker exec -i keycloak /opt/keycloak/bin/kc.sh import \
     --file - --override true < infra/keycloak/lumen-realm.json
 
-# 4. Garage-Bucket anlegen
-bash infra/garage/init.sh   # legt Bucket lumen-images an, erstellt
-                            # Access-Key und schreibt ihn in .env
+# 4. Garage: eigener Container lumen-garage im Lumen-Stack; Layout, Key und
+#    Bucket legt der Init-Service lumen-garage-init beim `up -d` an
+#    (backend/scripts/garage_init.py, Werte aus .env)
 
 # 5. Stack bauen und starten
 docker compose -f deployment/docker-compose.prod.yml build --no-cache
 docker compose -f deployment/docker-compose.prod.yml up -d
 
-# 6. Caddy-Aliase verbinden
-docker network connect --alias lumen-api caddy-proxy lumen-api
-docker network connect --alias lumen-web caddy-proxy lumen-web
+# 6. Netztrennung: nur lumen-web haengt im caddy-proxy-Netz (Compose),
+#    nginx proxied /api, /auth, /lumen-images intern — keine Aliase noetig
 
 # 7. Caddyfile-Eintrag in /opt/caddyserver/Caddyfile ergaenzen
 #    (siehe oben), dann reload
@@ -143,13 +142,13 @@ docker cp keycloak:/tmp/lumen-realm.json infra/keycloak/lumen-realm.json
 
 ## Garage-Initialisierung
 
-`infra/garage/init.sh` (Pflicht-Reihenfolge):
-1. Cluster-Layout sicherstellen (Garage hat das ggf. schon)
-2. `garage bucket create lumen-images`
-3. `garage key create lumen-app-rw` → Access-Key + Secret in stdout
-4. `garage bucket allow --read --write --owner lumen-images --key lumen-app-rw`
-5. Output ins `.env` schreiben (manuell oder via `sed`)
-6. CORS auf dem Bucket konfigurieren (PUT/GET vom Frontend-Origin erlauben)
+`lumen-garage-init` (Compose-Service, `backend/scripts/garage_init.py`,
+idempotent, ueber die Admin-API — das Garage-Image hat keine Shell):
+1. Single-Node-Layout zuweisen + anwenden (nur beim ersten Start)
+2. API-Key mit fester ID/Secret aus `.env` importieren (`GK…`-Format)
+3. Bucket `lumen-images` anlegen, Key bekommt read+write (kein owner)
+4. Kein CORS noetig: Browser laedt same-origin ueber `/lumen-images`
+   (Pre-Signed POST mit content-length-range)
 
 ## Backup
 

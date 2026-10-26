@@ -87,6 +87,14 @@ export default function Datenschutz() {
           automatisch (10 MB pro Datei, max. 3 Generationen). Zweck:
           technischer Betrieb und Fehlerbehebung.
         </li>
+        <li>
+          <span className="text-stone-200">Anmelde-Ereignisse:</span>
+          Keycloak protokolliert Logins, fehlgeschlagene Anmeldeversuche und
+          Passwort-Änderungen mit IP-Adresse und Zeitstempel. Zweck: Erkennen
+          von Angriffen auf Accounts. Rechtsgrundlage: Art. 6 Abs. 1 lit. f
+          (berechtigtes Interesse an der
+          Sicherheit des Dienstes). Löschung automatisch nach 7 Tagen.
+        </li>
       </ul>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">3. Rechtsgrundlage</h2>
@@ -99,7 +107,7 @@ export default function Datenschutz() {
 
       <h2 className="mt-8 text-xl text-stone-200 italic">4. Speicherort und Empfänger</h2>
       <p className="mt-3">
-        Postgres-Datenbank, S3-Bucket (MinIO) und Keycloak-Realm liegen auf
+        Postgres-Datenbank, S3-Bucket (Garage) und Keycloak-Realm liegen auf
         einem deutschen IONOS-VPS. Auftragsverarbeiter: IONOS SE als Hoster.
         Bilder selbst werden ausschließlich auf diesem VPS gespeichert.
       </p>

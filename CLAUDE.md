@@ -6,7 +6,7 @@ privat. FastAPI + React 19/WebGL2, Keycloak, Postgres, Garage S3.
 ## Stack hochfahren
 
 ```bash
-# 1. Postgres + Keycloak + MinIO (statt Garage in dev)
+# 1. Postgres + Keycloak 26.8 + Garage-S3 (Ports nur auf 127.0.0.1)
 docker compose -f deployment/docker-compose.dev.yml up -d
 # Wartet bis Keycloak ready
 until curl -fs http://localhost:19000/health/ready >/dev/null; do sleep 2; done
@@ -19,9 +19,10 @@ cd backend && DATABASE_URL="postgresql+asyncpg://lumen:lumen@localhost:5433/lume
 DATABASE_URL="postgresql+asyncpg://lumen:lumen@localhost:5433/lumen" \
 KEYCLOAK_ISSUER="http://localhost:18080/realms/lumen" \
 KEYCLOAK_AUDIENCE="lumen-api" \
-GARAGE_S3_ENDPOINT="http://localhost:9000" GARAGE_S3_REGION="us-east-1" \
+GARAGE_S3_ENDPOINT="http://localhost:9000" GARAGE_S3_REGION="garage" \
 GARAGE_S3_BUCKET="lumen-images" \
-GARAGE_S3_ACCESS_KEY_ID="minioadmin" GARAGE_S3_SECRET_ACCESS_KEY="minioadmin" \
+GARAGE_S3_ACCESS_KEY_ID="GKde7000000000000000000001" \
+GARAGE_S3_SECRET_ACCESS_KEY="de70000000000000000000000000000000000000000000000000000000000001" \
 CORS_ORIGIN="http://localhost:5173" \
 .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 
@@ -50,7 +51,7 @@ Login mit `manuel@local.test` / `lumen` — der Realm hat
 ## Tests
 
 ```bash
-# Backend (testcontainers für PG + MinIO + Keycloak — Docker muss laufen)
+# Backend (testcontainers für PG + Garage + Keycloak 26.8 — Docker muss laufen)
 cd backend && .venv/bin/pytest -q
 
 # Frontend Unit/Component
@@ -70,14 +71,14 @@ gesetzt — pytest läuft sonst gegen 429er.
 ## Architektur
 
 - **backend/** — FastAPI, async SQLAlchemy 2 + asyncpg, Alembic. Auth
-  via Keycloak-JWT (Whitelist `RS256`). S3 via boto3. Pre-Signed PUTs
+  via Keycloak-JWT (Whitelist `RS256`). S3 via boto3. Pre-Signed POSTs
   für Bild-Uploads (Pixel laufen NICHT durch FastAPI). Rate-Limit via
   slowapi (`@limiter.limit`).
 - **frontend/** — React 19 + Vite 8 + TypeScript strict +
   noUncheckedIndexedAccess. WebGL2-Pipeline in einem Fragment-Shader
   mit Uniform-Arrays für Multi-Mask. Zustand 5 für State.
   react-oidc-context für OIDC.
-- **deployment/** — `docker-compose.dev.yml` (PG + KC + MinIO),
+- **deployment/** — `docker-compose.dev.yml` (PG + KC + Garage-S3 + garage_init/aws-cli-Init fuer Bucket/CORS),
   `docker-compose.prod.yml` (db + api + web hinter Caddy-Proxy auf VPS).
 - **docs/** — `01-konzept.md` bis `08-risiken-offene-fragen.md`,
   `06-roadmap.md` zeigt Iterationsstand.
@@ -91,7 +92,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `backend/app/auth.py` | JWT-Verify (PyJWT, RS256-Whitelist), JIT-User-Provisioning + 20 Default-Presets (4 Looks + 6 Genre + 10 Motiv: Macro/Astro/Food/Hochzeit/Innen/Konzert/Strand/Schnee/Herbst/Architektur). `current_admin`-Dep prueft Realm-Role `admin`. |
 | `backend/app/schemas.py` | Adjustments, Mask-Discriminated-Union (`MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`), `extra="forbid"`. `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` → Wire-Keys camelCase, Eingang akzeptiert beide via `populate_by_name=True`. |
 | `backend/app/rate_limit.py` | slowapi-Limiter (SHA-256-Token-Hash-Key, IP-Fallback). `LUMEN_RATELIMIT_STORAGE` ueber env auf Redis-URI fuer Multi-Worker-Setups |
-| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) |
+| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) → 010_purges_tombstones (`storage_purges`: Janitor-Retry fehlgeschlagener S3-Prefix-Purges aus DELETE /me; `account_tombstones`: SHA-256(sub)+deleted_at gegen JIT-Wiederbelebung) |
 | `backend/schemas/edit-groups.json` | Single Source fuer das Gruppen->Feld-Mapping (8 Gruppen: tone/color/hsl/curve/detail/masks/crop/lens). Backend liest zur Laufzeit, Frontend importiert beim Build (Vite-Repo-Root-Context). |
 | `backend/app/profile_groups.py` | Laedt die JSON, stellt `GROUPS`, `KNOWN_GROUP_KEYS`, `merge_edit_state(...)` bereit. Batch-Apply-Endpoint nutzt `merge_edit_state` fuer nicht-destruktiven Merge. |
 | `frontend/src/editor/profileGroups.ts` | Importiert `backend/schemas/edit-groups.json`, exportiert `GROUPS`, `defaultEnabledGroups()`, `mergeGroups(base, profile, enabled)`. Gleicher Repo-Root-Build-Context wie `lensProfile.ts`. |
@@ -196,9 +197,9 @@ gesetzt — pytest läuft sonst gegen 429er.
 - **Keycloak-Realm**: `registrationEmailAsUsername=true` macht aus
   Username automatisch die Email. `directAccessGrantsEnabled=true` ist
   für Tests an, sollte vor Public-Launch aus.
-- **Pre-Signed PUT**: keine Content-Length-Constraint im URL —
-  `confirm_upload` muss daher gegen `max_image_size_bytes` prüfen +
-  Object löschen + DB-Row weg + 413 (siehe `backend/app/routers/images.py`).
+- **Upload-Groesse doppelt geprueft**: die POST-Policy begrenzt auf die
+  angekuendigte Groesse; `confirm_upload` prueft zusaetzlich gegen
+  `max_image_size_bytes` + Object löschen + DB-Row weg + 413 (Defense-in-Depth).
 - **Histogram-Readback** im Frontend nutzt `OffscreenCanvas` +
   `drawImage()` auf das WebGL-Canvas — funktioniert weil Renderer mit
   `preserveDrawingBuffer: true` läuft.
@@ -236,6 +237,34 @@ gesetzt — pytest läuft sonst gegen 429er.
   Karten `pointer-events: auto` setzen — sonst blockiert der Wrapper
   Klicks aufs hervorgehobene Target.
 
+- **S3 = Garage ueberall** (Prod, Dev, pytest, CI; dxflrs/garage v1.3.1).
+  Image hat keine Shell -> Einrichtung (Layout, Key-Import, Bucket) ueber die
+  Admin-API mit `backend/scripts/garage_init.py` (stdlib-only, auch von der
+  conftest genutzt). Key-Format `GK`+24 hex, Secret 64 hex, Region `garage`,
+  Bucket-Namen >= 3 Zeichen. Dev-Key hat Owner-Recht (nur fuer CORS),
+  Prod-Key nicht. Fehlermeldung steht im Response-Body der Admin-API.
+- **Uploads = Pre-Signed POST** (nicht PUT): `POST /images` liefert
+  `uploadUrl` + `uploadFields`; Browser schickt multipart mit allen Feldern
+  und `file` ZULETZT. Policy bindet Key, Content-Type und
+  `content-length-range` (= angekuendigte Groesse) — groessere Bodies lehnt
+  Garage mit 400 ab. Test-Helper: `backend/tests/s3_upload.py`.
+- **Netztrennung Prod**: nur `lumen-web` im `caddy-proxy`-Netz; nginx
+  (`frontend/nginx.conf`) proxied `/api`, `/auth`, `/lumen-images` intern.
+  Caddy-Block routet alles an `lumen-web:80`, Pfad-Policies bleiben im Caddy.
+  Neue Services NICHT ins `caddy-proxy`-Netz haengen.
+- **Keycloak >= 26.x Audience-Mapper**: `included.client.audience` wirkt nur
+  fuer EXISTIERENDE Clients. Es gibt keinen Client `lumen-api` -> Mapper
+  muss `included.custom.audience: lumen-api` nutzen, sonst fehlt `aud` und
+  jeder API-Call ist 401. `deploy.sh` migriert den Live-Mapper.
+- **Uploads ueber Staging-Key**: Pre-Signed POST zeigt auf
+  `{uid}/staging/{id}`, `confirm` kopiert serverseitig nach `originals/` und
+  prueft Groesse + Magic-Bytes am finalen Objekt. Finale Keys werden nie
+  zum Schreiben herausgegeben.
+- **Port 5173 belegt** (anderes Dev-Projekt): Vite weicht auf 5174 aus —
+  KC-Client-Redirects, Backend-`CORS_ORIGIN` und S3-Bucket-CORS kennen nur
+  5173. Fuer lokale E2E entweder den anderen Server stoppen oder 5174 zur
+  Laufzeit freischalten und `LUMEN_BASE_URL=http://localhost:5174` setzen.
+
 ## Workflow
 
 - **Iteration starten**: Spec in `docs/superpowers/specs/YYYY-MM-DD-<thema>-design.md`, optional Plan in `docs/superpowers/plans/`. Roadmap-Eintrag in `docs/06-roadmap.md` aktualisieren.
@@ -258,6 +287,8 @@ gesetzt — pytest läuft sonst gegen 429er.
 - `LUMEN_ENV=production` (in `docker-compose.prod.yml` gesetzt) blendet `/docs`, `/openapi.json`, `/redoc` aus.
 - `LUMEN_RATELIMIT_STORAGE=redis://lumen-redis:6379/0` schaltet slowapi auf gemeinsamen Counter ueber alle Worker. Default `memory://` = single-worker-only.
 - `LUMEN_RATELIMIT_DISABLED=1` schaltet slowapi komplett aus (Backend-Tests).
+- `FORWARDED_ALLOW_IPS` (Dockerfile-CMD, Default `127.0.0.1`; Prod-Compose `*`): uvicorn `--proxy-headers` — ohne sieht der Rate-Limiter nur die Caddy-IP.
+- `REPORT_MIN_ACCOUNT_AGE_HOURS` (Default 24): Mindest-Kontoalter fuer Marketplace-Reports. E2E setzt `0`, sonst 403 fuer frische Test-User.
 - `KEYCLOAK_ADMIN_CLIENT_ID` + `KEYCLOAK_ADMIN_CLIENT_SECRET` aktivieren den Service-Account-Pfad in `delete_me`. Leer = KC-Account bleibt nach `DELETE /me` stehen (Best-effort, kein 5xx).
 - Service-Worker registriert nur in PROD-Build (`import.meta.env.PROD`); Dev frisst sonst den Vite-Hot-Reload.
 
@@ -297,4 +328,6 @@ Bereits erledigt (frueher hier als offen gelistet — Stand jetzt korrekt):
 Genuin offen:
 
 - **G4 Lensfun-DB-Stuetzstellen-Interpolation** — Backlog, kein Launch-Blocker.
-- **Pre-Signed-POST mit Content-Length-Range** — heutiger Pfad (HEAD-Size-Check + Cleanup + 413 im `confirm_upload`, plus Janitor) deckt Bucket-Overflow ab; echte Content-Length-Range erst bei Multi-Tenant-Public noetig.
+- **Pre-Signed-POST mit Content-Length-Range** ✓ (2026-10, siehe Gotchas).
+- **Admin-Moderation gemeldeter Presets** ✓ — Tab „Meldungen" in `/admin`.
+- **Backup verschluesselt + Offsite** ✓ — `backup.sh` mit gpg + `BACKUP_REMOTE` (Ziel-Host noch einzurichten).

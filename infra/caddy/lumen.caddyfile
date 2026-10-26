@@ -1,13 +1,16 @@
 # Lumen · light — Block fuer /opt/caddyserver/Caddyfile.
 #
-# Single-Domain-Topologie (kein Cluster-Shared Keycloak/Garage vorhanden):
-#   lumen.mr-development.de
-#     /api/*          -> lumen-api:4100      (FastAPI)
-#     /auth/*         -> lumen-keycloak:8080 (Keycloak, KC_HTTP_RELATIVE_PATH=/auth)
-#     /lumen-images/* -> lumen-minio:9000    (S3, Pre-Signed PUT/GET, same-origin)
-#     /*              -> lumen-web:80         (React-SPA via nginx)
+# Single-Domain-Topologie, EIN Upstream (Netztrennung, Security-Review 2026-10):
+#   lumen.mr-development.de -> lumen-web:80 (nginx)
+#     /api/*          -> nginx -> lumen-api:4100      (FastAPI)
+#     /auth/*         -> nginx -> lumen-keycloak:8080 (KC_HTTP_RELATIVE_PATH=/auth)
+#     /lumen-images/* -> nginx -> lumen-garage:3900   (S3, Pre-Signed POST/GET)
+#     /*              -> nginx (React-SPA)
 #
-# Voraussetzung: lumen-api/-web/-keycloak/-minio sind im caddy-proxy-Netz.
+# Nur lumen-web ist im caddy-proxy-Netz. API, Keycloak und Garage haengen
+# ausschliesslich im lumen-internal-Netz (fremde Container im Cluster
+# erreichen sie nicht). Die Pfad-Policies unten (404, Body-Limits, CSP)
+# greifen weiter hier im Caddy; das Routing macht frontend/nginx.conf.
 # DNS-A-Record lumen.mr-development.de zeigt bereits auf den VPS.
 
 lumen.mr-development.de {
@@ -18,27 +21,59 @@ lumen.mr-development.de {
     # (synchron halten).
     import security_headers
 
-    # API -> FastAPI
+    # API -> FastAPI. JSON-Bodies sind klein (Presets/Edit-State/Feedback),
+    # Bild-Pixel laufen ueber /lumen-images -> Body-Limit gegen Memory-DoS.
     @api path /api/*
     handle @api {
-        reverse_proxy lumen-api:4100
+        request_body {
+            max_size 2MB
+        }
+        reverse_proxy lumen-web:80
+    }
+
+    # Master-Realm + Admin-Konsolen NICHT ins Internet (Password-Spraying auf
+    # den Bootstrap-Admin). Admin-Arbeit per SSH-Tunnel bzw. kcadm im
+    # Container (siehe infra/deployment-runbook.md). Die Admin-REST-API des
+    # lumen-Realms (/auth/admin/realms/lumen/...) bleibt erreichbar — die
+    # API nutzt sie fuer DELETE /me (Service-Account, Bearer-Token).
+    @kc_admin path /auth/realms/master /auth/realms/master/* /auth/admin/master/* /auth/admin/realms/master /auth/admin/realms/master/* /auth/admin/*/console /auth/admin/*/console/*
+    handle @kc_admin {
+        respond "Not found" 404
     }
 
     # Keycloak unter /auth (eigener Realm-Server). KC setzt eigene Header/CSP
     # fuer seine Login-Seiten — wir ueberschreiben sie hier bewusst NICHT.
     @auth path /auth/*
     handle @auth {
-        reverse_proxy lumen-keycloak:8080
+        reverse_proxy lumen-web:80
     }
 
-    # S3 (MinIO). Pre-Signed PUT/GET laufen same-origin ueber diesen Pfad
-    # (kein CORS noetig). Path-Style: erster Pfadteil = Bucket 'lumen-images'.
-    # Caddy reicht den Original-Host (lumen.mr-development.de) weiter, daher
-    # bleibt die SigV4-Signatur gueltig. Kein request_body-Limit -> grosse
-    # Bild-Uploads (bis 200 MB) streamen durch.
-    @s3 path /lumen-images/*
+    # S3 (Garage). Pre-Signed POST (Upload) und GET (Download) laufen
+    # same-origin ueber diesen Pfad (kein CORS noetig). Path-Style: erster
+    # Pfadteil = Bucket 'lumen-images'. Der Original-Host wird bis Garage
+    # durchgereicht, daher bleibt die SigV4-Signatur gueltig. Kein
+    # request_body-Limit hier: die POST-Policy (content-length-range)
+    # begrenzt die Groesse, nginx kappt bei 210 MB.
+    #
+    # Lumen gibt nur Pre-Signed POST/GET aus -> alle anderen Methoden (PUT,
+    # DELETE, Multipart, ...) von aussen hart blocken. S3-Antworten nie als
+    # aktives Dokument ausfuehren (sandbox-CSP + nosniff), falls doch je ein
+    # Nicht-Bild im Bucket landet.
+    @s3_other_method {
+        path /lumen-images /lumen-images/*
+        not method GET HEAD POST
+    }
+    handle @s3_other_method {
+        respond "Method not allowed" 405
+    }
+    # /lumen-images ohne Slash = Bucket-URL des Pre-Signed POST.
+    @s3 path /lumen-images /lumen-images/*
     handle @s3 {
-        reverse_proxy lumen-minio:9000
+        header {
+            Content-Security-Policy "default-src 'none'; sandbox"
+            X-Content-Type-Options "nosniff"
+        }
+        reverse_proxy lumen-web:80
     }
 
     # Schema-Disclosure hart blocken (Defense-in-Depth zum LUMEN_ENV-Toggle).
@@ -48,14 +83,13 @@ lumen.mr-development.de {
     }
 
     # SPA (nginx) — strikte CSP NUR fuer die App-Antworten (nicht /auth).
-    # Trade-off (bewusst, Selfhost): script-src erlaubt die self-gehostete
-    # Matomo-Origin musikersuche.org, weil der Tracker matomo.js von dort
-    # geladen wird. Kein 'unsafe-inline'/'unsafe-eval' im script-src. Haertung
-    # bei public-Launch: matomo.js unter 'self' co-hosten (dann musikersuche.org
-    # aus script-src raus) oder Subresource-Integrity ergaenzen.
+    # script-src erlaubt von musikersuche.org NUR die exakte Datei
+    # /matomo/matomo.js (nicht die ganze Origin). 'wasm-unsafe-eval' ist
+    # fuer den libraw-wasm-RAW-Decoder noetig (WebAssembly.instantiate) und
+    # erlaubt KEIN JS-eval. Kein 'unsafe-inline'/'unsafe-eval' im script-src.
     handle {
         header {
-            Content-Security-Policy "default-src 'self'; img-src 'self' blob: data: https://musikersuche.org; media-src 'self' blob:; connect-src 'self' https://musikersuche.org https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self' https://musikersuche.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            Content-Security-Policy "default-src 'self'; img-src 'self' blob: data: https://musikersuche.org; media-src 'self' blob:; connect-src 'self' https://musikersuche.org https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self' 'wasm-unsafe-eval' https://musikersuche.org/matomo/matomo.js; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         }
         reverse_proxy lumen-web:80
     }

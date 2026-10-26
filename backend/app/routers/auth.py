@@ -3,7 +3,8 @@
 Login/Logout/Refresh/Register laufen ueber den externen Keycloak-Realm.
 DELETE/Export sind DSGVO Art. 17 + 20.
 """
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -13,10 +14,19 @@ from sqlalchemy import desc, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth import current_user
+from app.auth import current_user, current_user_allow_disabled, hash_sub
 from app.database import get_db
 from app.keycloak_admin import delete_user as kc_delete_user
-from app.models import Feedback, Image, ImageEdit, Preset, PresetReport, User
+from app.models import (
+    AccountTombstone,
+    Feedback,
+    Image,
+    ImageEdit,
+    Preset,
+    PresetReport,
+    StoragePurge,
+    User,
+)
 from app.rate_limit import limiter
 from app.schemas import (
     CAMEL_BASE_CONFIG,
@@ -29,6 +39,7 @@ from app.schemas import (
 from app.storage import StorageService, get_storage
 
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -85,47 +96,55 @@ async def list_published_presets(
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_me(
-    user: User = Depends(current_user),
+    # Auch gesperrte Accounts duerfen ihre Daten loeschen (Art. 17).
+    user: User = Depends(current_user_allow_disabled),
     db: AsyncSession = Depends(get_db),
     storage: StorageService = Depends(get_storage),
 ) -> None:
     """Loescht alle Daten des aktuellen Users:
 
-    1. Alle S3-Objekte des Users (Best-Effort, Storage-Fehler werden
-       protokolliert aber nicht eskaliert — die DB-Row geht trotzdem weg).
-    2. DB-Cascade entfernt presets+images.
+    1. ALLE S3-Objekte unter dem User-Prefix <user_id>/ (list_objects_v2 +
+       Batch-Delete) — nicht nur die in der DB bekannten Keys, damit auch
+       Staging-Reste und verwaiste Objekte verschwinden. Schlaegt der Purge
+       fehl, wird der Prefix in storage_purges vorgemerkt und der Janitor
+       wiederholt ihn (retry_storage_purges), statt den Fehler zu schlucken.
+    2. DB-Cascade entfernt presets+images; ein Grabstein (SHA-256(sub) +
+       deleted_at) verhindert, dass ein noch gueltiger Access-Token den
+       Account per JIT-Provisioning wiederbelebt.
     3. Keycloak-Account via Admin-API loeschen (Service-Account, falls
        konfiguriert). Best-effort: ein KC-Ausfall schluckt den /me-DELETE
        NICHT — App-Daten gehen trotzdem weg, KC-Account bleibt nur als
        Reststand stehen (Logger-WARNING). Wenn Service-Account nicht
        konfiguriert ist, wird der KC-Schritt uebersprungen.
     """
-    image_keys_result = await db.execute(
-        select(Image.bucket_key).where(Image.user_id == user.id)
-    )
-    keys = [row[0] for row in image_keys_result.all()]
-
-    for key in keys:
-        try:
-            # boto3 ist synchron/blockierend -> Threadpool, damit der
-            # Event-Loop waehrend des S3-Roundtrips nicht steht.
-            await run_in_threadpool(storage.delete, key)
-        except Exception:  # noqa: BLE001 — best-effort cleanup
-            # Object stays in bucket but DB row goes — orphan acceptable
-            # at this scale; periodic GC sweeps it eventually.
-            pass
+    prefix = f"{user.id}/"
+    purge_error: str | None = None
+    try:
+        # boto3 ist synchron/blockierend -> Threadpool.
+        await run_in_threadpool(storage.delete_prefix, prefix)
+    except Exception as exc:  # noqa: BLE001 — wird unten persistiert
+        purge_error = str(exc)[:500]
+        logger.warning("delete_me: S3-Purge fuer %s fehlgeschlagen: %s", prefix, exc)
 
     keycloak_sub = user.keycloak_sub
+    # Admin-Sperre ueberlebt die Loeschung (sonst Ban-Umgehung: gesperrter
+    # User loescht sich und provisioniert per Re-Login frisch).
+    banned = user.is_disabled
     await db.delete(user)
+    # Grabstein in derselben Transaktion wie die Loeschung. merge statt add:
+    # erneutes Loeschen nach Re-Provisionierung aktualisiert deleted_at.
+    await db.merge(
+        AccountTombstone(
+            sub_hash=hash_sub(keycloak_sub),
+            deleted_at=datetime.now(timezone.utc),
+            banned=banned,
+        )
+    )
+    if purge_error is not None:
+        await db.merge(StoragePurge(prefix=prefix, attempts=1, last_error=purge_error))
     await db.commit()
 
     # Erst nach erfolgreichem App-Cleanup den KC-Account abraeumen.
-    # Reihenfolge: wenn KC zwischendrin abstuerzt, ist die App-Tabelle
-    # leer und der naechste Login provisioniert sauber (oder wird
-    # zumindest nicht verwirrt). Andere Reihenfolge wuerde einen
-    # KC-Token erlauben, dem keine App-Row mehr gegenueber steht
-    # (das gleiche, was der bisherige Code ohnehin produziert hat —
-    # also kein Regress).
     # kc_delete_user macht bis zu zwei blockierende httpx-Roundtrips (Token
     # + DELETE, zusammen bis 15 s) -> Threadpool.
     await run_in_threadpool(kc_delete_user, keycloak_sub)
@@ -213,7 +232,8 @@ class MeExport(BaseModel):
 @limiter.limit("10/minute")
 async def export_me(
     request: Request,
-    user: User = Depends(current_user),
+    # Auch gesperrte Accounts behalten ihr Auskunftsrecht (Art. 15/20).
+    user: User = Depends(current_user_allow_disabled),
     db: AsyncSession = Depends(get_db),
     storage: StorageService = Depends(get_storage),
 ) -> MeExport:

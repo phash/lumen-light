@@ -21,6 +21,18 @@ const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as {
   samples: ManifestSample[];
 };
 
+// Onboarding vorab "dismissed": das Welcome-Modal faengt sonst Klicks ab
+// (Objektiv-Toggle). Cookies leeren gegen KC-Session-Leak (wie editor.spec).
+test.beforeEach(async ({ page, context }) => {
+  await context.clearCookies();
+  await page.addInitScript(() => {
+    window.localStorage.setItem(
+      "lumen.onboarding.v1",
+      JSON.stringify({ status: "dismissed" }),
+    );
+  });
+});
+
 test.describe("RAW-Pipeline gegen echten Korpus", () => {
   for (const sample of manifest.samples) {
     const path = join(FIXTURES, sample.filename);
@@ -72,6 +84,11 @@ test.describe("RAW-Pipeline gegen echten Korpus", () => {
 
           // Lens-Profil wurde automatisch angewendet — alle Korpus-Files
           // matchen ein Profil aus infra/lensfun/profiles.json.
+          // Objektiv-Section ist default eingeklappt (Status nicht im DOM).
+          const lensToggle = page.getByTestId("lens-section-toggle");
+          if ((await lensToggle.getAttribute("aria-expanded")) !== "true") {
+            await lensToggle.click();
+          }
           const lensStatus = page.getByTestId("lens-profile-status");
           await expect(lensStatus).toContainText("auto");
         } finally {

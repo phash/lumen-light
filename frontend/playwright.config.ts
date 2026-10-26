@@ -5,7 +5,7 @@ const BASE_URL = process.env.LUMEN_BASE_URL ?? "http://localhost:5173";
 /**
  * Playwright-Konfiguration. Die Tests laufen gegen einen bereits hoch-
  * gefahrenen Dev-Stack (siehe deployment/docker-compose.dev.yml) — kein
- * webServer-Eintrag, weil Backend + Keycloak + MinIO ausserhalb dieses
+ * webServer-Eintrag, weil Backend + Keycloak + Garage ausserhalb dieses
  * Frontend-Repos starten.
  */
 export default defineConfig({

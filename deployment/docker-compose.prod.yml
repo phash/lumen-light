@@ -2,16 +2,35 @@
 #
 # Voraussetzungen auf dem VPS:
 #   - Docker network 'caddy-proxy' existiert (cluster-shared)
-#   - Keycloak laeuft im caddy-proxy-Network (Realm 'lumen' importiert)
-#   - Garage laeuft, Bucket lumen-images existiert (siehe infra/garage/init.sh)
 #   - .env enthaelt POSTGRES_*, KEYCLOAK_*, GARAGE_*, CORS_ORIGIN
+#
+# Netztrennung: NUR lumen-web haengt im cluster-geteilten caddy-proxy-Netz.
+# API, Keycloak, Garage, DB und Redis sind ausschliesslich in lumen-internal;
+# nginx (frontend/nginx.conf) reicht /api, /auth und /lumen-images intern
+# weiter. Fremde Container im Cluster erreichen nur lumen-web; nginx wendet
+# dieselben Pfad-Policies an wie Caddy (Admin-Konsole 404, S3 nur GET/POST).
+# Rest-Risiko: sie koennen dort X-Forwarded-For setzen (eigener Rate-Limit-
+# Bucket) — Caddy selbst verwirft client-seitiges XFF.
 #   - deployment/config.prod.js mit den richtigen Frontend-Werten existiert
 #
 # Initiales Deployment macht Manuel — siehe infra/deployment-runbook.md.
 
+# Gemeinsame Container-Haertung: keine Privilege-Escalation via setuid,
+# json-file-Logrotation. Ressourcen-Limits pro Service (shared VPS: ein
+# Ausreisser darf nicht den ganzen Host in den OOM treiben).
+x-hardening: &hardening
+  security_opt:
+    - no-new-privileges:true
+  logging:
+    driver: json-file
+    options:
+      max-size: "10m"
+      max-file: "3"
+
 services:
   lumen-db:
-    image: postgres:16-alpine
+    <<: *hardening
+    image: postgres:16.15-alpine
     container_name: lumen-db
     restart: unless-stopped
     environment:
@@ -29,11 +48,8 @@ services:
       retries: 10
     networks:
       - lumen-internal
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    mem_limit: 1g
+    pids_limit: 200
 
   # Geteilter Rate-Limit-Counter-Store fuer slowapi. Notwendig sobald
   # lumen-api mit `--workers > 1` laeuft, sonst sind die Counter pro
@@ -41,7 +57,8 @@ services:
   # Volume ist persistent, aber bei Restart toleriert die App leere
   # Counter (Re-Filling per regulaerem Traffic).
   lumen-redis:
-    image: redis:7-alpine
+    <<: *hardening
+    image: redis:7.4.11-alpine
     container_name: lumen-redis
     restart: unless-stopped
     command: ["redis-server", "--save", "60", "1000", "--appendonly", "no"]
@@ -54,17 +71,17 @@ services:
       retries: 5
     networks:
       - lumen-internal
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    mem_limit: 256m
+    pids_limit: 64
 
   # Keycloak (self-contained — kein Cluster-Shared vorhanden). Laeuft unter
   # /auth derselben Domain (KC_HTTP_RELATIVE_PATH), Realm 'lumen' wird beim
   # Start importiert. KC-Tabellen in eigener DB 'keycloak' derselben Postgres.
   lumen-keycloak:
-    image: quay.io/keycloak/keycloak:26.1
+    <<: *hardening
+    # 26.1 bekommt keine Security-Fixes mehr; KC migriert das DB-Schema beim
+    # Start automatisch (vorher Backup ziehen, siehe deployment/backup.sh).
+    image: quay.io/keycloak/keycloak:26.8.1
     container_name: lumen-keycloak
     restart: unless-stopped
     command: ["start", "--import-realm"]
@@ -73,8 +90,9 @@ services:
       KC_DB_URL: "jdbc:postgresql://lumen-db:5432/keycloak"
       KC_DB_USERNAME: ${POSTGRES_USER}
       KC_DB_PASSWORD: ${POSTGRES_PASSWORD}
-      KEYCLOAK_ADMIN: ${KC_ADMIN_USER}
-      KEYCLOAK_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      # Bootstrap-Admin greift nur beim allerersten Start (leere KC-DB).
+      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER}
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
       KC_HTTP_ENABLED: "true"
       KC_HTTP_RELATIVE_PATH: /auth
       KC_HOSTNAME: ${KC_HOSTNAME}
@@ -90,55 +108,61 @@ services:
         condition: service_healthy
     networks:
       - lumen-internal
-      - caddy-proxy
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    cap_drop:
+      - ALL
+    mem_limit: 2g
+    pids_limit: 512
 
-  # S3-Storage (MinIO, S3-kompatibel). Same-Origin zur SPA (ueber Caddy
-  # /lumen-images), daher kein CORS noetig — CORS-Origin trotzdem defensiv
-  # gesetzt. Bucket-Anlage via lumen-minio-init.
-  lumen-minio:
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
-    container_name: lumen-minio
+  # S3-Storage: Garage (Single-Node), wie die anderen Cluster-Projekte.
+  # Nur lumen-internal; der Browser erreicht es same-origin ueber
+  # Caddy -> lumen-web(nginx) -> /lumen-images. Secrets per Env, die
+  # Konfig-Datei im Repo enthaelt keine.
+  lumen-garage:
+    <<: *hardening
+    image: dxflrs/garage:v1.3.1
+    container_name: lumen-garage
     restart: unless-stopped
-    command: ["server", "/data"]
+    command: ["/garage", "-c", "/etc/garage.toml", "server"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_API_CORS_ALLOW_ORIGIN: ${CORS_ORIGIN}
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
     volumes:
-      - lumen-minio-data:/data
+      - ../infra/garage/garage.prod.toml:/etc/garage.toml:ro
+      - lumen-garage-meta:/var/lib/garage/meta
+      - lumen-garage-data:/var/lib/garage/data
     networks:
       - lumen-internal
-      - caddy-proxy
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    cap_drop:
+      - ALL
+    mem_limit: 512m
+    pids_limit: 256
 
-  lumen-minio-init:
-    image: minio/mc:RELEASE.2024-11-17T19-35-25Z
+  # Idempotente Einrichtung ueber die Garage-Admin-API (das Garage-Image hat
+  # keine Shell): Layout, API-Key (least privilege: read+write auf genau
+  # diesen Bucket, kein owner), Bucket. Stdlib-only Script aus dem Backend.
+  lumen-garage-init:
+    <<: *hardening
+    image: python:3.12-alpine
     depends_on:
-      - lumen-minio
-    entrypoint:
-      - /bin/sh
-      - -c
-      - >
-        until mc alias set local http://lumen-minio:9000 ${MINIO_ROOT_USER} ${MINIO_ROOT_PASSWORD}; do
-          echo "warte auf MinIO..."; sleep 2;
-        done;
-        mc mb --ignore-existing local/${GARAGE_S3_BUCKET};
-        mc anonymous set none local/${GARAGE_S3_BUCKET};
-        echo "Bucket ${GARAGE_S3_BUCKET} bereit.";
+      - lumen-garage
+    command: ["python", "/garage_init.py"]
+    environment:
+      GARAGE_ADMIN_URL: http://lumen-garage:3903
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
+      GARAGE_S3_BUCKET: ${GARAGE_S3_BUCKET}
+      GARAGE_S3_ACCESS_KEY_ID: ${GARAGE_S3_ACCESS_KEY_ID}
+      GARAGE_S3_SECRET_ACCESS_KEY: ${GARAGE_S3_SECRET_ACCESS_KEY}
+    volumes:
+      - ../backend/scripts/garage_init.py:/garage_init.py:ro
     networks:
       - lumen-internal
+    user: "65534:65534"
+    cap_drop:
+      - ALL
     restart: "no"
 
   lumen-api:
+    <<: *hardening
     build:
       context: ../backend
       dockerfile: Dockerfile
@@ -150,7 +174,7 @@ services:
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
       JWK_CACHE_SECONDS: ${JWK_CACHE_SECONDS:-600}
       GARAGE_S3_ENDPOINT: ${GARAGE_S3_ENDPOINT}
-      # Oeffentliche Basis-URL fuer Pre-Signed-URLs (Browser via Caddy /lumen-images).
+      # Oeffentliche Basis-URL fuer Pre-Signed-URLs (Browser via Caddy/nginx /lumen-images).
       GARAGE_S3_PUBLIC_ENDPOINT: ${GARAGE_S3_PUBLIC_ENDPOINT}
       GARAGE_S3_REGION: ${GARAGE_S3_REGION}
       GARAGE_S3_BUCKET: ${GARAGE_S3_BUCKET}
@@ -162,21 +186,27 @@ services:
       LUMEN_ENV: production
       # Multi-Worker: gemeinsamer Redis-Store fuer slowapi-Counter.
       LUMEN_RATELIMIT_STORAGE: "redis://lumen-redis:6379/0"
+      # X-Forwarded-For vertrauen (sonst sieht der Rate-Limiter nur die
+      # nginx-IP). API ist ausschliesslich im lumen-internal-Netz erreichbar
+      # (keine published ports, nicht im caddy-proxy-Netz); nginx reicht
+      # Caddys X-Forwarded-For unveraendert durch.
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
     depends_on:
       lumen-db:
         condition: service_healthy
       lumen-redis:
         condition: service_healthy
+      lumen-garage-init:
+        condition: service_completed_successfully
     networks:
       - lumen-internal
-      - caddy-proxy
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+    cap_drop:
+      - ALL
+    mem_limit: 2g
+    pids_limit: 256
 
   lumen-web:
+    <<: *hardening
     build:
       # Repo-Root als Context: das Frontend importiert infra/lensfun/profiles.json
       # (Geschwister-Verzeichnis) — siehe frontend/Dockerfile.
@@ -188,13 +218,21 @@ services:
       # Frontend Run-Time-Config — wird vom VPS-Host bereitgestellt,
       # ueberschreibt das Default config.js im Image.
       - ./config.prod.js:/usr/share/nginx/html/config.js:ro
+    # caddy-proxy: einziger Eingang von Caddy. lumen-internal: Upstreams
+    # API/Keycloak/Garage (siehe frontend/nginx.conf).
     networks:
       - caddy-proxy
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
+      - lumen-internal
+    # nginx-Master braucht nur Port-80-Bind + Worker-User-Wechsel.
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+      - NET_BIND_SERVICE
+    mem_limit: 256m
+    pids_limit: 64
 
 networks:
   lumen-internal:
@@ -204,4 +242,9 @@ networks:
 volumes:
   lumen-db-data:
   lumen-redis-data:
+  lumen-garage-meta:
+  lumen-garage-data:
+  # Alt-Volume der MinIO-Instanz (vor 2026-10). Bleibt deklariert, damit
+  # `down` es nicht verwaist; nach erfolgreicher Migration manuell entfernen
+  # (siehe infra/deployment-runbook.md).
   lumen-minio-data:

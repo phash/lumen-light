@@ -1,8 +1,9 @@
 /**
  * Admin-Bereich (MVP).
  *
- * Zwei Sub-Views per Tab: Users (Liste mit Disable-Toggle) und
- * Feedback (Inbox mit Status-Workflow). Stats oben als Strip.
+ * Drei Sub-Views per Tab: Users (Liste mit Disable-Toggle), Feedback
+ * (Inbox mit Status-Workflow) und Meldungen (gemeldete Marketplace-Presets:
+ * Meldungen verwerfen oder Creator sperren). Stats oben als Strip.
  *
  * Keine Re-Auth in dieser Page — Schutz erfolgt ueber `RequireAdmin`
  * (Frontend) und `current_admin` (Backend); Layered defense.
@@ -13,11 +14,12 @@ import { useApi } from "../api/use-api";
 import type {
   AdminFeedback,
   AdminFeedbackStatus,
+  AdminReportedPreset,
   AdminStats,
   AdminUser,
 } from "../api/client";
 
-type Tab = "users" | "feedback";
+type Tab = "users" | "feedback" | "reports";
 
 export default function Admin() {
   const api = useApi();
@@ -45,7 +47,7 @@ export default function Admin() {
     >
       <h1 className="text-3xl">Admin</h1>
       <p className="mt-2 text-sm text-stone-500">
-        Nutzerverwaltung und Feedback-Inbox. Änderungen wirken sofort.
+        Nutzerverwaltung, Feedback-Inbox und Moderation. Änderungen wirken sofort.
       </p>
 
       {stats && (
@@ -87,14 +89,19 @@ export default function Admin() {
         >
           Feedback
         </TabButton>
+        <TabButton
+          active={tab === "reports"}
+          onClick={() => setTab("reports")}
+          testId="admin-tab-reports"
+        >
+          Meldungen
+        </TabButton>
       </nav>
 
       <div className="mt-6">
-        {tab === "users" ? (
-          <UsersTab onChange={reloadStats} />
-        ) : (
-          <FeedbackTab onChange={reloadStats} />
-        )}
+        {tab === "users" && <UsersTab onChange={reloadStats} />}
+        {tab === "feedback" && <FeedbackTab onChange={reloadStats} />}
+        {tab === "reports" && <ReportsTab onChange={reloadStats} />}
       </div>
     </section>
   );
@@ -451,6 +458,148 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
               </li>
             );
           })}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+function ReportsTab({ onChange }: { onChange: () => void }) {
+  const api = useApi();
+  const [items, setItems] = useState<AdminReportedPreset[]>([]);
+  const [loaded, setLoaded] = useState(false);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+
+  const load = useCallback(() => {
+    api
+      .adminListReportedPresets()
+      .then((rows) => {
+        setItems(rows);
+        setLoaded(true);
+      })
+      .catch((e: unknown) =>
+        setErr(e instanceof Error ? e.message : "Laden fehlgeschlagen"),
+      );
+  }, [api]);
+
+  useEffect(load, [load]);
+
+  const clearReports = async (p: AdminReportedPreset) => {
+    setBusy(p.id);
+    setErr(null);
+    try {
+      await api.adminClearPresetReports(p.id);
+      // Ohne Meldungen faellt das Preset aus der Moderationsliste.
+      setItems((prev) => prev.filter((x) => x.id !== p.id));
+      onChange();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Verwerfen fehlgeschlagen");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggleOwner = async (p: AdminReportedPreset) => {
+    setBusy(p.id);
+    setErr(null);
+    try {
+      const updated = await api.adminPatchUser(p.ownerId, !p.ownerIsDisabled);
+      setItems((prev) =>
+        prev.map((x) =>
+          x.ownerId === updated.id ? { ...x, ownerIsDisabled: updated.isDisabled } : x,
+        ),
+      );
+      onChange();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Update fehlgeschlagen");
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div data-testid="admin-reports">
+      {err && (
+        <div
+          data-testid="admin-reports-error"
+          className="mb-3 px-3 py-2 bg-red-900/40 border border-red-800 text-red-200 text-sm"
+        >
+          {err}
+        </div>
+      )}
+      {loaded && items.length === 0 ? (
+        <p
+          data-testid="admin-reports-empty"
+          className="text-stone-500 text-sm py-6 text-center"
+        >
+          Keine gemeldeten Presets.
+        </p>
+      ) : (
+        <ul className="space-y-3">
+          {items.map((p) => (
+            <li
+              key={p.id}
+              data-testid={`admin-report-item-${p.id}`}
+              className="bg-stone-900/70 border border-stone-800 px-4 py-3"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <div className="text-stone-100">{p.name}</div>
+                  <div className="mt-1 text-xs text-stone-500">
+                    {p.ownerEmail}
+                    {p.ownerIsDisabled ? " (gesperrt)" : ""}
+                    {" · "}
+                    {p.visibility === "public" ? "öffentlich" : "privat (ausgeblendet)"}
+                    {" · "}
+                    <span data-testid={`admin-report-count-${p.id}`}>
+                      {p.reportCount} {p.reportCount === 1 ? "Meldung" : "Meldungen"}
+                    </span>
+                  </div>
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void clearReports(p)}
+                    disabled={busy === p.id}
+                    data-testid={`admin-report-clear-${p.id}`}
+                    title="Meldungen verwerfen — der Creator darf das Preset wieder veröffentlichen."
+                    className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] border border-stone-700 text-stone-300 hover:border-amber-300/50 disabled:opacity-40"
+                  >
+                    Meldungen verwerfen
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void toggleOwner(p)}
+                    disabled={busy === p.id}
+                    data-testid={`admin-report-owner-toggle-${p.id}`}
+                    className={`px-2 py-1 text-[10px] uppercase tracking-[0.2em] border ${
+                      p.ownerIsDisabled
+                        ? "border-red-700 text-red-300 hover:bg-red-900/30"
+                        : "border-stone-700 text-stone-400 hover:border-red-700"
+                    } disabled:opacity-40`}
+                  >
+                    {p.ownerIsDisabled ? "Creator entsperren" : "Creator sperren"}
+                  </button>
+                </div>
+              </div>
+              {p.description && (
+                <p className="mt-2 text-sm text-stone-300 whitespace-pre-wrap">
+                  {p.description}
+                </p>
+              )}
+              <ul className="mt-2 space-y-1 text-xs text-stone-400">
+                {p.reports.map((r, i) => (
+                  <li key={`${r.createdAt}-${i}`}>
+                    <span className="text-stone-600">
+                      {r.createdAt.slice(0, 16).replace("T", " ")}
+                    </span>{" "}
+                    {r.reason}
+                  </li>
+                ))}
+              </ul>
+            </li>
+          ))}
         </ul>
       )}
     </div>

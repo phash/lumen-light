@@ -6,11 +6,11 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# build-essential nur fuer Wheels-ohne-Wheels noetig — sollte mit den
-# aktuell gepinnten Versionen nicht mehr gebraucht werden, aber sicherheits-
-# halber drin lassen. curl fuer den Healthcheck.
+# Nur curl (Healthcheck). Kein build-essential: alle gepinnten Pakete
+# kommen als manylinux-Wheels, ein Compiler im Runtime-Image waere nur
+# zusaetzliche Angriffsflaeche.
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        build-essential curl \
+        curl \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
@@ -28,5 +28,15 @@ EXPOSE 4100
 HEALTHCHECK --interval=30s --timeout=3s --start-period=15s --retries=3 \
     CMD curl -fsS http://localhost:4100/api/v1/health || exit 1
 
+# Proxy-Header: uvicorn uebernimmt X-Forwarded-For/-Proto nur von IPs aus
+# FORWARDED_ALLOW_IPS. Ohne passenden Wert ist request.client.host fuer alle
+# Requests die Caddy-Container-IP -> der IP-Bucket des Rate-Limits waere
+# global geteilt. Default 127.0.0.1 (nichts vertrauen ausser localhost).
+# Production setzt das Subnetz des caddy-proxy-Docker-Netzes (z.B.
+# "172.18.0.0/16") oder "*", wenn die API ausschliesslich ueber Caddy
+# erreichbar ist (kein veroeffentlichter Port) — sonst koennte jeder
+# Client seine IP per X-Forwarded-For faelschen.
+ENV FORWARDED_ALLOW_IPS=127.0.0.1
+
 # Migrations beim Start, dann uvicorn auf Port 4100 (passt zum Cluster-Plan).
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 4100 --workers 4"]
+CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port 4100 --workers 4 --proxy-headers --forwarded-allow-ips \"$FORWARDED_ALLOW_IPS\""]

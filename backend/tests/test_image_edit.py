@@ -2,15 +2,7 @@
 
 PUT/GET /api/v1/images/{id}/edit. Ownership wird ueber das Bild gefahren
 (images.user_id). Ein State pro Bild (Upsert)."""
-import urllib.request
-
-
-def _put_to_url(url: str, data: bytes, content_type: str) -> None:
-    req = urllib.request.Request(
-        url, data=data, method="PUT", headers={"Content-Type": content_type}
-    )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        assert 200 <= resp.status < 300
+from tests.s3_upload import upload_via_init
 
 
 async def _upload(client, headers) -> str:
@@ -21,7 +13,7 @@ async def _upload(client, headers) -> str:
         json={"filename": "e.jpg", "contentType": "image/jpeg", "sizeBytes": len(payload)},
     )
     body = init.json()
-    _put_to_url(body["uploadUrl"], payload, "image/jpeg")
+    upload_via_init(body, payload, "image/jpeg")
     confirm = await client.post(
         f"/api/v1/images/{body['id']}/confirm", headers=headers
     )

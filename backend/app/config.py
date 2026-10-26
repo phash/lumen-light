@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     keycloak_admin_client_secret: str = ""
 
     # Garage S3 (siehe ADR-011) — Endpoints fuer Production via .env;
-    # in Tests werden diese durch eine MinIO-Container-Fixture ueberschrieben.
+    # in Tests werden diese durch eine Garage-Container-Fixture ueberschrieben.
     garage_s3_endpoint: str = "http://localhost:3900"
     # Oeffentliche S3-Basis-URL fuer Pre-Signed-URLs (browser-erreichbar).
     # Leer = identisch mit garage_s3_endpoint (dev/single-host). In Production
@@ -36,6 +36,17 @@ class Settings(BaseSettings):
     # zusammen mit Rate-Limit + Janitor das Anlegen vieler Zombie-Rows/Objekte
     # (DB-/Bucket-DoS gegen den gemeinsamen Bucket).
     max_pending_uploads_per_user: int = 50
+
+    # App-seitiges Body-Limit fuer alle Requests (JSON-API). Pixel laufen
+    # per Pre-Signed PUT direkt nach S3, die groessten legitimen JSON-Bodies
+    # (Preset/Edit-State, Batch-Apply mit 200 IDs) liegen weit unter 64 KB.
+    # Caddy begrenzt zusaetzlich (request_body), das hier ist die zweite Linie.
+    max_request_body_bytes: int = 1024 * 1024  # 1 MB
+
+    # Marketplace-Moderation: Mindestalter eines Accounts, bevor er Presets
+    # melden darf — erschwert das Verstecken fremder Presets mit frisch
+    # angelegten Wegwerf-Accounts (Auto-Hide ab 3 Meldungen).
+    report_min_account_age_hours: int = 24
 
     cors_origin: str = "http://localhost:5173"
 

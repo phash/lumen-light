@@ -6,6 +6,8 @@ Endpunkte:
 - GET    /admin/stats              — globale Counts
 - GET    /admin/feedback           — Feedback-Inbox
 - PATCH  /admin/feedback/{id}      — Status / Notiz aendern
+- GET    /admin/presets/reported   — gemeldete/auto-versteckte Presets
+- POST   /admin/presets/{id}/clear-reports — Meldungen verwerfen (Restore)
 
 Auth: alle Endpoints brauchen die `admin`-Realm-Rolle (siehe
 `app.auth.current_admin`). Self-Disable ist erlaubt, aber nicht
@@ -18,18 +20,21 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import desc, func, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_admin
 from app.database import get_db
 from app.models import Feedback, Image, Preset, PresetReport, User
 from app.schemas import (
+    AdminReportedPresetOut,
+    AdminReportOut,
     AdminStatsOut,
     AdminUserOut,
     AdminUserPatchIn,
     FeedbackOut,
     FeedbackPatchIn,
+    PresetOut,
 )
 
 
@@ -269,3 +274,78 @@ async def patch_feedback(
             await db.execute(select(User.email).where(User.id == fb.user_id))
         ).scalar_one_or_none()
     return _feedback_to_out(fb, email)
+
+
+# ----- Moderation (gemeldete Presets) -----
+
+
+@router.get("/presets/reported", response_model=list[AdminReportedPresetOut])
+async def list_reported_presets(
+    _admin: User = Depends(current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[AdminReportedPresetOut]:
+    """Alle Presets mit mindestens einer Meldung — inkl. der per Auto-Hide
+    auf privat zurueckgesetzten. Grundlage fuer die Restore-Entscheidung.
+    Meldungen ohne Reporter-Identitaet (nur Grund + Zeitpunkt)."""
+    rows = (
+        await db.execute(
+            select(Preset, User.email, User.is_disabled)
+            .join(User, User.id == Preset.user_id)
+            .where(Preset.report_count > 0)
+            .order_by(desc(Preset.report_count), desc(Preset.updated_at))
+            .limit(200)
+        )
+    ).all()
+    ids = [p.id for p, _, _ in rows]
+    reports: dict[UUID, list[AdminReportOut]] = {i: [] for i in ids}
+    if ids:
+        for r in (
+            await db.execute(
+                select(PresetReport)
+                .where(PresetReport.preset_id.in_(ids))
+                .order_by(PresetReport.created_at)
+            )
+        ).scalars():
+            reports[r.preset_id].append(
+                AdminReportOut(reason=r.reason, created_at=r.created_at)
+            )
+    return [
+        AdminReportedPresetOut(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            genre=p.genre,
+            visibility=p.visibility,
+            report_count=p.report_count,
+            owner_id=p.user_id,
+            owner_email=email,
+            owner_is_disabled=disabled,
+            updated_at=p.updated_at,
+            reports=reports[p.id],
+        )
+        for p, email, disabled in rows
+    ]
+
+
+@router.post("/presets/{preset_id}/clear-reports", response_model=PresetOut)
+async def clear_preset_reports(
+    preset_id: UUID,
+    _admin: User = Depends(current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> PresetOut:
+    """Meldungen eines (faelschlich) gemeldeten Presets verwerfen und
+    report_count auf 0 setzen. Das Preset bleibt privat; der Creator kann
+    es danach selbst wieder veroeffentlichen (die Republish-Sperre in
+    PUT /presets greift nur ab REPORT_AUTOHIDE_THRESHOLD Meldungen)."""
+    preset = (
+        await db.execute(
+            select(Preset).where(Preset.id == preset_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if preset is None:
+        raise HTTPException(status_code=404, detail="Preset nicht gefunden.")
+    await db.execute(delete(PresetReport).where(PresetReport.preset_id == preset.id))
+    preset.report_count = 0
+    await db.commit()
+    await db.refresh(preset)
+    return PresetOut.model_validate(preset)

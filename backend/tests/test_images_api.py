@@ -1,14 +1,7 @@
-"""HTTP-Tests fuer /api/v1/images — gegen MinIO + FastAPI."""
+"""HTTP-Tests fuer /api/v1/images — gegen S3 (Garage-Testcontainer) + FastAPI."""
 import urllib.request
 
-
-def _put_to_url(url: str, data: bytes, content_type: str) -> None:
-    req = urllib.request.Request(
-        url, data=data, method="PUT",
-        headers={"Content-Type": content_type},
-    )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        assert 200 <= resp.status < 300
+from tests.s3_upload import upload_via_init
 
 
 async def _init(client, headers, filename="test.jpg",
@@ -30,7 +23,7 @@ async def _full_upload(client, headers, payload=b"\xff\xd8\xff\xe0fake-image-byt
         client, headers, filename="up.jpg",
         content_type=content_type, size=len(payload),
     )
-    _put_to_url(init["uploadUrl"], payload, content_type)
+    upload_via_init(init, payload, content_type)
     confirm = await client.post(
         f"/api/v1/images/{init['id']}/confirm", headers=headers
     )
@@ -108,10 +101,13 @@ async def test_confirm_409_if_not_uploaded(client, user_a):
 async def test_confirm_413_if_actual_object_exceeds_limit(
     client, user_a, monkeypatch,
 ):
-    """Pre-Signed PUT akzeptiert beliebige Body-Groesse. confirm() muss
-    gegen settings.max_image_size_bytes pruefen, bei Verletzung das
-    Object loeschen + DB-Eintrag wegraeumen + 413 zurueckgeben."""
+    """Die POST-Policy (content-length-range = angekuendigte Groesse) lehnt
+    groessere Bodies schon an S3 ab. confirm() prueft trotzdem gegen
+    settings.max_image_size_bytes (Defense-in-Depth, z.B. Objekt auf anderem
+    Weg im Staging): Object loeschen + DB-Eintrag wegraeumen + 413."""
     from app.config import settings as app_settings
+    from app.storage import get_storage
+    from tests.s3_upload import post_presigned
 
     # Limit auf 100 Bytes runter, damit der Test nicht 200 MB Body braucht.
     monkeypatch.setattr(app_settings, "max_image_size_bytes", 100)
@@ -120,8 +116,16 @@ async def test_confirm_413_if_actual_object_exceeds_limit(
         client, user_a["headers"], filename="trick.jpg",
         content_type="image/jpeg", size=50,  # Browser-behauptet
     )
-    # Echtes Object: 200 Bytes — ueber dem Limit.
-    _put_to_url(init["uploadUrl"], b"x" * 200, "image/jpeg")
+    # Ueber die Policy: S3 lehnt den groesseren Body ab.
+    rejected = post_presigned(
+        init["uploadUrl"], init["uploadFields"], b"x" * 200, "image/jpeg"
+    )
+    assert rejected.status_code == 400, rejected.text
+    # Objekt direkt in den Staging-Key legen (Policy umgangen): 200 Bytes.
+    storage = get_storage()
+    storage._client.put_object(
+        Bucket=storage.bucket, Key=init["uploadFields"]["key"], Body=b"x" * 200
+    )
 
     confirm = await client.post(
         f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
@@ -145,7 +149,7 @@ async def test_confirm_rejects_non_image_payload(client, user_a):
         client, user_a["headers"], filename="evil.jpg",
         content_type="image/jpeg", size=40,
     )
-    _put_to_url(init["uploadUrl"], b"<html>not really a jpeg</html>", "image/jpeg")
+    upload_via_init(init, b"<html>not really a jpeg</html>", "image/jpeg")
 
     confirm = await client.post(
         f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
@@ -164,7 +168,7 @@ async def test_confirm_accepts_real_jpeg_magic(client, user_a):
         client, user_a["headers"], filename="ok.jpg",
         content_type="image/jpeg", size=8,
     )
-    _put_to_url(init["uploadUrl"], b"\xff\xd8\xff\xe0rest", "image/jpeg")
+    upload_via_init(init, b"\xff\xd8\xff\xe0rest", "image/jpeg")
     confirm = await client.post(
         f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
     )
@@ -278,7 +282,7 @@ async def test_user_b_cannot_confirm_user_a_image(client, user_a, user_b):
         client, user_a["headers"], filename="mine.jpg",
         content_type="image/jpeg", size=len(payload),
     )
-    _put_to_url(init["uploadUrl"], payload, "image/jpeg")
+    upload_via_init(init, payload, "image/jpeg")
 
     foreign = await client.post(
         f"/api/v1/images/{init['id']}/confirm", headers=user_b["headers"]
@@ -349,3 +353,104 @@ async def test_delete_image_s3_error_marks_failed_and_keeps_row(
         "/api/v1/images?state=all", headers=user_a["headers"]
     )
     assert image_id not in [it["id"] for it in listing2.json()]
+
+
+# ---------- Staging-Upload (Security-Review: Checks nach confirm umgehbar) ----------
+
+
+def _get_url_bytes(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=5) as resp:
+        return resp.read()
+
+
+async def test_upload_url_zeigt_auf_staging_nicht_auf_finalen_key(client, user_a):
+    """Der Pre-Signed POST darf nie den finalen Key beschreiben — sonst laesst
+    sich nach confirm beliebiger Inhalt nachschieben."""
+    init = await _init(client, user_a["headers"])
+    user_id = user_a["user"]["id"]
+    assert init["uploadFields"]["key"] == f"{user_id}/staging/{init['id']}"
+    assert "/originals/" not in init["uploadUrl"]
+
+
+async def test_put_nach_confirm_ueberschreibt_finales_objekt_nicht(client, user_a):
+    jpeg = b"\xff\xd8\xff\xe0original"
+    init = await _init(
+        client, user_a["headers"], filename="a.jpg", size=len(jpeg)
+    )
+    upload_via_init(init, jpeg, "image/jpeg")
+    confirm = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert confirm.status_code == 200, confirm.text
+
+    # Angreifer nutzt die noch gueltige Upload-URL erneut.
+    # (Policy erlaubt max. die angekuendigte Groesse -> kurzer Payload.)
+    upload_via_init(init, b"<b>evil</b>", "image/jpeg")
+
+    r = await client.get(
+        f"/api/v1/images/{init['id']}/url", headers=user_a["headers"]
+    )
+    assert _get_url_bytes(r.json()["url"]) == jpeg
+
+    # Erneutes confirm bleibt idempotent und uebernimmt den Nachschub nicht.
+    again = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert again.status_code == 200
+    assert _get_url_bytes(r.json()["url"]) == jpeg
+
+
+async def test_confirm_kopiert_auf_finalen_key_und_raeumt_staging(client, user_a):
+    from app.storage import ObjectNotFound, get_storage
+
+    image_id = await _full_upload(client, user_a["headers"])
+    storage = get_storage()
+    user_id = user_a["user"]["id"]
+    assert storage.head(f"{user_id}/originals/{image_id}") > 0
+    try:
+        storage.head(f"{user_id}/staging/{image_id}")
+        raise AssertionError("Staging-Objekt haette weg sein muessen")
+    except ObjectNotFound:
+        pass
+
+
+async def test_abgelehnter_upload_raeumt_staging_objekt(client, user_a):
+    from app.storage import ObjectNotFound, get_storage
+
+    init = await _init(client, user_a["headers"], filename="evil.jpg", size=20)
+    upload_via_init(init, b"<html>nope</html>", "image/jpeg")
+    r = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert r.status_code == 415
+    storage = get_storage()
+    try:
+        storage.head(f"{user_a['user']['id']}/staging/{init['id']}")
+        raise AssertionError("Staging-Objekt haette weg sein muessen")
+    except ObjectNotFound:
+        pass
+
+
+async def test_delete_entfernt_auch_staging_rest(client, user_a):
+    from app.storage import ObjectNotFound, get_storage
+
+    jpeg = b"\xff\xd8\xff\xe0abc"
+    init = await _init(client, user_a["headers"], size=len(jpeg))
+    upload_via_init(init, jpeg, "image/jpeg")
+    await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    # Staging-Rest nach confirm (erneuter POST mit der alten Policy).
+    upload_via_init(init, b"left", "image/jpeg")
+
+    r = await client.delete(
+        f"/api/v1/images/{init['id']}", headers=user_a["headers"]
+    )
+    assert r.status_code == 204
+    storage = get_storage()
+    for kind in ("staging", "originals"):
+        try:
+            storage.head(f"{user_a['user']['id']}/{kind}/{init['id']}")
+            raise AssertionError(f"{kind}-Objekt haette weg sein muessen")
+        except ObjectNotFound:
+            pass

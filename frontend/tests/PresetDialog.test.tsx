@@ -54,6 +54,8 @@ function makeFakeApi(presets: Preset[] = []): FakeApi {
     adminStats: vi.fn(),
     adminListFeedback: vi.fn(),
     adminPatchFeedback: vi.fn(),
+    adminListReportedPresets: vi.fn(),
+    adminClearPresetReports: vi.fn(),
     applyPresetBatch: vi.fn(),
   };
 }

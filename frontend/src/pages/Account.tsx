@@ -8,6 +8,7 @@ import {
   type Preset,
   type User,
 } from "../api/client";
+import { clearOfflineCaches } from "../auth/clearCaches";
 import {
   isFaceDetectionConsented,
   setFaceDetectionConsent,
@@ -154,6 +155,7 @@ export default function Account() {
     setError(null);
     try {
       await api.deleteMe();
+      await clearOfflineCaches();
       // Logout, damit das Token weg ist und der naechste Login JIT-frisch ist.
       await auth.signoutRedirect();
     } catch (err) {

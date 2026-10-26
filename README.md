@@ -51,7 +51,7 @@ Lumen ersetzt nicht jeden Profi-Workflow — aber für RAW-Entwicklung ohne Abo 
 ## Schnellstart (lokale Entwicklung)
 
 ```bash
-# 1. Postgres + Keycloak + MinIO (Garage-Ersatz in dev) hochfahren
+# 1. Postgres + Keycloak + Garage-S3 hochfahren
 docker compose -f deployment/docker-compose.dev.yml up -d
 until curl -fs http://localhost:19000/health/ready >/dev/null; do sleep 2; done
 
@@ -65,9 +65,10 @@ DATABASE_URL="postgresql+asyncpg://lumen:lumen@localhost:5433/lumen" \
 DATABASE_URL="postgresql+asyncpg://lumen:lumen@localhost:5433/lumen" \
 KEYCLOAK_ISSUER="http://localhost:18080/realms/lumen" \
 KEYCLOAK_AUDIENCE="lumen-api" \
-GARAGE_S3_ENDPOINT="http://localhost:9000" GARAGE_S3_REGION="us-east-1" \
+GARAGE_S3_ENDPOINT="http://localhost:9000" GARAGE_S3_REGION="garage" \
 GARAGE_S3_BUCKET="lumen-images" \
-GARAGE_S3_ACCESS_KEY_ID="minioadmin" GARAGE_S3_SECRET_ACCESS_KEY="minioadmin" \
+GARAGE_S3_ACCESS_KEY_ID="GKde7000000000000000000001" \
+GARAGE_S3_SECRET_ACCESS_KEY="de70000000000000000000000000000000000000000000000000000000000001" \
 CORS_ORIGIN="http://localhost:5173" \
 .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 
@@ -83,7 +84,7 @@ Test-User in Keycloak via Admin-API anlegen — siehe `CLAUDE.md` Abschnitt „T
 ## Tests
 
 ```bash
-# Backend (testcontainers fuer PG + MinIO + Keycloak — Docker muss laufen)
+# Backend (testcontainers fuer PG + Garage + Keycloak — Docker muss laufen)
 cd backend && .venv/bin/pytest -q
 # Aktuell: 99 Tests, ~50 s nach Image-Cache.
 
@@ -105,7 +106,7 @@ cd frontend && pnpm lint && pnpm build && pnpm exec tsc -b --noEmit
                         │   Browser   │
                         │  React + WebGL2 │
                         └──────┬──────┘
-            JWT (Bearer)       │     Pre-Signed PUT/GET
+            JWT (Bearer)       │     Pre-Signed POST/GET
         ┌──────────────────────┼──────────────────────┐
         │                      │                      │
         ▼                      ▼                      ▼

@@ -1,14 +1,5 @@
 """DSGVO-Endpoints: DELETE /me + GET /me/export."""
-import urllib.request
-
-
-def _put_to_url(url: str, data: bytes, content_type: str) -> None:
-    req = urllib.request.Request(
-        url, data=data, method="PUT",
-        headers={"Content-Type": content_type},
-    )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        assert 200 <= resp.status < 300
+from tests.s3_upload import upload_via_init
 
 
 # JPEG-Magic-Bytes vorne — confirm() validiert den Content-Type.
@@ -23,7 +14,7 @@ async def _upload_image(client, headers, payload=b"\xff\xd8\xff\xe0" + b"x" * 10
         },
     )
     init_body = init.json()
-    _put_to_url(init_body["uploadUrl"], payload, "image/jpeg")
+    upload_via_init(init_body, payload, "image/jpeg")
     confirm = await client.post(
         f"/api/v1/images/{init_body['id']}/confirm", headers=headers
     )
@@ -58,19 +49,155 @@ async def test_delete_me_removes_db_rows_and_s3_objects(client, user_a):
         pass
 
 
-async def test_delete_me_idempotent_token_works_only_until_user_gone(
+async def test_alter_token_belebt_geloeschten_account_nicht_wieder(
     client, user_a,
 ):
-    """Nach DELETE /me: zweiter Aufruf mit demselben Token landet in
-    JIT-Provisioning und erstellt einen NEUEN User-Record (mit den
-    Default-Presets)."""
+    """Nach DELETE /me darf ein noch gueltiger (vor der Loeschung
+    ausgestellter) Token den Account NICHT per JIT-Provisioning neu anlegen
+    (Grabstein: iat <= deleted_at -> 401)."""
     r1 = await client.delete("/api/v1/auth/me", headers=user_a["headers"])
     assert r1.status_code == 204
 
     me_again = await client.get("/api/v1/auth/me", headers=user_a["headers"])
-    assert me_again.status_code == 200
-    # Andere User-ID, gleiche Email (aus Token).
+    assert me_again.status_code == 401, me_again.text
+
+
+async def test_nach_loeschung_neu_ausgestellter_token_darf_provisionieren(
+    client, user_a, db_session,
+):
+    """Ein NACH der Loeschung ausgestellter Token (erneuter Login, falls der
+    KC-Account noch existiert) provisioniert einen frischen Account."""
+    from datetime import timedelta
+
+    from sqlalchemy import update
+
+    from app.models import AccountTombstone
+
+    r1 = await client.delete("/api/v1/auth/me", headers=user_a["headers"])
+    assert r1.status_code == 204
+    # Loeschung "in die Vergangenheit" verschieben statt auf einen neuen
+    # Token (iat-Sekundenaufloesung) zu warten.
+    await db_session.execute(
+        update(AccountTombstone).values(
+            deleted_at=AccountTombstone.deleted_at - timedelta(hours=1)
+        )
+    )
+    await db_session.commit()
+
+    me_again = await client.get("/api/v1/auth/me", headers=user_a["headers"])
+    assert me_again.status_code == 200, me_again.text
+    assert me_again.json()["id"] != user_a["user"]["id"]
     assert me_again.json()["email"] == user_a["user"]["email"]
+
+
+async def test_gesperrter_user_bleibt_nach_selbstloeschung_gesperrt(
+    client, user_a, db_session,
+):
+    """Ban-Umgehung: ein gesperrter User loescht sich selbst und loggt sich
+    neu ein -> der neu provisionierte Account muss wieder gesperrt sein."""
+    from datetime import timedelta
+    from uuid import UUID
+
+    from sqlalchemy import select, update
+
+    from app.models import AccountTombstone, User
+
+    await db_session.execute(
+        update(User)
+        .where(User.id == UUID(user_a["user"]["id"]))
+        .values(is_disabled=True)
+    )
+    await db_session.commit()
+
+    r1 = await client.delete("/api/v1/auth/me", headers=user_a["headers"])
+    assert r1.status_code == 204
+    await db_session.execute(
+        update(AccountTombstone).values(
+            deleted_at=AccountTombstone.deleted_at - timedelta(hours=1)
+        )
+    )
+    await db_session.commit()
+
+    me_again = await client.get("/api/v1/auth/me", headers=user_a["headers"])
+    assert me_again.status_code == 403, me_again.text
+    db_session.expire_all()
+    revived = (
+        await db_session.execute(
+            select(User).where(User.email == user_a["user"]["email"])
+        )
+    ).scalar_one()
+    assert revived.is_disabled is True
+
+
+async def test_delete_me_loescht_alle_objekte_unter_user_prefix(client, user_a):
+    """Auch Objekte ohne DB-Row (Staging-Reste, Verwaiste) muessen weg."""
+    from app.storage import get_storage
+
+    await _upload_image(client, user_a["headers"])
+    storage = get_storage()
+    prefix = f"{user_a['user']['id']}/"
+    for k in ("staging/orphan-1", "originals/orphan-2"):
+        storage._client.put_object(Bucket=storage.bucket, Key=prefix + k, Body=b"x")
+
+    r = await client.delete("/api/v1/auth/me", headers=user_a["headers"])
+    assert r.status_code == 204
+    assert storage.list_objects(prefix) == []
+
+
+async def test_delete_me_s3_fehler_merkt_prefix_fuer_janitor_vor(
+    client, user_a, db_session, monkeypatch,
+):
+    from sqlalchemy import select
+
+    from app.models import StoragePurge, User
+    from app.storage import get_storage
+
+    storage = get_storage()
+
+    def _boom(_prefix: str) -> int:
+        raise RuntimeError("S3 down")
+
+    monkeypatch.setattr(storage, "delete_prefix", _boom)
+    r = await client.delete("/api/v1/auth/me", headers=user_a["headers"])
+    assert r.status_code == 204, r.text
+
+    prefix = f"{user_a['user']['id']}/"
+    row = (
+        await db_session.execute(
+            select(StoragePurge).where(StoragePurge.prefix == prefix)
+        )
+    ).scalar_one()
+    assert "S3 down" in (row.last_error or "")
+    # DB-Daten sind trotzdem weg.
+    assert (
+        await db_session.execute(select(User).where(User.id == user_a["user"]["id"]))
+    ).scalar_one_or_none() is None
+
+
+async def _disable(db_session, user_id: str) -> None:
+    from sqlalchemy import update
+
+    from app.models import User
+
+    await db_session.execute(
+        update(User).where(User.id == user_id).values(is_disabled=True)
+    )
+    await db_session.commit()
+
+
+async def test_gesperrter_user_darf_exportieren(client, user_a, db_session):
+    await _disable(db_session, user_a["user"]["id"])
+    assert (
+        await client.get("/api/v1/auth/me", headers=user_a["headers"])
+    ).status_code == 403
+    r = await client.get("/api/v1/auth/me/export", headers=user_a["headers"])
+    assert r.status_code == 200, r.text
+
+
+async def test_gesperrter_user_darf_account_loeschen(client, user_a, db_session):
+    await _disable(db_session, user_a["user"]["id"])
+    r = await client.delete("/api/v1/auth/me", headers=user_a["headers"])
+    assert r.status_code == 204, r.text
 
 
 async def test_export_me_returns_user_presets_images(client, user_a):

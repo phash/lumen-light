@@ -1,3 +1,6 @@
 
 # SSR-Prerender-Bundle (Build-Artefakt)
 dist-ssr
+
+# Vitest-Coverage-Report (Build-Artefakt)
+coverage

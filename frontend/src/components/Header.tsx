@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useAuth } from "react-oidc-context";
 import { NavLink, useLocation } from "react-router-dom";
 
+import { clearOfflineCaches } from "../auth/clearCaches";
 import { useIsAdmin } from "../auth/useIsAdmin";
 import FeedbackDialog from "./FeedbackDialog";
 
@@ -32,7 +33,7 @@ export default function Header() {
   };
 
   const onLogout = () => {
-    void auth.signoutRedirect();
+    void clearOfflineCaches().then(() => auth.signoutRedirect());
   };
 
   return (

@@ -18,7 +18,12 @@ import sys
 from datetime import timedelta
 
 from app.database import AsyncSessionLocal, engine
-from app.janitor import PENDING_TTL, prune_pending_uploads
+from app.janitor import (
+    PENDING_TTL,
+    prune_pending_uploads,
+    retry_storage_purges,
+    sweep_stale_staging,
+)
 from app.storage import get_storage
 
 
@@ -28,6 +33,8 @@ async def _run(ttl_minutes: int) -> int:
         result = await prune_pending_uploads(
             db, storage, ttl=timedelta(minutes=ttl_minutes)
         )
+        staging = await sweep_stale_staging(db, storage)
+        purges = await retry_storage_purges(db, storage)
     print(
         json.dumps(
             {
@@ -36,6 +43,11 @@ async def _run(ttl_minutes: int) -> int:
                 "storageErrors": result.storage_errors,
                 "dbDeleted": result.db_deleted,
                 "ttlMinutes": ttl_minutes,
+                "stagingDeleted": staging.deleted,
+                "stagingErrors": staging.errors,
+                "purgeCandidates": purges.candidates,
+                "purged": purges.purged,
+                "purgeErrors": purges.errors,
             }
         )
     )

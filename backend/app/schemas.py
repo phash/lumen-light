@@ -185,6 +185,10 @@ class UserOut(BaseModel):
 # frontend/src/editor/mask.ts und shaders.ts uebereinstimmen.
 MAX_LINEAR_MASKS = 4
 MAX_RADIAL_MASKS = 4
+# Harte Obergrenze fuer die Listenlaenge — greift VOR der Element-
+# Validierung, damit ein Request mit 100k Masken nicht erst komplett
+# geparst wird, bevor der Per-Typ-Cap (model_validator) ablehnt.
+MAX_TOTAL_MASKS = MAX_LINEAR_MASKS + MAX_RADIAL_MASKS
 
 
 class PointUv(BaseModel):
@@ -257,7 +261,7 @@ class PresetIn(BaseModel):
     model_config = CAMEL_BASE_CONFIG
     name: str = Field(min_length=1, max_length=80)
     adjustments: Adjustments
-    masks: list[MaskData] = Field(default_factory=list)
+    masks: list[MaskData] = Field(default_factory=list, max_length=MAX_TOTAL_MASKS)
     geometry: PresetGeometry | None = None
     visibility: PresetVisibility = "private"
     genre: PresetGenre | None = None
@@ -413,7 +417,10 @@ class ImageInitIn(BaseModel):
 class ImageInitOut(BaseModel):
     model_config = CAMEL_BASE_CONFIG
     id: UUID
+    # Pre-Signed POST: Browser schickt multipart/form-data an upload_url mit
+    # allen upload_fields + zuletzt dem Feld "file".
     upload_url: str
+    upload_fields: dict[str, str]
     expires_in: int
 
 
@@ -443,7 +450,7 @@ class ImageEditState(BaseModel):
     wie der Rest."""
     model_config = CAMEL_BASE_CONFIG
     adjustments: Adjustments
-    masks: list[MaskData] = Field(default_factory=list)
+    masks: list[MaskData] = Field(default_factory=list, max_length=MAX_TOTAL_MASKS)
     crop: CropRect | None = None
     straighten_angle: float = Field(default=0, ge=-3.15, le=3.15)
     lens_correction: LensCorrectionData | None = None
@@ -466,6 +473,29 @@ class ImageEditState(BaseModel):
 
 
 # ----- Admin -----
+
+class AdminReportOut(BaseModel):
+    """Einzelne Meldung ohne Reporter-Identitaet (Datenminimierung)."""
+    model_config = CAMEL_OUT_CONFIG
+    reason: str
+    created_at: datetime
+
+
+class AdminReportedPresetOut(BaseModel):
+    """Moderations-Eintrag: gemeldetes Preset + Creator + Meldungsgruende."""
+    model_config = CAMEL_OUT_CONFIG
+    id: UUID
+    name: str
+    description: str | None
+    genre: PresetGenre | None
+    visibility: PresetVisibility
+    report_count: int
+    owner_id: UUID
+    owner_email: str
+    owner_is_disabled: bool
+    updated_at: datetime
+    reports: list[AdminReportOut]
+
 
 class AdminUserOut(BaseModel):
     """User-Listen-Eintrag fuer Admin. Enthaelt Aggregate (Counts), aber
