@@ -49,7 +49,7 @@
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.client.audience": "lumen-api",
+            "included.custom.audience": "lumen-api",
             "id.token.claim": "false",
             "access.token.claim": "true"
           }

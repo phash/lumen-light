@@ -12,14 +12,17 @@ Sicherheitsmodell:
 import base64
 import binascii
 import logging
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import desc, func, select, update
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
+from app.config import settings
 from app.database import get_db
 from app.models import Image, Preset, PresetReport, User
 from app.rate_limit import limiter
@@ -43,6 +46,10 @@ router = APIRouter()
 REPORT_AUTOHIDE_THRESHOLD = 3
 PAGE_LIMIT_DEFAULT = 24
 PAGE_LIMIT_MAX = 60
+# Spaltenlaenge presets.name (String(80)) — Fork-Namen muessen hineinpassen.
+PRESET_NAME_MAX = 80
+FORK_SUFFIX = " (Kopie)"
+MAX_FORK_SUFFIX = 50
 # Deep-Pagination-Schutz: bei riesigem `cursor` wuerde Postgres linear
 # scannen. Bei unrealistisch hohem Offset einfach 422.
 MAX_CURSOR_OFFSET = 10_000
@@ -60,6 +67,19 @@ def _decode_cursor(cursor: str) -> int:
     if offset < 0 or offset > MAX_CURSOR_OFFSET:
         raise HTTPException(status_code=422, detail="Cursor-Offset ausserhalb des erlaubten Bereichs.")
     return offset
+
+
+def _escape_like(term: str) -> str:
+    """LIKE-Wildcards im Suchbegriff escapen (ESCAPE '\\'), damit `%`/`_`
+    woertlich gesucht werden (kein "alles matchen" per q=%)."""
+    return term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+
+
+def _fork_name(src_name: str, n: int) -> str:
+    """'<Name> (Kopie)' bzw. '<Name> (Kopie) <n>' — Basisname so gekuerzt,
+    dass das Ergebnis in presets.name (80 Zeichen) passt."""
+    suffix = FORK_SUFFIX if n == 1 else f"{FORK_SUFFIX} {n}"
+    return src_name[: PRESET_NAME_MAX - len(suffix)] + suffix
 
 
 def _preview_url(
@@ -91,11 +111,15 @@ async def list_marketplace_presets(
     offset = _decode_cursor(cursor) if cursor else 0
     stmt = select(Preset, User).join(User, User.id == Preset.user_id).where(
         Preset.visibility == "public",
+        # Presets gesperrter Accounts verschwinden aus dem Marketplace.
+        User.is_disabled.is_(False),
     )
     if genre is not None:
         stmt = stmt.where(Preset.genre == genre)
     if q:
-        stmt = stmt.where(Preset.name.ilike(f"%{q}%"))
+        stmt = stmt.where(
+            Preset.name.ilike(f"%{_escape_like(q)}%", escape="\\")
+        )
     if sort == "popular":
         stmt = stmt.order_by(desc(Preset.apply_count), desc(Preset.published_at), Preset.id)
     else:
@@ -145,7 +169,11 @@ async def _load_public_preset(
         await db.execute(
             select(Preset, User)
             .join(User, User.id == Preset.user_id)
-            .where(Preset.id == preset_id, Preset.visibility == "public")
+            .where(
+                Preset.id == preset_id,
+                Preset.visibility == "public",
+                User.is_disabled.is_(False),
+            )
         )
     ).first()
     if row is None:
@@ -217,37 +245,36 @@ async def fork_marketplace_preset(
     db: AsyncSession = Depends(get_db),
 ) -> PresetOut:
     src, _ = await _load_public_preset(db, preset_id)
-    base_name = f"{src.name} (Kopie)"
-    name = base_name
-    suffix = 2
-    # Bei Namens-Kollision suffix anhaengen.
-    while True:
-        existing = (
+    # INSERT ... ON CONFLICT DO NOTHING auf uq_presets_user_name statt
+    # "SELECT pruefen, dann INSERT": parallele Forks desselben Presets
+    # kollidieren sonst zwischen Check und Commit (IntegrityError -> 500).
+    # Bei Konflikt einfach den naechsten Suffix probieren.
+    fork_id: UUID | None = None
+    for n in range(1, MAX_FORK_SUFFIX + 1):
+        fork_id = (
             await db.execute(
-                select(Preset.id).where(
-                    Preset.user_id == user.id, Preset.name == name
+                pg_insert(Preset)
+                .values(
+                    user_id=user.id,
+                    name=_fork_name(src.name, n),
+                    adjustments=dict(src.adjustments),
+                    masks=list(src.masks),
+                    # Geometrie (Crop/Straighten/Lens) ist Teil des Preset-
+                    # Inhalts und muss mitkopiert werden.
+                    geometry=dict(src.geometry) if src.geometry else None,
+                    visibility="private",
+                    # Genre/Description/Preview NICHT mitkopieren — privat.
                 )
+                .on_conflict_do_nothing(constraint="uq_presets_user_name")
+                .returning(Preset.id)
             )
         ).scalar_one_or_none()
-        if existing is None:
+        if fork_id is not None:
             break
-        name = f"{base_name} {suffix}"
-        suffix += 1
-        if suffix > 50:
-            raise HTTPException(status_code=409, detail="Zu viele Forks dieses Presets.")
-    fork = Preset(
-        user_id=user.id,
-        name=name,
-        adjustments=dict(src.adjustments),
-        masks=list(src.masks),
-        # Geometrie (Crop/Straighten/Lens) ist Teil des Preset-Inhalts und
-        # muss mitkopiert werden — sonst verliert der Fork stillschweigend
-        # die Crop/Lens-Einstellungen des Originals.
-        geometry=dict(src.geometry) if src.geometry else None,
-        visibility="private",
-        # Genre/Description/Preview NICHT mitkopieren — der Fork ist privat.
-    )
-    db.add(fork)
+    if fork_id is None:
+        await db.rollback()
+        raise HTTPException(status_code=409, detail="Zu viele Forks dieses Presets.")
+    fork = (await db.execute(select(Preset).where(Preset.id == fork_id))).scalar_one()
     await db.commit()
     await db.refresh(fork)
     return PresetOut.model_validate(fork)
@@ -266,6 +293,21 @@ async def report_marketplace_preset(
     db: AsyncSession = Depends(get_db),
 ) -> None:
     preset, _ = await _load_public_preset(db, preset_id)
+    # Eigene Presets melden ist sinnlos (und wuerde den eigenen Report-Count
+    # aufblaehen) -> still ignorieren.
+    if preset.user_id == user.id:
+        return None
+    # Mindest-Account-Alter: sonst verstecken drei frisch angelegte Wegwerf-
+    # Accounts jedes beliebige Preset (Auto-Hide ab 3 Meldungen).
+    min_age = timedelta(hours=settings.report_min_account_age_hours)
+    if datetime.now(timezone.utc) - user.created_at < min_age:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Dein Konto ist noch zu neu, um Presets zu melden — "
+                "bitte versuche es später erneut."
+            ),
+        )
     report = PresetReport(
         preset_id=preset.id,
         reporter_user_id=user.id,

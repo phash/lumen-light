@@ -3,6 +3,8 @@
 Strategie:
 - Pro Pytest-Session ein Postgres-16-Container (testcontainers).
 - Pro Pytest-Session ein Keycloak-26-Container mit Realm-Import (siehe ADR-010).
+- Pro Pytest-Session ein RustFS-Container als S3-Stand-in (MinIO-Images
+  sind seit 2025 nicht mehr oeffentlich pullbar).
 - Alembic-Migration einmal pro Session.
 - Pro Test eine eigene AsyncEngine und AsyncSession in aeusserer Transaktion
   mit SAVEPOINT-Rollback.
@@ -32,7 +34,7 @@ from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, create_async_engine
 from testcontainers.core.waiting_utils import wait_for_logs
 from testcontainers.keycloak import KeycloakContainer
-from testcontainers.minio import MinioContainer
+from testcontainers.core.container import DockerContainer
 from testcontainers.postgres import PostgresContainer
 
 
@@ -47,7 +49,7 @@ class LumenKeycloakContainer(KeycloakContainer):
     """
 
     def _readiness_probe(self) -> None:  # type: ignore[override]
-        deadline = time.monotonic() + 90.0
+        deadline = time.monotonic() + 240.0
         while time.monotonic() < deadline:
             try:
                 with urlopen(
@@ -100,7 +102,7 @@ def keycloak_container() -> Iterator[LumenKeycloakContainer]:
     Admin-Client-Verbindung schlaegt fehl."""
     container = (
         LumenKeycloakContainer(
-            "quay.io/keycloak/keycloak:26.0",
+            "quay.io/keycloak/keycloak:26.8.1",
             username=KEYCLOAK_ADMIN_USER,
             password=KEYCLOAK_ADMIN_PASS,
         )
@@ -150,19 +152,41 @@ def keycloak_oid(keycloak_url: str) -> KeycloakOpenID:
 
 # --- Settings-Override -------------------------------------------------------
 
+S3_IMAGE = "rustfs/rustfs:1.0.4"
+S3_ACCESS_KEY = "lumentest"
+S3_SECRET_KEY = "lumentest-secret"  # Test-only
+
+
 @pytest.fixture(scope="session")
-def minio_container() -> Iterator[MinioContainer]:
-    """MinIO als S3-API-kompatible Test-Storage. Production wird Garage,
-    aber das S3-Protokoll ist standardisiert."""
-    container = MinioContainer()
+def s3_container() -> Iterator[DockerContainer]:
+    """RustFS als S3-API-kompatible Test-Storage. Production nutzt einen
+    eigenen S3-Dienst, aber das S3-Protokoll ist standardisiert."""
+    container = (
+        DockerContainer(S3_IMAGE)
+        .with_env("RUSTFS_ACCESS_KEY", S3_ACCESS_KEY)
+        .with_env("RUSTFS_SECRET_KEY", S3_SECRET_KEY)
+        .with_exposed_ports(9000)
+    )
     with container as c:
+        url = f"http://{c.get_container_host_ip()}:{c.get_exposed_port(9000)}/health"
+        deadline = time.monotonic() + 60.0
+        while time.monotonic() < deadline:
+            try:
+                with urlopen(url, timeout=2) as r:
+                    if r.status == 200:
+                        break
+            except (URLError, ConnectionError, OSError):
+                pass
+            time.sleep(0.5)
+        else:
+            raise RuntimeError("RustFS never reached /health")
         yield c
 
 
 @pytest.fixture(scope="session")
-def minio_endpoint(minio_container: MinioContainer) -> str:
-    host_ip = minio_container.get_container_host_ip()
-    port = minio_container.get_exposed_port(9000)
+def s3_endpoint(s3_container: DockerContainer) -> str:
+    host_ip = s3_container.get_container_host_ip()
+    port = s3_container.get_exposed_port(9000)
     return f"http://{host_ip}:{port}"
 
 
@@ -170,8 +194,8 @@ def minio_endpoint(minio_container: MinioContainer) -> str:
 def _set_settings(
     database_url: str,
     keycloak_issuer: str,
-    minio_container: MinioContainer,
-    minio_endpoint: str,
+    s3_container: DockerContainer,
+    s3_endpoint: str,
 ) -> Iterator[None]:
     """app.config.settings auf Test-Container umlenken, bevor app.* importiert wird."""
     from app import config
@@ -187,9 +211,9 @@ def _set_settings(
     )
     config.settings.database_url = database_url
     config.settings.keycloak_issuer = keycloak_issuer
-    config.settings.garage_s3_endpoint = minio_endpoint
-    config.settings.garage_s3_access_key_id = minio_container.access_key
-    config.settings.garage_s3_secret_access_key = minio_container.secret_key
+    config.settings.garage_s3_endpoint = s3_endpoint
+    config.settings.garage_s3_access_key_id = S3_ACCESS_KEY
+    config.settings.garage_s3_secret_access_key = S3_SECRET_KEY
     config.settings.garage_s3_bucket = "lumen-test-images"
     storage_module.reset_storage_singleton()
     # Bucket einmal anlegen

@@ -11,12 +11,21 @@ Limit-Strategie:
 - Tests setzen LUMEN_RATELIMIT_DISABLED=1, damit die Suite kein
   429 sieht.
 
-Key = JWT-`sub` (nicht der rohe Token): Access-Tokens rotieren bei jedem
-Refresh (<=15 min). Wuerde der Bucket am rohen Token haengen, setzte jede
-Rotation die Counter zurueck und das Limit waere trivial umgehbar. Der
-`sub`-Claim ist pro User stabil. Wir dekodieren OHNE Signaturpruefung —
-die echte Verifikation macht die Auth-Dependency; gefaelschte Tokens
-laufen ohnehin in 401 und richten keinen Schaden an.
+Key = JWT-`sub` (nicht der rohe Token), ABER nur fuer signatur-
+verifizierte Tokens: Access-Tokens rotieren bei jedem Refresh (<=15 min);
+haenge der Bucket am rohen Token, setzte jede Rotation die Counter zurueck.
+Der `sub`-Claim ist pro User stabil. Frueher wurde `sub` ungeprueft
+gelesen — dann bekam ein gefaelschter Token mit Zufalls-`sub` je Request
+einen frischen Bucket (Limit-Bypass), oder ein Angreifer verbrannte mit dem
+`sub` eines Opfers dessen Bucket. Jetzt: Verifikation gegen die bereits
+gecachten JWKs (`auth.verified_claims_cached`, kein Netzwerk). Alles, was
+nicht verifizierbar ist (gefaelscht, abgelaufen, unbekannter kid, kalter
+Cache direkt nach Start), faellt auf den IP-Bucket zurueck.
+
+IP = `request.client.host`. Hinter Caddy ist das nur dann die echte
+Client-IP, wenn uvicorn `--proxy-headers --forwarded-allow-ips` fuer den
+Proxy gesetzt hat (siehe backend/Dockerfile, env FORWARDED_ALLOW_IPS) —
+sonst teilen sich alle anonymen Requests den Bucket der Caddy-Container-IP.
 
 Stable-Hash: SHA-256 statt Python's per-PYTHONHASHSEED randomisiertem
 `hash()`, sodass derselbe `sub` auf jedem Worker denselben Bucket trifft.
@@ -34,19 +43,19 @@ from __future__ import annotations
 import hashlib
 import os
 
-import jwt
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
 
-def _unverified_sub(token: str) -> str | None:
-    """`sub`-Claim ohne Signaturpruefung lesen — nur fuer das Rate-Limit-
-    Bucketing. None bei kaputtem/sub-losem Token (Caller faellt auf IP zurueck)."""
-    try:
-        payload = jwt.decode(
-            token, options={"verify_signature": False, "verify_aud": False}
-        )
-    except Exception:
+def _verified_sub(token: str) -> str | None:
+    """`sub` eines signatur-verifizierten Tokens (nur gecachte JWKs, kein
+    Netzwerk). None, wenn nicht verifizierbar -> Caller nimmt den IP-Bucket."""
+    # Lazy-Import: app.auth zieht DB/Models nach; rate_limit wird von den
+    # Router-Modulen frueh importiert (Zirkularimport vermeiden).
+    from app.auth import verified_claims_cached
+
+    payload = verified_claims_cached(token)
+    if payload is None:
         return None
     sub = payload.get("sub")
     return sub if isinstance(sub, str) and sub else None
@@ -55,7 +64,7 @@ def _unverified_sub(token: str) -> str | None:
 def _key_func(request) -> str:
     auth_header = request.headers.get("authorization", "")
     if auth_header.startswith("Bearer "):
-        sub = _unverified_sub(auth_header[7:])
+        sub = _verified_sub(auth_header[7:])
         if sub:
             digest = hashlib.sha256(sub.encode("utf-8")).hexdigest()[:16]
             return f"u:{digest}"

@@ -1,5 +1,6 @@
 // Lumen Service-Worker — Stale-While-Revalidate fuer Same-Origin-GET,
-// Network-Only fuer /api/, /auth/. Runtime-Cache statt Build-time-Manifest:
+// Network-Only fuer /api/, /auth/, /lumen-images/ (private Bilder ueber
+// Pre-Signed-URLs) und /config.js (Runtime-Konfig muss sofort greifen). Runtime-Cache statt Build-time-Manifest:
 // Lumen-Assets haben Hash-Filenames, neue Builds liefern andere URLs ->
 // alte Cache-Eintraege werden bei naechstem Online-Besuch ueberschrieben
 // und sind unschaedlich (anderer Hash != Konflikt).
@@ -9,7 +10,8 @@
 // die App-Shell noch nie online geladen hat, gibt's eine Browser-Default-
 // Fehlerseite — das ist akzeptabel im Selfhost-Use-Case.
 
-const CACHE_VERSION = "lumen-v1";
+// v2: purgt v1-Caches, die noch private Bilder (Pre-Signed-URLs) enthielten.
+const CACHE_VERSION = "lumen-v2";
 const RUNTIME = `${CACHE_VERSION}-runtime`;
 
 self.addEventListener("install", (event) => {
@@ -40,7 +42,16 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
 
   // API + Auth: Network-only, niemals cachen (Tokens, dynamische Daten).
-  if (url.pathname.startsWith("/api/") || url.pathname.startsWith("/auth/")) {
+  // Bilder aus dem S3-Bucket sind privat (DSGVO: nach Logout/Account-Loeschen
+  // darf nichts im Browser-Cache liegen); jede Pre-Signed-URL hat zudem eine
+  // eigene Signatur, Cache-Eintraege wuerden nie wiederverwendet.
+  if (
+    url.pathname.startsWith("/api/") ||
+    url.pathname.startsWith("/auth/") ||
+    url.pathname.startsWith("/lumen-images/") ||
+    url.pathname === "/config.js" ||
+    url.searchParams.has("X-Amz-Signature")
+  ) {
     return;
   }
 

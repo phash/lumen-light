@@ -42,4 +42,31 @@ describe("Header", () => {
     await userEvent.click(screen.getByTestId("auth-login-button"));
     expect(signin).toHaveBeenCalledTimes(1);
   });
+
+  it("Logout leert den Offline-Cache vor signoutRedirect", async () => {
+    const order: string[] = [];
+    vi.stubGlobal("caches", {
+      keys: vi.fn(() => Promise.resolve(["lumen-v2-runtime"])),
+      delete: vi.fn(() => {
+        order.push("cache");
+        return Promise.resolve(true);
+      }),
+    });
+    const signout = vi.fn(() => {
+      order.push("signout");
+      return Promise.resolve();
+    });
+    renderWithAuth(<Header />, {
+      auth: makeFakeAuth({
+        isAuthenticated: true,
+        user: makeFakeUser({ profile: { sub: "s", email: "a@example.com" } as never }),
+        signoutRedirect: signout,
+      }),
+      wrapper: (c) => <MemoryRouter>{c}</MemoryRouter>,
+    });
+    await userEvent.click(screen.getByRole("button", { name: "Logout" }));
+    await vi.waitFor(() => expect(signout).toHaveBeenCalledTimes(1));
+    expect(order).toEqual(["cache", "signout"]);
+    vi.unstubAllGlobals();
+  });
 });

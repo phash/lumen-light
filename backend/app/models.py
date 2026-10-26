@@ -239,3 +239,33 @@ class Feedback(Base):
         onupdate=func.now(),
         nullable=False,
     )
+
+
+class StoragePurge(Base):
+    """Offener S3-Prefix-Purge (Migration 010). DELETE /me loescht alle
+    Objekte unter <user_id>/; schlaegt das fehl, landet der Prefix hier und
+    der Janitor wiederholt den Purge, bis er erfolgreich war. Keine FK auf
+    users — der User ist zu diesem Zeitpunkt bereits geloescht."""
+    __tablename__ = "storage_purges"
+
+    prefix: Mapped[str] = mapped_column(Text, primary_key=True)
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"), default=0
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+
+
+class AccountTombstone(Base):
+    """Grabstein eines geloeschten Accounts (Migration 010). Speichert nur
+    SHA-256(keycloak_sub) + Loeschzeitpunkt — keinen Klartext-Personenbezug.
+    JIT-Provisioning lehnt Tokens ab, deren iat <= deleted_at ist, damit ein
+    noch gueltiger Access-Token den geloeschten Account nicht wiederbelebt."""
+    __tablename__ = "account_tombstones"
+
+    sub_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    deleted_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False
+    )

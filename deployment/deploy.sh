@@ -19,7 +19,11 @@ COMPOSE=(docker compose -f deployment/docker-compose.prod.yml --env-file deploym
 cd "$REPO_DIR"
 
 echo "==> [1/8] Code aktualisieren (git pull)"
-git pull --ff-only || echo "   (kein FF-Pull moeglich — uebersprungen)"
+# Fehlgeschlagener Pull darf NICHT stillschweigend alten Code deployen.
+# Bewusster Deploy des lokalen Stands: SKIP_PULL=1 bash deployment/deploy.sh
+if [ "${SKIP_PULL:-0}" != "1" ]; then
+  git pull --ff-only || { echo "FEHLER: git pull --ff-only fehlgeschlagen (SKIP_PULL=1 zum Uebergehen)"; exit 1; }
+fi
 
 echo "==> [2/8] Konfiguration pruefen"
 test -f deployment/.env            || { echo "FEHLER: deployment/.env fehlt (aus .env.example)"; exit 1; }
@@ -29,8 +33,17 @@ set -a; . deployment/.env; set +a
 echo "==> [3/8] caddy-proxy-Netz sicherstellen"
 docker network inspect caddy-proxy >/dev/null 2>&1 || docker network create caddy-proxy
 
-echo "==> [4/8] Build (--no-cache, Cluster-Konvention) + Start"
-"${COMPOSE[@]}" build --no-cache
+echo "==> [4/8] Backup + Pull + Build (--no-cache, Cluster-Konvention) + Start"
+# Vor Image-Upgrades (Keycloak migriert sein DB-Schema beim Start) Backup
+# ziehen — nur wenn der Stack schon laeuft (Erst-Deploy hat nichts zu sichern).
+if [ "${SKIP_BACKUP:-0}" != "1" ] && docker ps --format '{{.Names}}' | grep -qx lumen-db; then
+  bash deployment/backup.sh
+fi
+# Gepinnte Service-Images aktualisieren; Basis-Images per --pull frisch, sonst
+# bleiben Security-Patches der Floating-Tags (python/node) aus. MinIO-Images
+# sind nicht mehr pullbar -> --ignore-pull-failures nutzt den lokalen Cache.
+"${COMPOSE[@]}" pull --ignore-pull-failures --ignore-buildable
+"${COMPOSE[@]}" build --pull --no-cache
 "${COMPOSE[@]}" up -d
 
 echo "==> [5/8] Auf Keycloak warten (well-known)"
@@ -45,16 +58,48 @@ for i in $(seq 1 80); do
   [ "$i" = 80 ] && { echo "FEHLER: Keycloak nicht bereit"; "${COMPOSE[@]}" logs --tail 40 lumen-keycloak; exit 1; }
 done
 
-echo "==> [6/8] Keycloak-SMTP (Projektmailserver) im Realm 'lumen' setzen"
-docker exec lumen-keycloak /opt/keycloak/bin/kcadm.sh config credentials \
-  --server http://localhost:8080/auth --realm master \
-  --user "$KC_ADMIN_USER" --password "$KC_ADMIN_PASSWORD"
+echo "==> [6/8] Keycloak-SMTP + Realm-Haertung im Realm 'lumen' setzen"
+# Passwort per Env (KC_CLI_PASSWORD) statt --password: nicht in der Prozessliste.
+KCADM=(docker exec -i lumen-keycloak /opt/keycloak/bin/kcadm.sh)
+KC_CLI_PASSWORD="$KC_ADMIN_PASSWORD" docker exec -e KC_CLI_PASSWORD lumen-keycloak \
+  /opt/keycloak/bin/kcadm.sh config credentials \
+  --server http://localhost:8080/auth --realm master --user "$KC_ADMIN_USER"
 # smtpServer ist ein Map-Feld — kcadm `-s smtpServer.host=...` (dotted) bzw.
 # `-s smtpServer={json}` greifen NICHT zuverlaessig. Stattdessen Merge-Update
 # via partiellem JSON ueber stdin (-f -). Werte aus .env.
 python3 -c "import json,os;print(json.dumps({'smtpServer':{'host':os.environ['SMTP_HOST'],'port':os.environ['SMTP_PORT'],'from':os.environ['SMTP_FROM'],'fromDisplayName':os.environ['SMTP_FROM_DISPLAY'],'ssl':'false','starttls':'true','auth':'true','user':os.environ['SMTP_USER'],'password':os.environ['SMTP_PASSWORD'],'replyTo':os.environ['SMTP_FROM']}}))" \
-  | docker exec -i lumen-keycloak /opt/keycloak/bin/kcadm.sh update realms/lumen -f -
+  | "${KCADM[@]}" update realms/lumen -f -
 echo "   SMTP gesetzt (from=$SMTP_FROM via $SMTP_HOST:$SMTP_PORT)"
+# Realm-Import greift nur beim allerersten Start -> Haertung aus
+# lumen-realm.prod.json hier idempotent auf den laufenden Realm uebertragen.
+python3 - <<'PY' | "${KCADM[@]}" update realms/lumen -f -
+import json
+r = json.load(open("infra/keycloak/lumen-realm.prod.json"))
+keys = ["passwordPolicy", "eventsEnabled", "eventsExpiration",
+        "adminEventsEnabled", "adminEventsDetailsEnabled"]
+print(json.dumps({k: r[k] for k in keys}))
+PY
+CID="$("${KCADM[@]}" get clients -r lumen -q clientId=lumen-frontend --fields id --format csv --noquotes | tr -d '\r')"
+"${KCADM[@]}" update "clients/$CID" -r lumen \
+  -s "redirectUris=[\"https://${DOMAIN}/callback\"]" \
+  -s "attributes.\"post.logout.redirect.uris\"=https://${DOMAIN}"
+# Audience-Mapper: KC >= 26.x setzt "included.client.audience" nur noch fuer
+# EXISTIERENDE Clients — einen Client "lumen-api" gibt es nicht, ohne
+# Umstellung fehlt aud=lumen-api im Token und jeder API-Call wird 401.
+MAPPERS="$("${KCADM[@]}" get "clients/$CID/protocol-mappers/models" -r lumen </dev/null)"
+MID="$(printf '%s' "$MAPPERS" | python3 -c "import json,sys;print(next((m['id'] for m in json.load(sys.stdin) if m['name']=='audience-lumen-api'),''))")"
+if [ -n "$MID" ]; then
+  printf '%s' "$MAPPERS" | python3 -c "
+import json,sys
+m = next(m for m in json.load(sys.stdin) if m['name'] == 'audience-lumen-api')
+m['config'].pop('included.client.audience', None)
+m['config']['included.custom.audience'] = 'lumen-api'
+print(json.dumps(m))" | "${KCADM[@]}" update "clients/$CID/protocol-mappers/models/$MID" -r lumen -f -
+  echo "   Audience-Mapper auf custom audience 'lumen-api' gesetzt"
+fi
+# Public-SPA-Client soll keine Offline-Tokens (nie ablaufende Refresh-Tokens) bekommen.
+"${KCADM[@]}" remove-roles -r lumen --rname default-roles-lumen --rolename offline_access 2>/dev/null || true
+echo "   Realm-Haertung gesetzt (Password-Policy, Events, Redirect-URIs, kein offline_access)"
 
 echo "==> [7/8] Caddy-Block (neu) setzen + validieren + restart"
 # Bestehenden Lumen-Block + Marker entfernen und frisch anhaengen — so greifen

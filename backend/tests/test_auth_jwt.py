@@ -108,3 +108,94 @@ async def test_endpoint_with_valid_token_returns_data(client, user_a):
     assert r.status_code == 200
     body = r.json()
     assert body["email"] == user_a["email"]
+
+
+# ---------- Haertung (Security-Review 2026-10) ----------
+
+
+def test_kid_miss_refetch_ist_gedrosselt(monkeypatch):
+    """Unbekannte kids duerfen das JWKS hoechstens einmal pro Drossel-
+    Fenster nachladen — sonst DoS gegen Threadpool + Keycloak."""
+    import time as _time
+
+    from fastapi import HTTPException
+
+    from app import auth
+
+    calls = {"n": 0}
+
+    def _fake_fetch() -> None:
+        calls["n"] += 1
+        auth._jwk_cache._keys_by_kid = {"known": {"kid": "known"}}
+        auth._jwk_cache._fetched_at = _time.monotonic()
+
+    monkeypatch.setattr(auth._jwk_cache, "_fetch", _fake_fetch)
+    for i in range(20):
+        try:
+            auth._jwk_cache.get(f"forged-{i}")
+        except HTTPException as exc:
+            assert exc.status_code == 401
+    # Erster Aufruf: Cache leer/abgelaufen -> genau ein Fetch, danach gedrosselt.
+    assert calls["n"] == 1
+
+    # Nach Ablauf des Drossel-Fensters darf wieder geladen werden (Key-Rotation).
+    auth._jwk_cache._fetched_at -= auth._JwkCache.KID_MISS_REFETCH_SECONDS + 1
+    try:
+        auth._jwk_cache.get("forged-x")
+    except HTTPException:
+        pass
+    assert calls["n"] == 2
+
+
+def _self_signed(monkeypatch, claims: dict) -> str:
+    import json
+
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    from app import auth
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
+    jwk["kid"] = "hardening-key"
+    monkeypatch.setattr(auth._jwk_cache, "get", lambda _kid: jwk)
+    return jwt.encode(
+        claims, private_key, algorithm="RS256", headers={"kid": "hardening-key"}
+    )
+
+
+async def test_token_ohne_iat_wird_abgelehnt(client, monkeypatch):
+    from app.config import settings
+
+    token = _self_signed(
+        monkeypatch,
+        {
+            "sub": "00000000-0000-0000-0000-000000000001",
+            "email": "noiat@example.com",
+            "iss": settings.keycloak_issuer,
+            "aud": settings.keycloak_audience,
+            "exp": int(time.time()) + 600,
+        },
+    )
+    r = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 401
+
+
+async def test_401_detail_verraet_keine_pyjwt_interna(client, monkeypatch):
+    token = _self_signed(
+        monkeypatch,
+        {
+            "sub": "00000000-0000-0000-0000-000000000002",
+            "email": "aud@example.com",
+            "iss": "https://evil.example.com/realms/x",
+            "aud": "fremde-audience",
+            "iat": int(time.time()),
+            "exp": int(time.time()) + 600,
+        },
+    )
+    r = await client.get(
+        "/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"}
+    )
+    assert r.status_code == 401
+    assert r.json()["detail"] == "Token ungültig."

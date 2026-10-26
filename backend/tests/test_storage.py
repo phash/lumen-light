@@ -1,4 +1,4 @@
-"""Storage-Service-Tests gegen MinIO (S3-API-Kompat zu Garage)."""
+"""Storage-Service-Tests gegen RustFS-Testcontainer (S3-API-kompatibel)."""
 import urllib.request
 from uuid import uuid4
 

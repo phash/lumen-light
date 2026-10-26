@@ -6,6 +6,8 @@ Endpunkte:
 - GET    /admin/stats              — globale Counts
 - GET    /admin/feedback           — Feedback-Inbox
 - PATCH  /admin/feedback/{id}      — Status / Notiz aendern
+- GET    /admin/presets/reported   — gemeldete/auto-versteckte Presets
+- POST   /admin/presets/{id}/clear-reports — Meldungen verwerfen (Restore)
 
 Auth: alle Endpoints brauchen die `admin`-Realm-Rolle (siehe
 `app.auth.current_admin`). Self-Disable ist erlaubt, aber nicht
@@ -18,7 +20,7 @@ from datetime import datetime, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import desc, func, select
+from sqlalchemy import delete, desc, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_admin
@@ -30,6 +32,7 @@ from app.schemas import (
     AdminUserPatchIn,
     FeedbackOut,
     FeedbackPatchIn,
+    PresetOut,
 )
 
 
@@ -269,3 +272,47 @@ async def patch_feedback(
             await db.execute(select(User.email).where(User.id == fb.user_id))
         ).scalar_one_or_none()
     return _feedback_to_out(fb, email)
+
+
+# ----- Moderation (gemeldete Presets) -----
+
+
+@router.get("/presets/reported", response_model=list[PresetOut])
+async def list_reported_presets(
+    _admin: User = Depends(current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> list[PresetOut]:
+    """Alle Presets mit mindestens einer Meldung — inkl. der per Auto-Hide
+    auf privat zurueckgesetzten. Grundlage fuer die Restore-Entscheidung."""
+    rows = (
+        await db.execute(
+            select(Preset)
+            .where(Preset.report_count > 0)
+            .order_by(desc(Preset.report_count), desc(Preset.updated_at))
+        )
+    ).scalars().all()
+    return [PresetOut.model_validate(p) for p in rows]
+
+
+@router.post("/presets/{preset_id}/clear-reports", response_model=PresetOut)
+async def clear_preset_reports(
+    preset_id: UUID,
+    _admin: User = Depends(current_admin),
+    db: AsyncSession = Depends(get_db),
+) -> PresetOut:
+    """Meldungen eines (faelschlich) gemeldeten Presets verwerfen und
+    report_count auf 0 setzen. Das Preset bleibt privat; der Creator kann
+    es danach selbst wieder veroeffentlichen (die Republish-Sperre in
+    PUT /presets greift nur ab REPORT_AUTOHIDE_THRESHOLD Meldungen)."""
+    preset = (
+        await db.execute(
+            select(Preset).where(Preset.id == preset_id).with_for_update()
+        )
+    ).scalar_one_or_none()
+    if preset is None:
+        raise HTTPException(status_code=404, detail="Preset nicht gefunden.")
+    await db.execute(delete(PresetReport).where(PresetReport.preset_id == preset.id))
+    preset.report_count = 0
+    await db.commit()
+    await db.refresh(preset)
+    return PresetOut.model_validate(preset)

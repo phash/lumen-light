@@ -12,6 +12,8 @@
   // (Auth-Parameter), die nicht in den Matomo-Logs landen sollen. SPA-
   // Navigationen werden separat ueber MatomoRouteTracker erfasst.
   if (window.location.pathname.indexOf("/callback") !== 0) {
+    // Nur Pfad melden: Query (z.B. ?image=<id>) traegt private IDs.
+    _paq.push(["setCustomUrl", window.location.origin + window.location.pathname]);
     _paq.push(["trackPageView"]);
   }
   var u = "//musikersuche.org/matomo/";

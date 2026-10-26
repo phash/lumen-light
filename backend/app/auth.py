@@ -5,7 +5,10 @@ von Keycloak ausgestellt, hier nur verifiziert. Siehe ADR-010.
 """
 from __future__ import annotations
 
+import hashlib
+import threading
 import time
+from datetime import datetime, timezone
 from typing import Any
 
 import httpx
@@ -14,14 +17,14 @@ from fastapi import Depends, HTTPException, status
 from fastapi.concurrency import run_in_threadpool
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt.algorithms import RSAAlgorithm
-from jwt.exceptions import InvalidTokenError, PyJWTError
+from jwt.exceptions import PyJWTError
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.database import get_db
-from app.models import Preset, User
+from app.models import AccountTombstone, Preset, User
 
 
 # Default-Presets, die bei JIT-Provisioning eines neuen Users angelegt werden.
@@ -248,13 +251,19 @@ class _JwkCache:
 
     TTL aus settings.jwk_cache_seconds. Bei Cache-Miss oder Expiry wird das
     Set frisch geholt. Bei kid-Miss (Token verweist auf einen Schluessel,
-    den wir noch nicht kennen) wird einmalig neu geladen — das deckt den
-    Key-Rotation-Fall ab.
+    den wir noch nicht kennen) wird neu geladen — das deckt den Key-
+    Rotation-Fall ab. Dieser kid-Miss-Refetch ist auf einen pro
+    KID_MISS_REFETCH_SECONDS gedrosselt und per Lock serialisiert: sonst
+    loest jedes gefaelschte Token mit Zufalls-kid einen blockierenden
+    HTTP-Call gegen Keycloak aus (DoS auf Threadpool + Keycloak).
     """
+
+    KID_MISS_REFETCH_SECONDS = 30.0
 
     def __init__(self) -> None:
         self._keys_by_kid: dict[str, dict[str, Any]] = {}
         self._fetched_at: float = 0.0
+        self._lock = threading.Lock()
 
     def _is_expired(self) -> bool:
         return (time.monotonic() - self._fetched_at) > settings.jwk_cache_seconds
@@ -268,9 +277,23 @@ class _JwkCache:
         self._keys_by_kid = {k["kid"]: k for k in data.get("keys", []) if "kid" in k}
         self._fetched_at = time.monotonic()
 
+    def peek(self, kid: str) -> dict[str, Any] | None:
+        """Nur Cache, nie Netzwerk — fuer das Rate-Limit-Keying."""
+        if self._is_expired():
+            return None
+        return self._keys_by_kid.get(kid)
+
     def get(self, kid: str) -> dict[str, Any]:
         if self._is_expired() or kid not in self._keys_by_kid:
-            self._fetch()
+            with self._lock:
+                # Double-Checked: ein paralleler Thread hat evtl. schon geladen.
+                if self._is_expired():
+                    self._fetch()
+                elif kid not in self._keys_by_kid and (
+                    time.monotonic() - self._fetched_at
+                    >= self.KID_MISS_REFETCH_SECONDS
+                ):
+                    self._fetch()
         if kid not in self._keys_by_kid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -286,6 +309,51 @@ class _JwkCache:
 
 _jwk_cache = _JwkCache()
 
+# Feste 401-Meldung: die PyJWT-Exception-Texte verraten Details der
+# Pruefung (Audience/Issuer-Werte, welcher Claim fehlt) — die gehoeren ins
+# Log, nicht an den Client.
+_INVALID_TOKEN_DETAIL = "Token ungültig."
+
+
+def _verify_with_jwk(token: str, jwk: dict[str, Any]) -> dict[str, Any]:
+    """Signatur + Claims pruefen. Wirft PyJWTError/ValueError bei Fehlern."""
+    # JWK-Dict in einen RSA-Public-Key fuer pyjwt umwandeln. RSAAlgorithm.
+    # from_jwk akzeptiert dict oder JSON-String — wir nutzen den dict-Pfad.
+    public_key = RSAAlgorithm.from_jwk(jwk)
+    # Whitelist statt Header-Wert: verhindert "alg confusion" (Token mit
+    # alg=HS256, das die Bibliothek mit dem RSA-Public-Key als HMAC-Secret
+    # verifizieren wuerde). Keycloak signiert ausschliesslich RS256.
+    return jwt.decode(
+        token,
+        public_key,  # type: ignore[arg-type]
+        algorithms=["RS256"],
+        audience=settings.keycloak_audience,
+        issuer=settings.keycloak_issuer,
+        # exp/iat/sub muessen vorhanden sein: ohne exp waere ein Token ewig
+        # gueltig, ohne iat greift der Loesch-Grabstein (iat <= deleted_at)
+        # nicht, ohne sub gibt es keine Identitaet.
+        options={"require": ["exp", "iat", "sub"]},
+        # Kleine Toleranz gegen Clock-Skew zwischen Keycloak und API-Host,
+        # damit frische Tokens nicht an exp/nbf-Grenzen 401en.
+        leeway=30,
+    )
+
+
+def verified_claims_cached(token: str) -> dict[str, Any] | None:
+    """Token nur gegen bereits gecachte JWKs pruefen (kein Netzwerk).
+    None bei jedem Fehler. Fuer das Rate-Limit-Keying: nur verifizierte
+    Tokens bekommen einen eigenen User-Bucket."""
+    try:
+        kid = jwt.get_unverified_header(token).get("kid")
+        if not isinstance(kid, str):
+            return None
+        jwk = _jwk_cache.peek(kid)
+        if jwk is None:
+            return None
+        return _verify_with_jwk(token, jwk)
+    except (PyJWTError, ValueError, TypeError, KeyError):
+        return None
+
 
 def _decode_token(token: str) -> dict[str, Any]:
     try:
@@ -298,37 +366,49 @@ def _decode_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Token ohne kid-Header.")
 
     jwk = _jwk_cache.get(kid)
-    # JWK-Dict in einen RSA-Public-Key fuer pyjwt umwandeln. RSAAlgorithm.
-    # from_jwk akzeptiert dict oder JSON-String — wir nutzen den dict-Pfad.
     try:
-        public_key = RSAAlgorithm.from_jwk(jwk)
+        return _verify_with_jwk(token, jwk)
     except (PyJWTError, ValueError) as exc:
-        raise HTTPException(status_code=401, detail="JWK ungueltig.") from exc
-
-    # Whitelist statt Header-Wert: verhindert "alg confusion" (Token mit
-    # alg=HS256, das die Bibliothek mit dem RSA-Public-Key als HMAC-Secret
-    # verifizieren wuerde). Keycloak signiert ausschliesslich RS256.
-    try:
-        return jwt.decode(
-            token,
-            public_key,
-            algorithms=["RS256"],
-            audience=settings.keycloak_audience,
-            issuer=settings.keycloak_issuer,
-            # Kleine Toleranz gegen Clock-Skew zwischen Keycloak und API-Host,
-            # damit frische Tokens nicht an exp/nbf-Grenzen 401en.
-            leeway=30,
-        )
-    except InvalidTokenError as exc:
-        raise HTTPException(status_code=401, detail=f"Token ungueltig: {exc}") from exc
+        raise HTTPException(status_code=401, detail=_INVALID_TOKEN_DETAIL) from exc
 
 
 # ----- JIT-User-Provisioning -----
 
-async def _get_or_create_user(db: AsyncSession, sub: str, email: str) -> User:
+def hash_sub(sub: str) -> str:
+    """SHA-256 des Keycloak-sub — Grabstein-Schluessel ohne Klartext-ID."""
+    return hashlib.sha256(sub.encode("utf-8")).hexdigest()
+
+
+async def _reject_if_tombstoned(db: AsyncSession, sub: str, iat: Any) -> None:
+    """Blockt die JIT-Wiederbelebung eines geloeschten Accounts durch einen
+    Token, der VOR der Loeschung ausgestellt wurde (iat <= deleted_at).
+    Ein nach der Loeschung neu ausgestellter Token (erneuter Login, falls der
+    KC-Account noch existiert) darf dagegen frisch provisionieren."""
+    tomb = (
+        await db.execute(
+            select(AccountTombstone).where(AccountTombstone.sub_hash == hash_sub(sub))
+        )
+    ).scalar_one_or_none()
+    if tomb is None:
+        return
+    try:
+        issued = datetime.fromtimestamp(float(iat), tz=timezone.utc)
+    except (TypeError, ValueError, OverflowError):
+        issued = None
+    if issued is None or issued <= tomb.deleted_at:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Konto wurde gelöscht — bitte erneut anmelden.",
+        )
+
+
+async def _get_or_create_user(
+    db: AsyncSession, sub: str, email: str, iat: Any = None
+) -> User:
     result = await db.execute(select(User).where(User.keycloak_sub == sub))
     user = result.scalar_one_or_none()
     if user is None:
+        await _reject_if_tombstoned(db, sub, iat)
         user = User(keycloak_sub=sub, email=email)
         db.add(user)
         try:
@@ -366,17 +446,17 @@ ADMIN_ROLE = "admin"
 
 
 def _has_admin_role(payload: dict[str, Any]) -> bool:
-    """Keycloak-Realm-Roles liegen unter realm_access.roles. Wir akzeptieren
-    auch resource_access.<audience>.roles als Fallback fuer Client-spezifische
-    Rollen — beides ist im Realm-Setup ueblich."""
+    """Keycloak-Realm-Roles liegen unter realm_access.roles (so weisen Tests
+    und E2E die Rolle zu). Zusaetzlich akzeptiert: die Client-Rolle des
+    EIGENEN API-Clients (resource_access.<keycloak_audience>.roles). Rollen
+    namens "admin" an beliebigen anderen Clients zaehlen NICHT — sonst
+    wuerde z.B. ein fremder Client mit eigener admin-Rolle Lumen-Admin."""
     realm_roles = (payload.get("realm_access") or {}).get("roles") or []
     if ADMIN_ROLE in realm_roles:
         return True
     resource_access = payload.get("resource_access") or {}
-    for client in resource_access.values():
-        if ADMIN_ROLE in (client.get("roles") or []):
-            return True
-    return False
+    own_client = resource_access.get(settings.keycloak_audience) or {}
+    return ADMIN_ROLE in (own_client.get("roles") or [])
 
 
 async def _resolve_user(
@@ -403,7 +483,9 @@ async def _resolve_user(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token ohne sub- oder email-Claim.",
         )
-    user = await _get_or_create_user(db, sub=sub, email=email)
+    user = await _get_or_create_user(
+        db, sub=sub, email=email, iat=payload.get("iat")
+    )
     return user, payload
 
 
@@ -420,6 +502,17 @@ async def current_user(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account deaktiviert.",
         )
+    return user
+
+
+async def current_user_allow_disabled(
+    creds: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+    db: AsyncSession = Depends(get_db),
+) -> User:
+    """Wie current_user, aber OHNE is_disabled-Block. Nur fuer die DSGVO-
+    Betroffenenrechte (GET /me/export, DELETE /me): ein gesperrter Account
+    darf seine Daten weiterhin exportieren und loeschen (Art. 15/17/20)."""
+    user, _ = await _resolve_user(creds, db)
     return user
 
 

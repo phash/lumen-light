@@ -1,4 +1,4 @@
-"""HTTP-Tests fuer /api/v1/images — gegen MinIO + FastAPI."""
+"""HTTP-Tests fuer /api/v1/images — gegen S3 (RustFS-Testcontainer) + FastAPI."""
 import urllib.request
 
 
@@ -349,3 +349,103 @@ async def test_delete_image_s3_error_marks_failed_and_keeps_row(
         "/api/v1/images?state=all", headers=user_a["headers"]
     )
     assert image_id not in [it["id"] for it in listing2.json()]
+
+
+# ---------- Staging-Upload (Security-Review: Checks nach confirm umgehbar) ----------
+
+
+def _get_url_bytes(url: str) -> bytes:
+    with urllib.request.urlopen(url, timeout=5) as resp:
+        return resp.read()
+
+
+async def test_upload_url_zeigt_auf_staging_nicht_auf_finalen_key(client, user_a):
+    """Der Pre-Signed PUT darf nie den finalen Key beschreiben — sonst laesst
+    sich nach confirm beliebiger Inhalt nachschieben."""
+    init = await _init(client, user_a["headers"])
+    user_id = user_a["user"]["id"]
+    assert f"/{user_id}/staging/{init['id']}" in init["uploadUrl"]
+    assert "/originals/" not in init["uploadUrl"]
+
+
+async def test_put_nach_confirm_ueberschreibt_finales_objekt_nicht(client, user_a):
+    jpeg = b"\xff\xd8\xff\xe0original"
+    init = await _init(
+        client, user_a["headers"], filename="a.jpg", size=len(jpeg)
+    )
+    _put_to_url(init["uploadUrl"], jpeg, "image/jpeg")
+    confirm = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert confirm.status_code == 200, confirm.text
+
+    # Angreifer nutzt die noch gueltige Upload-URL erneut.
+    _put_to_url(init["uploadUrl"], b"<html>evil</html>", "image/jpeg")
+
+    r = await client.get(
+        f"/api/v1/images/{init['id']}/url", headers=user_a["headers"]
+    )
+    assert _get_url_bytes(r.json()["url"]) == jpeg
+
+    # Erneutes confirm bleibt idempotent und uebernimmt den Nachschub nicht.
+    again = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert again.status_code == 200
+    assert _get_url_bytes(r.json()["url"]) == jpeg
+
+
+async def test_confirm_kopiert_auf_finalen_key_und_raeumt_staging(client, user_a):
+    from app.storage import ObjectNotFound, get_storage
+
+    image_id = await _full_upload(client, user_a["headers"])
+    storage = get_storage()
+    user_id = user_a["user"]["id"]
+    assert storage.head(f"{user_id}/originals/{image_id}") > 0
+    try:
+        storage.head(f"{user_id}/staging/{image_id}")
+        raise AssertionError("Staging-Objekt haette weg sein muessen")
+    except ObjectNotFound:
+        pass
+
+
+async def test_abgelehnter_upload_raeumt_staging_objekt(client, user_a):
+    from app.storage import ObjectNotFound, get_storage
+
+    init = await _init(client, user_a["headers"], filename="evil.jpg", size=20)
+    _put_to_url(init["uploadUrl"], b"<html>nope</html>", "image/jpeg")
+    r = await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    assert r.status_code == 415
+    storage = get_storage()
+    try:
+        storage.head(f"{user_a['user']['id']}/staging/{init['id']}")
+        raise AssertionError("Staging-Objekt haette weg sein muessen")
+    except ObjectNotFound:
+        pass
+
+
+async def test_delete_entfernt_auch_staging_rest(client, user_a):
+    from app.storage import ObjectNotFound, get_storage
+
+    jpeg = b"\xff\xd8\xff\xe0abc"
+    init = await _init(client, user_a["headers"], size=len(jpeg))
+    _put_to_url(init["uploadUrl"], jpeg, "image/jpeg")
+    await client.post(
+        f"/api/v1/images/{init['id']}/confirm", headers=user_a["headers"]
+    )
+    # Staging-Rest nach confirm (erneuter PUT mit der alten URL).
+    _put_to_url(init["uploadUrl"], b"leftover", "image/jpeg")
+
+    r = await client.delete(
+        f"/api/v1/images/{init['id']}", headers=user_a["headers"]
+    )
+    assert r.status_code == 204
+    storage = get_storage()
+    for kind in ("staging", "originals"):
+        try:
+            storage.head(f"{user_a['user']['id']}/{kind}/{init['id']}")
+            raise AssertionError(f"{kind}-Objekt haette weg sein muessen")
+        except ObjectNotFound:
+            pass

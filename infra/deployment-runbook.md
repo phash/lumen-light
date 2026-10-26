@@ -183,11 +183,55 @@ curl -X PUT \
 
 ```bash
 cd /opt/lumen
-git pull
-docker compose -f deployment/docker-compose.prod.yml build --no-cache
-docker compose -f deployment/docker-compose.prod.yml up -d
+bash deployment/deploy.sh
 # Migrationen laufen automatisch beim API-Container-Restart.
 ```
+
+## Security-Haertung (Stand 2026-10)
+
+**Re-Deploy immer ueber `bash deployment/deploy.sh`** — das Script zieht vor
+Image-Upgrades ein Backup, pullt Service-Images, baut mit `--pull` und
+uebertraegt die Realm-Haertung (Password-Policy, Events, exakte Redirect-URIs,
+kein `offline_access`) per `kcadm` auf den laufenden Realm.
+
+**Keycloak 26.1 -> 26.8:** KC migriert sein DB-Schema beim ersten Start
+automatisch. deploy.sh legt vorher ein Backup an (`SKIP_BACKUP=1` zum
+Ueberspringen). Bootstrap-Admin heisst jetzt `KC_BOOTSTRAP_ADMIN_*` (greift
+nur bei leerer KC-DB).
+
+**Keycloak-Admin-Konsole ist nicht mehr oeffentlich** (Caddy liefert 404 fuer
+`/auth/admin/*/console`, `/auth/admin/master/*`, `/auth/realms/master/*`).
+Zugriff per SSH-Tunnel:
+
+```bash
+# auf dem VPS: Container-IP im lumen-internal-Netz ermitteln
+docker inspect -f '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' lumen-keycloak
+# lokal: Tunnel aufbauen, dann http://localhost:18080/auth/admin/ oeffnen
+ssh -L 18080:<kc-container-ip>:8080 root@82.165.40.140
+```
+
+Einzelne Aktionen gehen auch ohne Konsole per `kcadm` im Container, z.B.
+Admin-Rolle vergeben:
+
+```bash
+KC_CLI_PASSWORD="$KC_ADMIN_PASSWORD" docker exec -e KC_CLI_PASSWORD lumen-keycloak \
+  /opt/keycloak/bin/kcadm.sh config credentials --server http://localhost:8080/auth \
+  --realm master --user "$KC_ADMIN_USER"
+docker exec lumen-keycloak /opt/keycloak/bin/kcadm.sh add-roles -r lumen \
+  --uusername <email> --rolename admin
+```
+
+**Least-Privilege-S3-User fuer die API:** in `deployment/.env`
+`GARAGE_S3_ACCESS_KEY_ID`/`GARAGE_S3_SECRET_ACCESS_KEY` auf einen eigenen
+User setzen (nicht `MINIO_ROOT_USER`). `lumen-minio-init` legt ihn beim
+naechsten `up -d` mit einer Policy nur fuer den Bucket an. Solange die Werte
+noch den Root-Credentials entsprechen, loggt das Init-Script eine WARN-Zeile.
+
+**MinIO ist EOL** (Community-Images nicht mehr pullbar, keine Security-Fixes).
+Der Caddy-Block mildert CVE-2025-31489 (Streaming-Uploads mit
+`STREAMING-*`-Payload werden mit 403 geblockt) und setzt eine Sandbox-CSP auf
+S3-Antworten. Mittelfristig: Migration auf RustFS (Dev/Test laufen schon
+darauf) oder Garage.
 
 ## Backup
 

@@ -2,7 +2,7 @@ name: CI
 
 # Pflicht-Checks pro PR + push auf main:
 #   - Frontend: lint, typecheck, vitest (mit Coverage), build
-#   - Backend:  pytest (mit testcontainers fuer Postgres + MinIO + Keycloak,
+#   - Backend:  pytest (mit testcontainers fuer Postgres + RustFS-S3 + Keycloak,
 #               inkl. Coverage-Report).
 # E2E (Playwright) laeuft NICHT hier (Stack-Boot dauert) — siehe die eigene
 # Workflow-Datei .github/workflows/e2e.yml (nightly cron + workflow_dispatch).
@@ -18,6 +18,10 @@ on:
     branches: [main]
   workflow_dispatch:
 
+# Least-Privilege fuer GITHUB_TOKEN: Workflows lesen nur den Code.
+permissions:
+  contents: read
+
 jobs:
   frontend:
     name: Frontend
@@ -26,15 +30,17 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+        uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
         with:
           version: 9
 
       - name: Setup Node
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: 22
           cache: pnpm
@@ -65,10 +71,12 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Setup Python
-        uses: actions/setup-python@v6
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"
 

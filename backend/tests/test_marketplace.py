@@ -298,7 +298,31 @@ async def test_marketplace_fork_handles_name_collision(client, user_a, user_b):
 
 # ---------- Report + Auto-Hide ----------
 
-async def test_marketplace_report_increments_count(client, user_a, user_b):
+
+def _allow_fresh_reporters(monkeypatch) -> None:
+    """Mindest-Account-Alter fuer Reports abschalten — die Test-User sind
+    frisch angelegt. Der Alters-Gate selbst wird separat getestet."""
+    from app.config import settings
+
+    monkeypatch.setattr(settings, "report_min_account_age_hours", 0)
+
+
+async def _age_account(db_session, user_id: str, hours: int = 48) -> None:
+    from datetime import datetime, timedelta, timezone
+
+    from sqlalchemy import update
+
+    from app.models import User
+
+    await db_session.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(created_at=datetime.now(timezone.utc) - timedelta(hours=hours))
+    )
+    await db_session.commit()
+
+async def test_marketplace_report_increments_count(client, user_a, user_b, db_session):
+    await _age_account(db_session, user_b["user"]["id"])
     src = await _create_public_preset(client, user_a["headers"], name="report-me")
     r = await client.post(
         f"/api/v1/marketplace/presets/{src['id']}/report",
@@ -309,8 +333,9 @@ async def test_marketplace_report_increments_count(client, user_a, user_b):
 
 
 async def test_marketplace_auto_hides_after_three_reports(
-    client, user_a, user_b, user_c, make_keycloak_user
+    client, user_a, user_b, user_c, make_keycloak_user, monkeypatch
 ):
+    _allow_fresh_reporters(monkeypatch)
     src = await _create_public_preset(client, user_a["headers"], name="hide-me")
     pid = src["id"]
     # Drei verschiedene Reporter — Schwellenwert fuer Auto-Hide.
@@ -351,11 +376,12 @@ async def test_marketplace_report_404_for_private_preset(client, user_a, user_b)
 
 
 async def test_update_preset_cannot_republish_after_autohide(
-    client, user_a, user_b, user_c, make_keycloak_user
+    client, user_a, user_b, user_c, make_keycloak_user, monkeypatch
 ):
     """Ein nach >=3 Meldungen auto-verstecktes Preset darf vom Creator NICHT
     einfach per PUT wieder oeffentlich geschaltet werden (409) — sonst laesst
     sich die Moderation trivial umgehen."""
+    _allow_fresh_reporters(monkeypatch)
     src = await _create_public_preset(client, user_a["headers"], name="moderate-me")
     pid = src["id"]
     for headers in (
@@ -417,7 +443,8 @@ async def test_marketplace_huge_cursor_returns_422(client, user_a):
     assert r.status_code == 422
 
 
-async def test_marketplace_double_report_returns_409(client, user_a, user_b):
+async def test_marketplace_double_report_returns_409(client, user_a, user_b, db_session):
+    await _age_account(db_session, user_b["user"]["id"])
     src = await _create_public_preset(client, user_a["headers"], name="dup-report")
     r1 = await client.post(
         f"/api/v1/marketplace/presets/{src['id']}/report",
@@ -520,3 +547,98 @@ async def test_marketplace_fork_still_requires_auth(client, user_a):
     body = await _create_public_preset(client, user_a["headers"], name="fork-gated")
     r = await client.post(f"/api/v1/marketplace/presets/{body['id']}/fork")
     assert r.status_code == 401, r.text
+
+
+
+# ---------- Security-Review 2026-10 ----------
+
+
+async def test_report_von_zu_neuem_account_wird_abgelehnt(client, user_a, user_b):
+    src = await _create_public_preset(client, user_a["headers"], name="neu-report")
+    r = await client.post(
+        f"/api/v1/marketplace/presets/{src['id']}/report",
+        headers=user_b["headers"],
+        json={"reason": "Spam"},
+    )
+    assert r.status_code == 403, r.text
+
+
+async def test_report_auf_eigenes_preset_wird_ignoriert(client, user_a, db_session):
+    await _age_account(db_session, user_a["user"]["id"])
+    src = await _create_public_preset(client, user_a["headers"], name="selbst")
+    r = await client.post(
+        f"/api/v1/marketplace/presets/{src['id']}/report",
+        headers=user_a["headers"],
+        json={"reason": "Spam"},
+    )
+    assert r.status_code == 204
+    own = await client.get("/api/v1/presets", headers=user_a["headers"])
+    mine = next(p for p in own.json() if p["id"] == src["id"])
+    assert mine["reportCount"] == 0
+
+
+async def test_presets_gesperrter_user_verschwinden_aus_marketplace(
+    client, user_a, user_b, db_session
+):
+    from sqlalchemy import update
+
+    from app.models import User
+
+    src = await _create_public_preset(client, user_a["headers"], name="gesperrt-pub")
+    await db_session.execute(
+        update(User).where(User.id == user_a["user"]["id"]).values(is_disabled=True)
+    )
+    await db_session.commit()
+
+    listing = await client.get("/api/v1/marketplace/presets")
+    assert src["id"] not in [i["id"] for i in listing.json()["items"]]
+    detail = await client.get(f"/api/v1/marketplace/presets/{src['id']}")
+    assert detail.status_code == 404
+    fork = await client.post(
+        f"/api/v1/marketplace/presets/{src['id']}/fork", headers=user_b["headers"]
+    )
+    assert fork.status_code == 404
+
+
+async def test_fork_mit_maximal_langem_namen_kuerzt_statt_500(client, user_a, user_b):
+    long_name = "L" * 80
+    src = await _create_public_preset(client, user_a["headers"], name=long_name)
+    r1 = await client.post(
+        f"/api/v1/marketplace/presets/{src['id']}/fork", headers=user_b["headers"]
+    )
+    assert r1.status_code == 201, r1.text
+    assert len(r1.json()["name"]) <= 80
+    assert r1.json()["name"].endswith(" (Kopie)")
+    r2 = await client.post(
+        f"/api/v1/marketplace/presets/{src['id']}/fork", headers=user_b["headers"]
+    )
+    assert r2.status_code == 201, r2.text
+    assert len(r2.json()["name"]) <= 80
+    assert r2.json()["name"].endswith(" (Kopie) 2")
+
+
+async def test_fork_name_kollision_mit_bestehendem_preset(client, user_a, user_b):
+    """Kollidiert der Fork-Name mit einem schon vorhandenen Preset (z.B.
+    aus einem parallelen Fork), wird der naechste Suffix genommen statt 500."""
+    src = await _create_public_preset(client, user_a["headers"], name="race")
+    pre = await client.post(
+        "/api/v1/presets",
+        headers=user_b["headers"],
+        json={"name": "race (Kopie)", "adjustments": ZERO_ADJ},
+    )
+    assert pre.status_code == 201
+    r = await client.post(
+        f"/api/v1/marketplace/presets/{src['id']}/fork", headers=user_b["headers"]
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["name"] == "race (Kopie) 2"
+
+
+async def test_suche_escaped_like_wildcards(client, user_a):
+    await _create_public_preset(client, user_a["headers"], name="Normaler Look")
+    pct = await _create_public_preset(client, user_a["headers"], name="100% Kontrast")
+    r = await client.get("/api/v1/marketplace/presets?q=%25")
+    names = [i["name"] for i in r.json()["items"]]
+    assert names == [pct["name"]]
+    r2 = await client.get("/api/v1/marketplace/presets?q=_")
+    assert r2.json()["items"] == []

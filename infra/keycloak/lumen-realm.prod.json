@@ -7,7 +7,10 @@
   "emailTheme": "lumen",
   "internationalizationEnabled": true,
   "defaultLocale": "de",
-  "supportedLocales": ["de", "en"],
+  "supportedLocales": [
+    "de",
+    "en"
+  ],
   "registrationAllowed": true,
   "registrationEmailAsUsername": true,
   "verifyEmail": true,
@@ -26,7 +29,7 @@
   "failureFactor": 3,
   "accessTokenLifespan": 900,
   "ssoSessionMaxLifespan": 2592000,
-  "passwordPolicy": "length(10) and digits(1) and notUsername(undefined) and passwordHistory(3)",
+  "passwordPolicy": "length(12) and digits(1) and notUsername(undefined) and notEmail(undefined) and passwordHistory(3)",
   "clients": [
     {
       "clientId": "lumen-frontend",
@@ -39,14 +42,14 @@
       "serviceAccountsEnabled": false,
       "protocol": "openid-connect",
       "redirectUris": [
-        "https://lumen.mr-development.de/*"
+        "https://lumen.mr-development.de/callback"
       ],
       "webOrigins": [
         "https://lumen.mr-development.de"
       ],
       "attributes": {
         "pkce.code.challenge.method": "S256",
-        "post.logout.redirect.uris": "https://lumen.mr-development.de/*"
+        "post.logout.redirect.uris": "https://lumen.mr-development.de"
       },
       "protocolMappers": [
         {
@@ -55,7 +58,7 @@
           "protocolMapper": "oidc-audience-mapper",
           "consentRequired": false,
           "config": {
-            "included.client.audience": "lumen-api",
+            "included.custom.audience": "lumen-api",
             "id.token.claim": "false",
             "access.token.claim": "true"
           }
@@ -65,9 +68,22 @@
   ],
   "roles": {
     "realm": [
-      { "name": "user", "description": "Standard Lumen user" },
-      { "name": "admin", "description": "Lumen administrator" }
+      {
+        "name": "user",
+        "description": "Standard Lumen user"
+      },
+      {
+        "name": "admin",
+        "description": "Lumen administrator"
+      }
     ]
   },
-  "defaultRoles": ["user", "offline_access", "uma_authorization"]
+  "defaultRoles": [
+    "user",
+    "uma_authorization"
+  ],
+  "eventsEnabled": true,
+  "eventsExpiration": 604800,
+  "adminEventsEnabled": true,
+  "adminEventsDetailsEnabled": false
 }

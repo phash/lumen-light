@@ -18,10 +18,24 @@ lumen.mr-development.de {
     # (synchron halten).
     import security_headers
 
-    # API -> FastAPI
+    # API -> FastAPI. JSON-Bodies sind klein (Presets/Edit-State/Feedback),
+    # Bild-Pixel laufen ueber /lumen-images -> Body-Limit gegen Memory-DoS.
     @api path /api/*
     handle @api {
+        request_body {
+            max_size 2MB
+        }
         reverse_proxy lumen-api:4100
+    }
+
+    # Master-Realm + Admin-Konsolen NICHT ins Internet (Password-Spraying auf
+    # den Bootstrap-Admin). Admin-Arbeit per SSH-Tunnel bzw. kcadm im
+    # Container (siehe infra/deployment-runbook.md). Die Admin-REST-API des
+    # lumen-Realms (/auth/admin/realms/lumen/...) bleibt erreichbar — die
+    # API nutzt sie fuer DELETE /me (Service-Account, Bearer-Token).
+    @kc_admin path /auth/realms/master /auth/realms/master/* /auth/admin/master/* /auth/admin/realms/master /auth/admin/realms/master/* /auth/admin/*/console /auth/admin/*/console/*
+    handle @kc_admin {
+        respond "Not found" 404
     }
 
     # Keycloak unter /auth (eigener Realm-Server). KC setzt eigene Header/CSP
@@ -36,8 +50,25 @@ lumen.mr-development.de {
     # Caddy reicht den Original-Host (lumen.mr-development.de) weiter, daher
     # bleibt die SigV4-Signatur gueltig. Kein request_body-Limit -> grosse
     # Bild-Uploads (bis 200 MB) streamen durch.
+    #
+    # CVE-2025-31489 (MinIO < RELEASE.2025-04-03): Signatur von Streaming-
+    # Uploads mit "unsigned trailer" wird nicht geprueft. Lumen nutzt nur
+    # klassische Pre-Signed-PUTs (UNSIGNED-PAYLOAD) -> diese Variante hart
+    # blocken. Zusaetzlich: S3-Antworten nie als aktives Dokument ausfuehren
+    # (sandbox-CSP + nosniff), falls doch je ein Nicht-Bild im Bucket landet.
+    @s3_streaming_trailer {
+        path /lumen-images/*
+        header_regexp X-Amz-Content-Sha256 (?i)^STREAMING-
+    }
+    handle @s3_streaming_trailer {
+        respond "Forbidden" 403
+    }
     @s3 path /lumen-images/*
     handle @s3 {
+        header {
+            Content-Security-Policy "default-src 'none'; sandbox"
+            X-Content-Type-Options "nosniff"
+        }
         reverse_proxy lumen-minio:9000
     }
 
@@ -48,14 +79,13 @@ lumen.mr-development.de {
     }
 
     # SPA (nginx) — strikte CSP NUR fuer die App-Antworten (nicht /auth).
-    # Trade-off (bewusst, Selfhost): script-src erlaubt die self-gehostete
-    # Matomo-Origin musikersuche.org, weil der Tracker matomo.js von dort
-    # geladen wird. Kein 'unsafe-inline'/'unsafe-eval' im script-src. Haertung
-    # bei public-Launch: matomo.js unter 'self' co-hosten (dann musikersuche.org
-    # aus script-src raus) oder Subresource-Integrity ergaenzen.
+    # script-src erlaubt von musikersuche.org NUR die exakte Datei
+    # /matomo/matomo.js (nicht die ganze Origin). 'wasm-unsafe-eval' ist
+    # fuer den libraw-wasm-RAW-Decoder noetig (WebAssembly.instantiate) und
+    # erlaubt KEIN JS-eval. Kein 'unsafe-inline'/'unsafe-eval' im script-src.
     handle {
         header {
-            Content-Security-Policy "default-src 'self'; img-src 'self' blob: data: https://musikersuche.org; media-src 'self' blob:; connect-src 'self' https://musikersuche.org https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self' https://musikersuche.org; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            Content-Security-Policy "default-src 'self'; img-src 'self' blob: data: https://musikersuche.org; media-src 'self' blob:; connect-src 'self' https://musikersuche.org https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self' 'wasm-unsafe-eval' https://musikersuche.org/matomo/matomo.js; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         }
         reverse_proxy lumen-web:80
     }

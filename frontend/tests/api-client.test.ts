@@ -90,6 +90,19 @@ describe("createApiClient", () => {
     expect(result).toBeUndefined();
   });
 
+  it("encodiert IDs in Pfadsegmenten (kein Path-Steering)", async () => {
+    const { fetchImpl, calls } = makeFetchMock(200, { url: "x", expiresIn: 1 });
+    const client = createApiClient({
+      baseUrl: "http://api.test/api/v1",
+      getUser: () => null,
+      fetch: fetchImpl,
+    });
+    await client.getImageUrl("../admin/users?x=");
+    expect(calls[0]?.url).toBe(
+      "http://api.test/api/v1/images/..%2Fadmin%2Fusers%3Fx%3D/url",
+    );
+  });
+
   it("getImageEdit liefert null bei 404 (kein gespeicherter Stand)", async () => {
     const { fetchImpl } = makeFetchMock(404, { detail: "Kein Stand." });
     const client = createApiClient({

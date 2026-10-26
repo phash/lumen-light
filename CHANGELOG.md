@@ -6,6 +6,18 @@ Versionierung an [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased] — Pre-Beta
 
+### Sicherheit (2026-10-26)
+
+- Dependency-Upgrades: Frontend (react 19.3, react-router 7.18.4, vite 8.3, vitest 5, jsdom 30, libraw-wasm 1.6, …) — `pnpm audit` von 69 auf 0 Findings; Backend (fastapi 0.162, PyJWT 2.15.1, sqlalchemy 2.1.6, pydantic 2.14, …) — `pip-audit` von 23 auf 0.
+- Uploads laufen ueber einen Staging-Key; Pruefung (Groesse, Magic-Bytes) am finalen Objekt, das der Client nie beschreiben kann.
+- Rate-Limit: echte Client-IP hinter Caddy (`--proxy-headers`), User-Bucket nur fuer signatur-verifizierte Tokens; JWKS-Refetch bei unbekanntem `kid` gedrosselt.
+- `DELETE /me` loescht den kompletten S3-Prefix (mit Janitor-Retry) und legt einen Tombstone gegen JIT-Wiederbelebung an (Migration 010).
+- Request-Body-Limit (1 MB App, 2 MB Caddy), Masken-Listen begrenzt; gesperrte User duerfen exportieren/loeschen; Presets gesperrter User nicht mehr oeffentlich; Report-Missbrauch erschwert; Fork-500er behoben.
+- Service-Worker cached keine privaten Bilder/`config.js` mehr; Cache wird bei Logout/Account-Loeschung geleert; Matomo bekommt keine Query-Parameter.
+- Caddy: Block fuer CVE-2025-31489 (MinIO-Streaming-Uploads), Sandbox-CSP auf S3-Antworten, KC-Master-Realm/Admin-Konsole nicht oeffentlich, CSP auf exakte Matomo-Datei + `wasm-unsafe-eval`.
+- Prod-Compose: Container-Haertung (no-new-privileges, cap_drop, Limits), gepinnte Images (Keycloak 26.8.1, nginx 1.30.6, Postgres 16.15, Redis 7.4.11), Least-Privilege-S3-User; Keycloak-Realm gehaertet (Password-Policy, Events, exakte Redirect-URIs, kein `offline_access`).
+- CI: Actions auf SHA gepinnt, `permissions: contents: read`; Dependabot auch fuer Docker/Compose. Dev/Test/CI auf RustFS statt nicht mehr pullbarem MinIO.
+
 ### Hinzugefuegt
 
 - **Phase E · Power-Tools**

@@ -6,6 +6,8 @@ gegen die ausgegebene Pre-Signed URL (siehe ADR-011).
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
+from datetime import datetime
 from uuid import UUID
 
 import boto3
@@ -17,6 +19,20 @@ from app.config import Settings
 
 class ObjectNotFound(Exception):
     """S3-Object existiert nicht (HEAD/DELETE auf Nicht-Existenz)."""
+
+
+class StorageError(Exception):
+    """S3 hat einen Teil eines Batch-Deletes abgelehnt."""
+
+
+@dataclass(frozen=True)
+class StoredObject:
+    key: str
+    last_modified: datetime
+
+
+# S3 DeleteObjects akzeptiert max. 1000 Keys pro Request.
+_DELETE_BATCH = 1000
 
 
 class StorageService:
@@ -51,6 +67,21 @@ class StorageService:
     def make_key(self, user_id: UUID, image_id: UUID) -> str:
         """<user_id>/originals/<image_id> — per-User-Prefix fuer Tenant-Isolation."""
         return f"{user_id}/originals/{image_id}"
+
+    def make_staging_key(self, user_id: UUID, image_id: UUID) -> str:
+        """<user_id>/staging/<image_id> — Ziel des Pre-Signed PUT. Erst nach
+        Size- und Magic-Byte-Pruefung kopiert confirm() serverseitig auf den
+        finalen Key; der finale Key wird nie zum Schreiben herausgegeben.
+        Gleicher User-Prefix wie make_key, damit Tenant-Isolation und
+        Prefix-Purge (DELETE /me) beide Keys abdecken."""
+        return f"{user_id}/staging/{image_id}"
+
+    def staging_key_for(self, bucket_key: str) -> str:
+        """Leitet den Staging-Key aus einem finalen Key <uid>/originals/<id> ab."""
+        user_part, _, image_part = bucket_key.partition("/originals/")
+        if not user_part or not image_part:
+            raise ValueError(f"Unerwartetes bucket_key-Format: {bucket_key!r}")
+        return f"{user_part}/staging/{image_part}"
 
     def presign_put(self, key: str, content_type: str) -> tuple[str, int]:
         url = self._presign_client.generate_presigned_url(
@@ -99,6 +130,56 @@ class StorageService:
     def delete(self, key: str) -> None:
         """Loescht das Object. Idempotent — kein Fehler wenn schon weg."""
         self._client.delete_object(Bucket=self.bucket, Key=key)
+
+    def copy(self, src_key: str, dst_key: str) -> None:
+        """Serverseitige Kopie innerhalb des Buckets (keine Pixel durch die API).
+        Wirft ObjectNotFound wenn die Quelle fehlt."""
+        try:
+            self._client.copy_object(
+                Bucket=self.bucket,
+                Key=dst_key,
+                CopySource={"Bucket": self.bucket, "Key": src_key},
+            )
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                raise ObjectNotFound(src_key) from exc
+            raise
+
+    def list_objects(self, prefix: str) -> list[StoredObject]:
+        """Alle Objekte unter prefix (paginiert ueber list_objects_v2)."""
+        paginator = self._client.get_paginator("list_objects_v2")
+        out: list[StoredObject] = []
+        for page in paginator.paginate(Bucket=self.bucket, Prefix=prefix):
+            for obj in page.get("Contents", []):
+                out.append(StoredObject(key=obj["Key"], last_modified=obj["LastModified"]))
+        return out
+
+    def delete_many(self, keys: list[str]) -> None:
+        """Batch-Delete (max. 1000 pro Request). Wirft StorageError, wenn S3
+        einzelne Keys ablehnt — der Caller entscheidet ueber Retry."""
+        for i in range(0, len(keys), _DELETE_BATCH):
+            chunk = keys[i : i + _DELETE_BATCH]
+            response = self._client.delete_objects(
+                Bucket=self.bucket,
+                Delete={"Objects": [{"Key": k} for k in chunk], "Quiet": True},
+            )
+            errors = response.get("Errors") or []
+            if errors:
+                raise StorageError(
+                    f"{len(errors)} Objekte nicht geloescht, z.B. {errors[0].get('Key')}"
+                )
+
+    def delete_prefix(self, prefix: str) -> int:
+        """Loescht ALLE Objekte unter prefix — auch solche, die keine DB-Row
+        (mehr) haben (Staging-Reste, verwaiste Objekte). Gibt die Anzahl
+        geloeschter Objekte zurueck. Leerer Prefix ist verboten (wuerde den
+        ganzen Bucket leeren)."""
+        if not prefix or not prefix.endswith("/"):
+            raise ValueError("delete_prefix braucht einen nicht-leeren '/'-Prefix.")
+        keys = [o.key for o in self.list_objects(prefix)]
+        self.delete_many(keys)
+        return len(keys)
 
     def ensure_bucket(self) -> None:
         """Legt das Bucket an, falls nicht vorhanden — fuer Test-Setup und

@@ -6,7 +6,7 @@ privat. FastAPI + React 19/WebGL2, Keycloak, Postgres, Garage S3.
 ## Stack hochfahren
 
 ```bash
-# 1. Postgres + Keycloak + MinIO (statt Garage in dev)
+# 1. Postgres + Keycloak 26.8 + RustFS-S3 (Ports nur auf 127.0.0.1)
 docker compose -f deployment/docker-compose.dev.yml up -d
 # Wartet bis Keycloak ready
 until curl -fs http://localhost:19000/health/ready >/dev/null; do sleep 2; done
@@ -50,7 +50,7 @@ Login mit `manuel@local.test` / `lumen` — der Realm hat
 ## Tests
 
 ```bash
-# Backend (testcontainers für PG + MinIO + Keycloak — Docker muss laufen)
+# Backend (testcontainers für PG + RustFS + Keycloak 26.8 — Docker muss laufen)
 cd backend && .venv/bin/pytest -q
 
 # Frontend Unit/Component
@@ -77,7 +77,7 @@ gesetzt — pytest läuft sonst gegen 429er.
   noUncheckedIndexedAccess. WebGL2-Pipeline in einem Fragment-Shader
   mit Uniform-Arrays für Multi-Mask. Zustand 5 für State.
   react-oidc-context für OIDC.
-- **deployment/** — `docker-compose.dev.yml` (PG + KC + MinIO),
+- **deployment/** — `docker-compose.dev.yml` (PG + KC + RustFS-S3 + aws-cli-Init fuer Bucket/CORS),
   `docker-compose.prod.yml` (db + api + web hinter Caddy-Proxy auf VPS).
 - **docs/** — `01-konzept.md` bis `08-risiken-offene-fragen.md`,
   `06-roadmap.md` zeigt Iterationsstand.
@@ -91,7 +91,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `backend/app/auth.py` | JWT-Verify (PyJWT, RS256-Whitelist), JIT-User-Provisioning + 20 Default-Presets (4 Looks + 6 Genre + 10 Motiv: Macro/Astro/Food/Hochzeit/Innen/Konzert/Strand/Schnee/Herbst/Architektur). `current_admin`-Dep prueft Realm-Role `admin`. |
 | `backend/app/schemas.py` | Adjustments, Mask-Discriminated-Union (`MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`), `extra="forbid"`. `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` → Wire-Keys camelCase, Eingang akzeptiert beide via `populate_by_name=True`. |
 | `backend/app/rate_limit.py` | slowapi-Limiter (SHA-256-Token-Hash-Key, IP-Fallback). `LUMEN_RATELIMIT_STORAGE` ueber env auf Redis-URI fuer Multi-Worker-Setups |
-| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) |
+| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) → 010_purges_tombstones (`storage_purges`: Janitor-Retry fehlgeschlagener S3-Prefix-Purges aus DELETE /me; `account_tombstones`: SHA-256(sub)+deleted_at gegen JIT-Wiederbelebung) |
 | `backend/schemas/edit-groups.json` | Single Source fuer das Gruppen->Feld-Mapping (8 Gruppen: tone/color/hsl/curve/detail/masks/crop/lens). Backend liest zur Laufzeit, Frontend importiert beim Build (Vite-Repo-Root-Context). |
 | `backend/app/profile_groups.py` | Laedt die JSON, stellt `GROUPS`, `KNOWN_GROUP_KEYS`, `merge_edit_state(...)` bereit. Batch-Apply-Endpoint nutzt `merge_edit_state` fuer nicht-destruktiven Merge. |
 | `frontend/src/editor/profileGroups.ts` | Importiert `backend/schemas/edit-groups.json`, exportiert `GROUPS`, `defaultEnabledGroups()`, `mergeGroups(base, profile, enabled)`. Gleicher Repo-Root-Build-Context wie `lensProfile.ts`. |
@@ -236,6 +236,24 @@ gesetzt — pytest läuft sonst gegen 429er.
   Karten `pointer-events: auto` setzen — sonst blockiert der Wrapper
   Klicks aufs hervorgehobene Target.
 
+- **MinIO-Images nicht mehr pullbar** (Docker Hub/Quay, seit 2025): Dev,
+  Tests und CI laufen auf `rustfs/rustfs` (S3-kompatibel, Env
+  `RUSTFS_ACCESS_KEY`/`RUSTFS_SECRET_KEY`, Bucket-Namen >= 3 Zeichen).
+  Prod laeuft noch auf MinIO aus dem lokalen Image-Cache des VPS —
+  `deploy.sh` pullt mit `--ignore-pull-failures`. Migration offen.
+- **Keycloak >= 26.x Audience-Mapper**: `included.client.audience` wirkt nur
+  fuer EXISTIERENDE Clients. Es gibt keinen Client `lumen-api` -> Mapper
+  muss `included.custom.audience: lumen-api` nutzen, sonst fehlt `aud` und
+  jeder API-Call ist 401. `deploy.sh` migriert den Live-Mapper.
+- **Uploads ueber Staging-Key**: Pre-Signed PUT zeigt auf
+  `{uid}/staging/{id}`, `confirm` kopiert serverseitig nach `originals/` und
+  prueft Groesse + Magic-Bytes am finalen Objekt. Finale Keys werden nie
+  zum Schreiben herausgegeben.
+- **Port 5173 belegt** (anderes Dev-Projekt): Vite weicht auf 5174 aus —
+  KC-Client-Redirects, Backend-`CORS_ORIGIN` und S3-Bucket-CORS kennen nur
+  5173. Fuer lokale E2E entweder den anderen Server stoppen oder 5174 zur
+  Laufzeit freischalten und `LUMEN_BASE_URL=http://localhost:5174` setzen.
+
 ## Workflow
 
 - **Iteration starten**: Spec in `docs/superpowers/specs/YYYY-MM-DD-<thema>-design.md`, optional Plan in `docs/superpowers/plans/`. Roadmap-Eintrag in `docs/06-roadmap.md` aktualisieren.
@@ -258,6 +276,8 @@ gesetzt — pytest läuft sonst gegen 429er.
 - `LUMEN_ENV=production` (in `docker-compose.prod.yml` gesetzt) blendet `/docs`, `/openapi.json`, `/redoc` aus.
 - `LUMEN_RATELIMIT_STORAGE=redis://lumen-redis:6379/0` schaltet slowapi auf gemeinsamen Counter ueber alle Worker. Default `memory://` = single-worker-only.
 - `LUMEN_RATELIMIT_DISABLED=1` schaltet slowapi komplett aus (Backend-Tests).
+- `FORWARDED_ALLOW_IPS` (Dockerfile-CMD, Default `127.0.0.1`; Prod-Compose `*`): uvicorn `--proxy-headers` — ohne sieht der Rate-Limiter nur die Caddy-IP.
+- `REPORT_MIN_ACCOUNT_AGE_HOURS` (Default 24): Mindest-Kontoalter fuer Marketplace-Reports. E2E setzt `0`, sonst 403 fuer frische Test-User.
 - `KEYCLOAK_ADMIN_CLIENT_ID` + `KEYCLOAK_ADMIN_CLIENT_SECRET` aktivieren den Service-Account-Pfad in `delete_me`. Leer = KC-Account bleibt nach `DELETE /me` stehen (Best-effort, kein 5xx).
 - Service-Worker registriert nur in PROD-Build (`import.meta.env.PROD`); Dev frisst sonst den Vite-Hot-Reload.
 

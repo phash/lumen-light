@@ -65,13 +65,14 @@ def _ensure_owns_key(image: Image, user: User) -> None:
 async def _discard_pending(
     db: AsyncSession, storage: StorageService, image: Image
 ) -> None:
-    """Abgelehnten Upload aufraeumen: S3-Object (best-effort) + DB-Row weg,
-    damit kein Zombie-Eintrag bleibt. Genutzt von den 413/415-Pfaden in
-    confirm_upload."""
-    try:
-        await run_in_threadpool(storage.delete, image.bucket_key)
-    except Exception:  # noqa: BLE001 — best-effort, Row geht trotzdem weg
-        pass
+    """Abgelehnten Upload aufraeumen: Staging- + finales S3-Object (best-
+    effort) + DB-Row weg, damit kein Zombie-Eintrag bleibt. Genutzt von den
+    413/415-Pfaden in confirm_upload."""
+    for key in (storage.staging_key_for(image.bucket_key), image.bucket_key):
+        try:
+            await run_in_threadpool(storage.delete, key)
+        except Exception:  # noqa: BLE001 — best-effort, Row geht trotzdem weg
+            pass
     await db.delete(image)
     await db.commit()
 
@@ -130,7 +131,14 @@ async def init_upload(
     await db.commit()
     await db.refresh(image)
 
-    upload_url, expires_in = storage.presign_put(bucket_key, payload.content_type)
+    # Pre-Signed PUT zeigt auf den STAGING-Key, nie auf den finalen Key:
+    # die URL bleibt bis zu presigned_url_expires_in gueltig, auch nach
+    # confirm. Wuerde sie den finalen Key beschreiben, liesse sich nach der
+    # Size-/Magic-Byte-Pruefung beliebiger Inhalt nachschieben (auch ueber
+    # bestaetigte Marketplace-Vorschaubilder oder nach DELETE).
+    upload_url, expires_in = storage.presign_put(
+        storage.make_staging_key(user.id, image_id), payload.content_type
+    )
     return ImageInitOut(id=image.id, upload_url=upload_url, expires_in=expires_in)
 
 
@@ -143,8 +151,12 @@ async def confirm_upload(
     db: AsyncSession = Depends(get_db),
     storage: StorageService = Depends(get_storage),
 ) -> ImageOut:
+    # FOR UPDATE serialisiert parallele confirms desselben Bildes — sonst
+    # koennte der zweite das schon weggeraeumte Staging-Objekt nicht finden.
     result = await db.execute(
-        select(Image).where(Image.id == image_id, Image.user_id == user.id)
+        select(Image)
+        .where(Image.id == image_id, Image.user_id == user.id)
+        .with_for_update()
     )
     image = result.scalar_one_or_none()
     if image is None:
@@ -156,29 +168,45 @@ async def confirm_upload(
     if image.upload_state == "ready":
         return ImageOut.model_validate(image)
 
-    try:
-        # boto3 ist blockierend -> Threadpool, sonst steht der Event-Loop.
-        size = await run_in_threadpool(storage.head, image.bucket_key)
-    except ObjectNotFound as exc:
-        raise HTTPException(
-            status_code=409,
-            detail="Object liegt nicht im Bucket — Upload wiederholen.",
-        ) from exc
+    staging_key = storage.staging_key_for(image.bucket_key)
+    not_found = HTTPException(
+        status_code=409,
+        detail="Object liegt nicht im Bucket — Upload wiederholen.",
+    )
 
-    # Server-side Size-Enforcement: die im init() angegebene size_bytes
-    # ist Browser-behauptet, der echte Object-Size kommt erst hier ans
-    # Licht. Pre-Signed-URLs haben keine Content-Length-Range-Constraint,
-    # also kann ein Angreifer beliebig grosse Objekte pushen. Hard-Fail
-    # mit Storage-Cleanup, damit der Bucket nicht voellt.
-    if size > settings.max_image_size_bytes:
-        await _discard_pending(db, storage, image)
-        raise HTTPException(
+    def _too_large(size: int) -> HTTPException:
+        return HTTPException(
             status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
             detail=(
                 f"Objekt-Groesse {size} ueber Maximum "
                 f"{settings.max_image_size_bytes} Bytes — Upload abgelehnt."
             ),
         )
+
+    # Vorab-Size-Check am Staging-Objekt: die im init() angegebene size_bytes
+    # ist Browser-behauptet, Pre-Signed-URLs haben keine Content-Length-Range-
+    # Constraint. Ueberdimensionierte Objekte gar nicht erst kopieren.
+    try:
+        # boto3 ist blockierend -> Threadpool, sonst steht der Event-Loop.
+        staged_size = await run_in_threadpool(storage.head, staging_key)
+    except ObjectNotFound as exc:
+        raise not_found from exc
+    if staged_size > settings.max_image_size_bytes:
+        await _discard_pending(db, storage, image)
+        raise _too_large(staged_size)
+
+    # Serverseitige Kopie Staging -> final. Die verbindlichen Pruefungen
+    # laufen danach am FINALEN Objekt: der Client koennte das Staging-Objekt
+    # zwischen Vorab-Check und Kopie noch ueberschreiben (TOCTOU); das finale
+    # Objekt kann er dagegen nie beschreiben.
+    try:
+        await run_in_threadpool(storage.copy, staging_key, image.bucket_key)
+        size = await run_in_threadpool(storage.head, image.bucket_key)
+    except ObjectNotFound as exc:
+        raise not_found from exc
+    if size > settings.max_image_size_bytes:
+        await _discard_pending(db, storage, image)
+        raise _too_large(size)
 
     # Content-Type-Enforcement: der Pre-Signed PUT bindet nur den Header,
     # nicht den Payload. Fuer browser-interpretierbare Typen pruefen wir die
@@ -190,10 +218,7 @@ async def confirm_upload(
                 storage.head_bytes, image.bucket_key, 16
             )
         except ObjectNotFound as exc:
-            raise HTTPException(
-                status_code=409,
-                detail="Object liegt nicht im Bucket — Upload wiederholen.",
-            ) from exc
+            raise not_found from exc
         if not any(header.startswith(sig) for sig in magics):
             await _discard_pending(db, storage, image)
             raise HTTPException(
@@ -209,6 +234,14 @@ async def confirm_upload(
     image.confirmed_at = datetime.now(timezone.utc)
     await db.commit()
     await db.refresh(image)
+
+    # Staging-Objekt best-effort wegraeumen. Bleibt es (S3-Glitch oder
+    # erneuter PUT mit der alten URL), raeumt der Janitor es nach Ablauf der
+    # URL-Gueltigkeit ab (sweep_stale_staging) — gelesen wird es nie wieder.
+    try:
+        await run_in_threadpool(storage.delete, staging_key)
+    except Exception:  # noqa: BLE001
+        pass
     return ImageOut.model_validate(image)
 
 
@@ -331,6 +364,10 @@ async def delete_image(
 
     try:
         await run_in_threadpool(storage.delete, image.bucket_key)
+        # Staging-Rest (z.B. erneuter PUT mit der alten Upload-URL) mit weg.
+        await run_in_threadpool(
+            storage.delete, storage.staging_key_for(image.bucket_key)
+        )
     except Exception as exc:
         # S3-Fehler: DB-Row als 'failed' markieren statt sie zu loeschen —
         # sonst entstuende ein verwaistes S3-Object ohne DB-Referenz, das nie

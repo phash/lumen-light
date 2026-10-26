@@ -4,6 +4,9 @@
 #
 #   0 3 * * *  cd /opt/lumen && bash deployment/backup.sh >> /var/log/lumen-backup.log 2>&1
 set -euo pipefail
+# Dumps enthalten Passwort-Hashes (Keycloak) + personenbezogene Daten ->
+# nur fuer den ausfuehrenden User lesbar.
+umask 077
 
 REPO_DIR="${REPO_DIR:-/opt/lumen}"
 BACKUP_DIR="${BACKUP_DIR:-/opt/backups/lumen}"
@@ -13,6 +16,7 @@ MC_IMAGE="${MC_IMAGE:-minio/mc:RELEASE.2024-11-17T19-35-25Z}"
 cd "$REPO_DIR"
 set -a; . deployment/.env; set +a
 mkdir -p "$BACKUP_DIR"
+chmod 700 "$BACKUP_DIR"
 TS="$(date +%Y%m%d-%H%M%S)"
 
 echo "==> Postgres-Dumps ($TS)"
@@ -25,8 +29,10 @@ echo "   DB-Dumps: $(ls -1 "$BACKUP_DIR"/*-"$TS".sql.gz)"
 echo "==> MinIO-Bucket '${GARAGE_S3_BUCKET}' spiegeln"
 NET="$(docker network ls --format '{{.Name}}' | grep -E 'lumen-internal$' | head -1)"
 if [ -n "$NET" ]; then
+  # Credentials per Env-Weitergabe (-e NAME ohne Wert), nicht in argv/ps.
+  MC_HOST_local="http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@lumen-minio:9000" \
   docker run --rm --network "$NET" \
-    -e "MC_HOST_local=http://${MINIO_ROOT_USER}:${MINIO_ROOT_PASSWORD}@lumen-minio:9000" \
+    -e MC_HOST_local \
     -v "$BACKUP_DIR:/backup" "$MC_IMAGE" \
     mirror --overwrite "local/${GARAGE_S3_BUCKET}" "/backup/minio-$TS" \
     && echo "   MinIO -> $BACKUP_DIR/minio-$TS" \

@@ -47,6 +47,9 @@ function countByType(
   return n;
 }
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 export default function Editor() {
   const canvasHandleRef = useRef<CanvasHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -103,7 +106,10 @@ export default function Editor() {
   const [wbPickerActive, setWbPickerActive] = useState(false);
   // C1: aus der Bibliothek geoeffnetes Bild (?image=<id>) -> Autosave-Ziel.
   const [searchParams] = useSearchParams();
-  const storedImageIdParam = searchParams.get("image");
+  // Nur UUIDs akzeptieren: der Wert landet in API-Pfaden (Path-Steering).
+  const rawImageParam = searchParams.get("image");
+  const storedImageIdParam =
+    rawImageParam && UUID_RE.test(rawImageParam) ? rawImageParam : null;
   const [storedImageId, setStoredImageId] = useState<string | null>(null);
   const loadedImageRef = useRef<string | null>(null);
 
@@ -566,12 +572,13 @@ export default function Editor() {
     void (async () => {
       try {
         const meta = (await api.listImages("all")).find((i) => i.id === id);
+        if (!meta) throw new Error("Bild nicht gefunden");
         const { url } = await api.getImageUrl(id);
         const resp = await fetch(url);
         if (!resp.ok) throw new Error("Bild konnte nicht geladen werden");
         const blob = await resp.blob();
-        const file = new File([blob], meta?.originalFilename ?? "bild", {
-          type: meta?.contentType ?? blob.type,
+        const file = new File([blob], meta.originalFilename, {
+          type: meta.contentType || blob.type,
         });
         await onFile(file);
         // Gespeicherten Stand wiederherstellen (Multi-Device-Resume); 404 -> null.

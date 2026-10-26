@@ -59,3 +59,29 @@ updates:
         update-types:
           - minor
           - patch
+
+  # Container-Basis-Images (Dockerfiles) + Service-Images (Compose). Ohne
+  # diese Eintraege veralten gepinnte Images unbemerkt (siehe MinIO/nginx 1.27).
+  - package-ecosystem: docker
+    directories:
+      - /backend
+      - /frontend
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(docker)"
+
+  - package-ecosystem: docker-compose
+    directory: /deployment
+    schedule:
+      interval: weekly
+      day: monday
+      time: "06:00"
+      timezone: Europe/Berlin
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: "chore(docker)"

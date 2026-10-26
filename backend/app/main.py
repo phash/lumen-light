@@ -7,6 +7,7 @@ from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
+from app.body_limit import BodySizeLimitMiddleware
 from app.config import settings
 from app.database import engine
 from app.rate_limit import limiter
@@ -33,6 +34,14 @@ app = FastAPI(
 )
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+# Body-Limit als INNERSTE Middleware (zuerst registriert = weiter innen):
+# - innerhalb von CORS, damit auch die 413-Antwort CORS-Header bekommt;
+# - innerhalb von SlowAPIMiddleware (BaseHTTPMiddleware), weil die einen im
+#   receive() geworfenen Fehler sonst verschluckt und FastAPI daraus ein
+#   generisches 400 macht (chunked-Pfad).
+app.add_middleware(
+    BodySizeLimitMiddleware, max_bytes=settings.max_request_body_bytes
+)
 # SlowAPIMiddleware aktiviert die `default_limits` aus rate_limit.py auf
 # ALLEN Routen (auch GET) — ohne sie greifen nur die @limiter.limit-
 # Dekoratoren. Bei LUMEN_RATELIMIT_DISABLED=1 ist der Limiter aus -> No-Op.

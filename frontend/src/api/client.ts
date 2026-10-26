@@ -429,33 +429,33 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         body: JSON.stringify({ masks: [], ...payload }),
       }),
     updatePreset: (id, payload) =>
-      request<Preset>(`/presets/${id}`, {
+      request<Preset>(`/presets/${encodeURIComponent(id)}`, {
         method: "PUT",
         body: JSON.stringify({ masks: [], ...payload }),
       }),
     deletePreset: (id) =>
-      request<void>(`/presets/${id}`, { method: "DELETE" }),
+      request<void>(`/presets/${encodeURIComponent(id)}`, { method: "DELETE" }),
     applyPresetBatch: (id, payload) =>
-      request<BatchApplyResult>(`/presets/${id}/apply`, {
+      request<BatchApplyResult>(`/presets/${encodeURIComponent(id)}/apply`, {
         method: "POST",
         body: JSON.stringify(payload),
       }),
 
     listImages: (state = "ready") =>
-      request<Image[]>(`/images?state=${state}`),
+      request<Image[]>(`/images?state=${encodeURIComponent(state)}`),
     initUpload: (filename, contentType, sizeBytes) =>
       request<ImageInit>("/images", {
         method: "POST",
         body: JSON.stringify({ filename, contentType, sizeBytes }),
       }),
     confirmUpload: (id) =>
-      request<Image>(`/images/${id}/confirm`, { method: "POST" }),
-    getImageUrl: (id) => request<ImageUrl>(`/images/${id}/url`),
+      request<Image>(`/images/${encodeURIComponent(id)}/confirm`, { method: "POST" }),
+    getImageUrl: (id) => request<ImageUrl>(`/images/${encodeURIComponent(id)}/url`),
     deleteImage: (id) =>
-      request<void>(`/images/${id}`, { method: "DELETE" }),
+      request<void>(`/images/${encodeURIComponent(id)}`, { method: "DELETE" }),
     getImageEdit: async (id) => {
       try {
-        return await request<ImageEditState>(`/images/${id}/edit`);
+        return await request<ImageEditState>(`/images/${encodeURIComponent(id)}/edit`);
       } catch (err) {
         // 404 = noch kein gespeicherter Stand -> Editor startet frisch.
         if (err instanceof ApiError && err.status === 404) return null;
@@ -463,7 +463,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       }
     },
     putImageEdit: (id, state) =>
-      request<void>(`/images/${id}/edit`, {
+      request<void>(`/images/${encodeURIComponent(id)}/edit`, {
         method: "PUT",
         body: JSON.stringify(state),
       }),
@@ -481,15 +481,15 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       );
     },
     getMarketplacePreset: (id) =>
-      request<MarketplaceDetail>(`/marketplace/presets/${id}`),
+      request<MarketplaceDetail>(`/marketplace/presets/${encodeURIComponent(id)}`),
     applyMarketplacePreset: (id) =>
-      request<MarketplaceApply>(`/marketplace/presets/${id}/apply`, {
+      request<MarketplaceApply>(`/marketplace/presets/${encodeURIComponent(id)}/apply`, {
         method: "POST",
       }),
     forkMarketplacePreset: (id) =>
-      request<Preset>(`/marketplace/presets/${id}/fork`, { method: "POST" }),
+      request<Preset>(`/marketplace/presets/${encodeURIComponent(id)}/fork`, { method: "POST" }),
     reportMarketplacePreset: (id, reason) =>
-      request<void>(`/marketplace/presets/${id}/report`, {
+      request<void>(`/marketplace/presets/${encodeURIComponent(id)}/report`, {
         method: "POST",
         body: JSON.stringify({ reason }),
       }),
@@ -510,7 +510,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
 
     adminListUsers: () => request<AdminUser[]>("/admin/users"),
     adminPatchUser: (id, isDisabled) =>
-      request<AdminUser>(`/admin/users/${id}`, {
+      request<AdminUser>(`/admin/users/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify({ isDisabled }),
       }),
@@ -520,7 +520,7 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       return request<AdminFeedback[]>(`/admin/feedback${qs}`);
     },
     adminPatchFeedback: (id, payload) =>
-      request<AdminFeedback>(`/admin/feedback/${id}`, {
+      request<AdminFeedback>(`/admin/feedback/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
       }),

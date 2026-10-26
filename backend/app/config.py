@@ -37,6 +37,17 @@ class Settings(BaseSettings):
     # (DB-/Bucket-DoS gegen den gemeinsamen Bucket).
     max_pending_uploads_per_user: int = 50
 
+    # App-seitiges Body-Limit fuer alle Requests (JSON-API). Pixel laufen
+    # per Pre-Signed PUT direkt nach S3, die groessten legitimen JSON-Bodies
+    # (Preset/Edit-State, Batch-Apply mit 200 IDs) liegen weit unter 64 KB.
+    # Caddy begrenzt zusaetzlich (request_body), das hier ist die zweite Linie.
+    max_request_body_bytes: int = 1024 * 1024  # 1 MB
+
+    # Marketplace-Moderation: Mindestalter eines Accounts, bevor er Presets
+    # melden darf — erschwert das Verstecken fremder Presets mit frisch
+    # angelegten Wegwerf-Accounts (Auto-Hide ab 3 Meldungen).
+    report_min_account_age_hours: int = 24
+
     cors_origin: str = "http://localhost:5173"
 
     # Production-Hardening: in dev-/Test-Mode bleiben /docs + /openapi.json

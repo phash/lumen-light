@@ -33,7 +33,7 @@ ENV VITE_KEYCLOAK_AUTHORITY=$VITE_KEYCLOAK_AUTHORITY \
 RUN pnpm build
 
 # Run-Stage
-FROM nginx:1.27-alpine
+FROM nginx:1.30.6-alpine
 
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
