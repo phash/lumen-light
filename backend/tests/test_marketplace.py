@@ -1,5 +1,5 @@
 """Tests fuer Preset-Marketplace (F1)."""
-import urllib.request
+from tests.s3_upload import upload_via_init
 
 
 ZERO_ADJ = {
@@ -7,15 +7,6 @@ ZERO_ADJ = {
     "whites": 0.0, "blacks": 0.0, "temperature": 0.0, "tint": 0.0,
     "vibrance": 0.0, "saturation": 0.0,
 }
-
-
-def _put_to_url(url: str, data: bytes, content_type: str) -> None:
-    req = urllib.request.Request(
-        url, data=data, method="PUT",
-        headers={"Content-Type": content_type},
-    )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        assert 200 <= resp.status < 300
 
 
 async def _upload_image(client, headers, filename="cover.jpg") -> str:
@@ -32,7 +23,7 @@ async def _upload_image(client, headers, filename="cover.jpg") -> str:
     )
     assert r.status_code == 201, r.text
     body = r.json()
-    _put_to_url(body["uploadUrl"], payload, "image/jpeg")
+    upload_via_init(body, payload, "image/jpeg")
     confirm = await client.post(
         f"/api/v1/images/{body['id']}/confirm", headers=headers
     )
@@ -112,7 +103,7 @@ async def test_public_preset_with_non_jpeg_preview_returns_400(client, user_a):
         json={"filename": "cover.png", "contentType": "image/png", "sizeBytes": 8},
     )
     body = init.json()
-    _put_to_url(body["uploadUrl"], b"\x89PNG\r\n\x1a\n", "image/png")
+    upload_via_init(body, b"\x89PNG\r\n\x1a\n", "image/png")
     confirm = await client.post(
         f"/api/v1/images/{body['id']}/confirm", headers=user_a["headers"]
     )

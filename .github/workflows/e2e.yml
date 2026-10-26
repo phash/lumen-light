@@ -1,6 +1,6 @@
 name: E2E (nightly)
 
-# Playwright-E2E gegen den KOMPLETTEN Dev-Stack (Postgres + Keycloak + RustFS-S3
+# Playwright-E2E gegen den KOMPLETTEN Dev-Stack (Postgres + Keycloak + Garage-S3
 # + Backend + Frontend). Laeuft bewusst NICHT pro PR (Stack-Boot dauert ~2-3
 # min), sondern nachts per cron + jederzeit manuell via workflow_dispatch.
 # Codifiziert die in CLAUDE.md dokumentierte lokale E2E-Recipe.
@@ -27,7 +27,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Dev-Stack hochfahren (PG + Keycloak + RustFS-S3)
+      - name: Dev-Stack hochfahren (PG + Keycloak + Garage-S3)
         run: docker compose -f deployment/docker-compose.dev.yml up -d
 
       - name: Auf Keycloak /health/ready warten
@@ -62,10 +62,11 @@ jobs:
           KEYCLOAK_ISSUER: http://localhost:18080/realms/lumen
           KEYCLOAK_AUDIENCE: lumen-api
           GARAGE_S3_ENDPOINT: http://localhost:9000
-          GARAGE_S3_REGION: us-east-1
+          GARAGE_S3_REGION: garage
           GARAGE_S3_BUCKET: lumen-images
-          GARAGE_S3_ACCESS_KEY_ID: minioadmin
-          GARAGE_S3_SECRET_ACCESS_KEY: minioadmin
+          # Dev-Key aus deployment/docker-compose.dev.yml (s3-init), nur CI/lokal.
+          GARAGE_S3_ACCESS_KEY_ID: GKde7000000000000000000001
+          GARAGE_S3_SECRET_ACCESS_KEY: de70000000000000000000000000000000000000000000000000000000000001
           CORS_ORIGIN: http://localhost:5173
           # Frische E2E-User sollen Presets melden duerfen (Prod: 24h Mindestalter).
           REPORT_MIN_ACCOUNT_AGE_HOURS: "0"

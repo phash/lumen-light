@@ -131,15 +131,24 @@ async def init_upload(
     await db.commit()
     await db.refresh(image)
 
-    # Pre-Signed PUT zeigt auf den STAGING-Key, nie auf den finalen Key:
-    # die URL bleibt bis zu presigned_url_expires_in gueltig, auch nach
+    # Pre-Signed POST zeigt auf den STAGING-Key, nie auf den finalen Key:
+    # die Policy bleibt bis zu presigned_url_expires_in gueltig, auch nach
     # confirm. Wuerde sie den finalen Key beschreiben, liesse sich nach der
     # Size-/Magic-Byte-Pruefung beliebiger Inhalt nachschieben (auch ueber
     # bestaetigte Marketplace-Vorschaubilder oder nach DELETE).
-    upload_url, expires_in = storage.presign_put(
-        storage.make_staging_key(user.id, image_id), payload.content_type
+    # content-length-range = angekuendigte Groesse: S3 nimmt keinen
+    # groesseren Body an (kein Bucket-Overflow ueber den Staging-Key).
+    upload_url, upload_fields, expires_in = storage.presign_post(
+        storage.make_staging_key(user.id, image_id),
+        payload.content_type,
+        max_size=payload.size_bytes,
     )
-    return ImageInitOut(id=image.id, upload_url=upload_url, expires_in=expires_in)
+    return ImageInitOut(
+        id=image.id,
+        upload_url=upload_url,
+        upload_fields=upload_fields,
+        expires_in=expires_in,
+    )
 
 
 @router.post("/{image_id}/confirm", response_model=ImageOut)

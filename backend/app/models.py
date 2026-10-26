@@ -262,10 +262,14 @@ class AccountTombstone(Base):
     """Grabstein eines geloeschten Accounts (Migration 010). Speichert nur
     SHA-256(keycloak_sub) + Loeschzeitpunkt — keinen Klartext-Personenbezug.
     JIT-Provisioning lehnt Tokens ab, deren iat <= deleted_at ist, damit ein
-    noch gueltiger Access-Token den geloeschten Account nicht wiederbelebt."""
+    noch gueltiger Access-Token den geloeschten Account nicht wiederbelebt.
+    banned haelt eine Admin-Sperre ueber die Selbstloeschung hinweg."""
     __tablename__ = "account_tombstones"
 
     sub_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
     deleted_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False
+    )
+    banned: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, server_default=text("false"), default=False
     )

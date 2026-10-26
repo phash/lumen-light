@@ -1,5 +1,5 @@
 """Batch-Apply: Profil auf mehrere Bilder anwenden (POST /presets/{id}/apply)."""
-import urllib.request
+from tests.s3_upload import upload_via_init
 
 ZERO_ADJ = {
     "exposure": 0.0, "contrast": 0.0, "highlights": 0.0, "shadows": 0.0,
@@ -12,14 +12,6 @@ ZERO_ADJ = {
 # client-seitig), daher Magic-Byte-Literal statt Pillow. Gleiches Muster wie
 # test_images_api.py — haelt Pillow aus den Backend-Test-Deps.
 _JPEG_BYTES = b"\xff\xd8\xff\xe0fake-image-bytes"
-
-
-def _put_to_url(url: str, data: bytes, content_type: str) -> None:
-    req = urllib.request.Request(
-        url, data=data, method="PUT", headers={"Content-Type": content_type},
-    )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        assert 200 <= resp.status < 300
 
 
 async def _make_ready_image(client, headers) -> str:
@@ -35,7 +27,7 @@ async def _make_ready_image(client, headers) -> str:
     )
     assert init.status_code == 201, init.text
     image_id = init.json()["id"]
-    _put_to_url(init.json()["uploadUrl"], _JPEG_BYTES, "image/jpeg")
+    upload_via_init(init.json(), _JPEG_BYTES, "image/jpeg")
     conf = await client.post(f"/api/v1/images/{image_id}/confirm", headers=headers)
     assert conf.status_code == 200, conf.text
     return image_id

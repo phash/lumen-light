@@ -127,12 +127,17 @@ async def delete_me(
         logger.warning("delete_me: S3-Purge fuer %s fehlgeschlagen: %s", prefix, exc)
 
     keycloak_sub = user.keycloak_sub
+    # Admin-Sperre ueberlebt die Loeschung (sonst Ban-Umgehung: gesperrter
+    # User loescht sich und provisioniert per Re-Login frisch).
+    banned = user.is_disabled
     await db.delete(user)
     # Grabstein in derselben Transaktion wie die Loeschung. merge statt add:
     # erneutes Loeschen nach Re-Provisionierung aktualisiert deleted_at.
     await db.merge(
         AccountTombstone(
-            sub_hash=hash_sub(keycloak_sub), deleted_at=datetime.now(timezone.utc)
+            sub_hash=hash_sub(keycloak_sub),
+            deleted_at=datetime.now(timezone.utc),
+            banned=banned,
         )
     )
     if purge_error is not None:

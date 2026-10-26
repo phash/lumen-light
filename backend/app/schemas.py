@@ -417,7 +417,10 @@ class ImageInitIn(BaseModel):
 class ImageInitOut(BaseModel):
     model_config = CAMEL_BASE_CONFIG
     id: UUID
+    # Pre-Signed POST: Browser schickt multipart/form-data an upload_url mit
+    # allen upload_fields + zuletzt dem Feld "file".
     upload_url: str
+    upload_fields: dict[str, str]
     expires_in: int
 
 
@@ -470,6 +473,29 @@ class ImageEditState(BaseModel):
 
 
 # ----- Admin -----
+
+class AdminReportOut(BaseModel):
+    """Einzelne Meldung ohne Reporter-Identitaet (Datenminimierung)."""
+    model_config = CAMEL_OUT_CONFIG
+    reason: str
+    created_at: datetime
+
+
+class AdminReportedPresetOut(BaseModel):
+    """Moderations-Eintrag: gemeldetes Preset + Creator + Meldungsgruende."""
+    model_config = CAMEL_OUT_CONFIG
+    id: UUID
+    name: str
+    description: str | None
+    genre: PresetGenre | None
+    visibility: PresetVisibility
+    report_count: int
+    owner_id: UUID
+    owner_email: str
+    owner_is_disabled: bool
+    updated_at: datetime
+    reports: list[AdminReportOut]
+
 
 class AdminUserOut(BaseModel):
     """User-Listen-Eintrag fuer Admin. Enthaelt Aggregate (Counts), aber

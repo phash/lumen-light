@@ -96,7 +96,11 @@ export async function uploadTinyImage(
   filename = "marketplace-preview.jpg",
 ): Promise<{ id: string }> {
   // Snake-Case-Body: dev backend kann beide Formen, alte Backends nur snake.
-  const init = await api<{ id?: string; upload_url?: string; uploadUrl?: string }>(
+  const init = await api<{
+    id?: string;
+    uploadUrl?: string;
+    uploadFields?: Record<string, string>;
+  }>(
     token,
     "/images",
     {
@@ -109,18 +113,17 @@ export async function uploadTinyImage(
     },
   );
   const imageId = init.id;
-  const uploadUrl = init.uploadUrl ?? init.upload_url;
-  if (!imageId || !uploadUrl) {
+  const { uploadUrl, uploadFields } = init;
+  if (!imageId || !uploadUrl || !uploadFields) {
     throw new Error(`Image-Init liefert kein id/uploadUrl: ${JSON.stringify(init)}`);
   }
-  // PUT direkt gegen den Pre-Signed URL (MinIO/Garage).
-  const put = await fetch(uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": "image/jpeg" },
-    body: TINY_JPEG_BYTES,
-  });
-  if (!put.ok) {
-    throw new Error(`Pre-Signed-PUT fehlgeschlagen: ${put.status}`);
+  // Pre-Signed POST direkt an Garage (Policy-Felder + "file" zuletzt).
+  const form = new FormData();
+  for (const [name, value] of Object.entries(uploadFields)) form.append(name, value);
+  form.append("file", new Blob([TINY_JPEG_BYTES], { type: "image/jpeg" }), filename);
+  const post = await fetch(uploadUrl, { method: "POST", body: form });
+  if (!post.ok) {
+    throw new Error(`Pre-Signed-POST fehlgeschlagen: ${post.status}`);
   }
   await api<unknown>(token, `/images/${imageId}/confirm`, { method: "POST" });
   return { id: imageId };

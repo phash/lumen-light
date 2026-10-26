@@ -6,7 +6,7 @@ privat. FastAPI + React 19/WebGL2, Keycloak, Postgres, Garage S3.
 ## Stack hochfahren
 
 ```bash
-# 1. Postgres + Keycloak 26.8 + RustFS-S3 (Ports nur auf 127.0.0.1)
+# 1. Postgres + Keycloak 26.8 + Garage-S3 (Ports nur auf 127.0.0.1)
 docker compose -f deployment/docker-compose.dev.yml up -d
 # Wartet bis Keycloak ready
 until curl -fs http://localhost:19000/health/ready >/dev/null; do sleep 2; done
@@ -19,9 +19,10 @@ cd backend && DATABASE_URL="postgresql+asyncpg://lumen:lumen@localhost:5433/lume
 DATABASE_URL="postgresql+asyncpg://lumen:lumen@localhost:5433/lumen" \
 KEYCLOAK_ISSUER="http://localhost:18080/realms/lumen" \
 KEYCLOAK_AUDIENCE="lumen-api" \
-GARAGE_S3_ENDPOINT="http://localhost:9000" GARAGE_S3_REGION="us-east-1" \
+GARAGE_S3_ENDPOINT="http://localhost:9000" GARAGE_S3_REGION="garage" \
 GARAGE_S3_BUCKET="lumen-images" \
-GARAGE_S3_ACCESS_KEY_ID="minioadmin" GARAGE_S3_SECRET_ACCESS_KEY="minioadmin" \
+GARAGE_S3_ACCESS_KEY_ID="GKde7000000000000000000001" \
+GARAGE_S3_SECRET_ACCESS_KEY="de70000000000000000000000000000000000000000000000000000000000001" \
 CORS_ORIGIN="http://localhost:5173" \
 .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000
 
@@ -50,7 +51,7 @@ Login mit `manuel@local.test` / `lumen` — der Realm hat
 ## Tests
 
 ```bash
-# Backend (testcontainers für PG + RustFS + Keycloak 26.8 — Docker muss laufen)
+# Backend (testcontainers für PG + Garage + Keycloak 26.8 — Docker muss laufen)
 cd backend && .venv/bin/pytest -q
 
 # Frontend Unit/Component
@@ -70,14 +71,14 @@ gesetzt — pytest läuft sonst gegen 429er.
 ## Architektur
 
 - **backend/** — FastAPI, async SQLAlchemy 2 + asyncpg, Alembic. Auth
-  via Keycloak-JWT (Whitelist `RS256`). S3 via boto3. Pre-Signed PUTs
+  via Keycloak-JWT (Whitelist `RS256`). S3 via boto3. Pre-Signed POSTs
   für Bild-Uploads (Pixel laufen NICHT durch FastAPI). Rate-Limit via
   slowapi (`@limiter.limit`).
 - **frontend/** — React 19 + Vite 8 + TypeScript strict +
   noUncheckedIndexedAccess. WebGL2-Pipeline in einem Fragment-Shader
   mit Uniform-Arrays für Multi-Mask. Zustand 5 für State.
   react-oidc-context für OIDC.
-- **deployment/** — `docker-compose.dev.yml` (PG + KC + RustFS-S3 + aws-cli-Init fuer Bucket/CORS),
+- **deployment/** — `docker-compose.dev.yml` (PG + KC + Garage-S3 + garage_init/aws-cli-Init fuer Bucket/CORS),
   `docker-compose.prod.yml` (db + api + web hinter Caddy-Proxy auf VPS).
 - **docs/** — `01-konzept.md` bis `08-risiken-offene-fragen.md`,
   `06-roadmap.md` zeigt Iterationsstand.
@@ -196,9 +197,9 @@ gesetzt — pytest läuft sonst gegen 429er.
 - **Keycloak-Realm**: `registrationEmailAsUsername=true` macht aus
   Username automatisch die Email. `directAccessGrantsEnabled=true` ist
   für Tests an, sollte vor Public-Launch aus.
-- **Pre-Signed PUT**: keine Content-Length-Constraint im URL —
-  `confirm_upload` muss daher gegen `max_image_size_bytes` prüfen +
-  Object löschen + DB-Row weg + 413 (siehe `backend/app/routers/images.py`).
+- **Upload-Groesse doppelt geprueft**: die POST-Policy begrenzt auf die
+  angekuendigte Groesse; `confirm_upload` prueft zusaetzlich gegen
+  `max_image_size_bytes` + Object löschen + DB-Row weg + 413 (Defense-in-Depth).
 - **Histogram-Readback** im Frontend nutzt `OffscreenCanvas` +
   `drawImage()` auf das WebGL-Canvas — funktioniert weil Renderer mit
   `preserveDrawingBuffer: true` läuft.
@@ -236,16 +237,26 @@ gesetzt — pytest läuft sonst gegen 429er.
   Karten `pointer-events: auto` setzen — sonst blockiert der Wrapper
   Klicks aufs hervorgehobene Target.
 
-- **MinIO-Images nicht mehr pullbar** (Docker Hub/Quay, seit 2025): Dev,
-  Tests und CI laufen auf `rustfs/rustfs` (S3-kompatibel, Env
-  `RUSTFS_ACCESS_KEY`/`RUSTFS_SECRET_KEY`, Bucket-Namen >= 3 Zeichen).
-  Prod laeuft noch auf MinIO aus dem lokalen Image-Cache des VPS —
-  `deploy.sh` pullt mit `--ignore-pull-failures`. Migration offen.
+- **S3 = Garage ueberall** (Prod, Dev, pytest, CI; dxflrs/garage v1.3.1).
+  Image hat keine Shell -> Einrichtung (Layout, Key-Import, Bucket) ueber die
+  Admin-API mit `backend/scripts/garage_init.py` (stdlib-only, auch von der
+  conftest genutzt). Key-Format `GK`+24 hex, Secret 64 hex, Region `garage`,
+  Bucket-Namen >= 3 Zeichen. Dev-Key hat Owner-Recht (nur fuer CORS),
+  Prod-Key nicht. Fehlermeldung steht im Response-Body der Admin-API.
+- **Uploads = Pre-Signed POST** (nicht PUT): `POST /images` liefert
+  `uploadUrl` + `uploadFields`; Browser schickt multipart mit allen Feldern
+  und `file` ZULETZT. Policy bindet Key, Content-Type und
+  `content-length-range` (= angekuendigte Groesse) — groessere Bodies lehnt
+  Garage mit 400 ab. Test-Helper: `backend/tests/s3_upload.py`.
+- **Netztrennung Prod**: nur `lumen-web` im `caddy-proxy`-Netz; nginx
+  (`frontend/nginx.conf`) proxied `/api`, `/auth`, `/lumen-images` intern.
+  Caddy-Block routet alles an `lumen-web:80`, Pfad-Policies bleiben im Caddy.
+  Neue Services NICHT ins `caddy-proxy`-Netz haengen.
 - **Keycloak >= 26.x Audience-Mapper**: `included.client.audience` wirkt nur
   fuer EXISTIERENDE Clients. Es gibt keinen Client `lumen-api` -> Mapper
   muss `included.custom.audience: lumen-api` nutzen, sonst fehlt `aud` und
   jeder API-Call ist 401. `deploy.sh` migriert den Live-Mapper.
-- **Uploads ueber Staging-Key**: Pre-Signed PUT zeigt auf
+- **Uploads ueber Staging-Key**: Pre-Signed POST zeigt auf
   `{uid}/staging/{id}`, `confirm` kopiert serverseitig nach `originals/` und
   prueft Groesse + Magic-Bytes am finalen Objekt. Finale Keys werden nie
   zum Schreiben herausgegeben.
@@ -317,4 +328,6 @@ Bereits erledigt (frueher hier als offen gelistet — Stand jetzt korrekt):
 Genuin offen:
 
 - **G4 Lensfun-DB-Stuetzstellen-Interpolation** — Backlog, kein Launch-Blocker.
-- **Pre-Signed-POST mit Content-Length-Range** — heutiger Pfad (HEAD-Size-Check + Cleanup + 413 im `confirm_upload`, plus Janitor) deckt Bucket-Overflow ab; echte Content-Length-Range erst bei Multi-Tenant-Public noetig.
+- **Pre-Signed-POST mit Content-Length-Range** ✓ (2026-10, siehe Gotchas).
+- **Admin-Moderation gemeldeter Presets** ✓ — Tab „Meldungen" in `/admin`.
+- **Backup verschluesselt + Offsite** ✓ — `backup.sh` mit gpg + `BACKUP_REMOTE` (Ziel-Host noch einzurichten).

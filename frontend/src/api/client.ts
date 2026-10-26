@@ -169,7 +169,9 @@ export interface Image {
 
 export interface ImageInit {
   id: string;
+  /** Pre-Signed POST: multipart/form-data mit allen uploadFields + "file". */
   uploadUrl: string;
+  uploadFields: Record<string, string>;
   expiresIn: number;
 }
 
@@ -326,6 +328,8 @@ export interface ApiClient {
   adminStats(): Promise<AdminStats>;
   adminListFeedback(status?: AdminFeedbackStatus): Promise<AdminFeedback[]>;
   adminPatchFeedback(id: string, payload: AdminFeedbackPatch): Promise<AdminFeedback>;
+  adminListReportedPresets(): Promise<AdminReportedPreset[]>;
+  adminClearPresetReports(id: string): Promise<Preset>;
 }
 
 export type FeedbackKind = "bug" | "idea" | "other";
@@ -373,6 +377,25 @@ export interface AdminFeedback {
   adminNotes: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AdminReport {
+  reason: string;
+  createdAt: string;
+}
+
+export interface AdminReportedPreset {
+  id: string;
+  name: string;
+  description: string | null;
+  genre: PresetGenre | null;
+  visibility: PresetVisibility;
+  reportCount: number;
+  ownerId: string;
+  ownerEmail: string;
+  ownerIsDisabled: boolean;
+  updatedAt: string;
+  reports: AdminReport[];
 }
 
 export interface AdminFeedbackPatch {
@@ -523,6 +546,12 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       request<AdminFeedback>(`/admin/feedback/${encodeURIComponent(id)}`, {
         method: "PATCH",
         body: JSON.stringify(payload),
+      }),
+    adminListReportedPresets: () =>
+      request<AdminReportedPreset[]>("/admin/presets/reported"),
+    adminClearPresetReports: (id) =>
+      request<Preset>(`/admin/presets/${encodeURIComponent(id)}/clear-reports`, {
+        method: "POST",
       }),
   };
 }

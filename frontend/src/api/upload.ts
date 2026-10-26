@@ -13,8 +13,9 @@ export interface UploadOptions {
 /**
  * End-to-end Image-Upload-Flow:
  * 1. (optional) EXIF aus JPEG-Datei entfernen — DSGVO-Datenminimierung
- * 2. Backend POST /images (init) — bekommt Pre-Signed PUT-URL
- * 3. Browser PUT direkt zur URL (Pixel laufen NICHT durch FastAPI)
+ * 2. Backend POST /images (init) — bekommt Pre-Signed POST (URL + Policy-Felder)
+ * 3. Browser POST direkt an S3 (Pixel laufen NICHT durch FastAPI); die Policy
+ *    begrenzt die Groesse auf die angekuendigte Dateigroesse
  * 4. Backend POST /images/:id/confirm — markiert ready, liefert Metadata
  *
  * Wirft bei jedem Schritt — Caller entscheidet, wie das im UI gezeigt wird.
@@ -35,14 +36,17 @@ export async function uploadImage(
     toUpload.size,
   );
 
-  const putRes = await fetchImpl(init.uploadUrl, {
-    method: "PUT",
-    body: toUpload,
-    headers: { "Content-Type": toUpload.type || "application/octet-stream" },
-  });
-  if (!putRes.ok) {
+  // Policy-Felder zuerst, "file" muss das letzte Feld sein (S3-POST-Regel).
+  // Kein Content-Type-Header setzen: der Browser erzeugt die Multipart-Boundary.
+  const form = new FormData();
+  for (const [name, value] of Object.entries(init.uploadFields)) {
+    form.append(name, value);
+  }
+  form.append("file", toUpload);
+  const postRes = await fetchImpl(init.uploadUrl, { method: "POST", body: form });
+  if (!postRes.ok) {
     throw new Error(
-      `Upload nach S3 fehlgeschlagen (${putRes.status} ${putRes.statusText})`,
+      `Upload nach S3 fehlgeschlagen (${postRes.status} ${postRes.statusText})`,
     );
   }
 

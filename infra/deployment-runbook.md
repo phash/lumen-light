@@ -1,16 +1,19 @@
 # Lumen · light — Deployment auf MRD Production Cluster
 
-**Stand:** 2026-05-29 — self-contained Stack.
+**Stand:** 2026-10-26 — self-contained Stack, Garage statt MinIO, Netztrennung.
 
 > **Wichtig (Topologie-Korrektur):** Der Cluster hat KEIN shared Keycloak und
 > KEIN shared Garage — jedes Projekt bringt seine eigenen mit. Lumen läuft
 > daher **self-contained** unter EINER Domain `lumen.mr-development.de`:
 > SPA + `/api` (FastAPI) + `/auth` (eigenes Keycloak, `KC_HTTP_RELATIVE_PATH=/auth`)
-> + `/lumen-images` (eigenes MinIO, S3, same-origin Pre-Signed-URLs).
+> + `/lumen-images` (eigenes Garage, S3, same-origin Pre-Signed POST/GET).
+> **Netztrennung:** nur `lumen-web` (nginx) haengt im cluster-geteilten
+> `caddy-proxy`-Netz; nginx reicht `/api`, `/auth`, `/lumen-images` ueber
+> `lumen-internal` an API/Keycloak/Garage weiter (siehe `frontend/nginx.conf`).
 > Der gesamte Ablauf unten ist in **`deployment/deploy.sh`** automatisiert
 > (idempotent), Backups in **`deployment/backup.sh`**. Die Abschnitte 2/3
 > (shared KC/Garage) sind historisch und entfallen — siehe stattdessen die
-> Services `lumen-keycloak` + `lumen-minio` in `docker-compose.prod.yml`.
+> Services `lumen-keycloak` + `lumen-garage` in `docker-compose.prod.yml`.
 
 **Voraussetzungen:**
 - VPS läuft, `caddy-proxy`-Network + `caddy-proxy`-Container existieren.
@@ -61,15 +64,9 @@ curl -fsS https://auth.mr-development.de/realms/lumen/.well-known/openid-configu
 
 ## 3. Garage-Bucket + Access-Key anlegen
 
-```bash
-bash infra/garage/init.sh
-# Output enthaelt GARAGE_S3_ACCESS_KEY_ID + SECRET — fuer Schritt 4 merken.
-```
-
-Falls die Kontonamen oder Container-Namen abweichen, Variables setzen:
-```bash
-GARAGE_CONTAINER=garage-prod BUCKET_NAME=lumen-images bash infra/garage/init.sh
-```
+Entfaellt als Handarbeit: `lumen-garage-init` legt Layout, Key und Bucket
+beim `up -d` an. Nur die Werte in `.env` setzen (siehe Abschnitt
+„Garage statt MinIO" unten).
 
 ## 4. `.env` für die Lumen-Stack erstellen
 
@@ -125,14 +122,11 @@ docker compose -f deployment/docker-compose.prod.yml logs -f lumen-api
 ```
 verifizieren, dass alle drei Migrationen (`001_initial`, `002_keycloak`, `003_images`) durchlaufen.
 
-## 7. Caddy-Network-Aliase setzen
+## 7. Caddy-Netz
 
-```bash
-docker network connect --alias lumen-api caddy-proxy lumen-api
-docker network connect --alias lumen-web caddy-proxy lumen-web
-```
-
-(Container sind bereits im `caddy-proxy`-Netz — der Alias-Befehl gibt nur den DNS-Namen.)
+Nur `lumen-web` ist im `caddy-proxy`-Netz (Compose setzt das, kein manueller
+`network connect`). API, Keycloak und Garage NICHT ins `caddy-proxy`-Netz
+haengen — sonst ist die Netztrennung aufgehoben.
 
 ## 8. Caddyfile ergänzen
 
@@ -221,27 +215,60 @@ docker exec lumen-keycloak /opt/keycloak/bin/kcadm.sh add-roles -r lumen \
   --uusername <email> --rolename admin
 ```
 
-**Least-Privilege-S3-User fuer die API:** in `deployment/.env`
-`GARAGE_S3_ACCESS_KEY_ID`/`GARAGE_S3_SECRET_ACCESS_KEY` auf einen eigenen
-User setzen (nicht `MINIO_ROOT_USER`). `lumen-minio-init` legt ihn beim
-naechsten `up -d` mit einer Policy nur fuer den Bucket an. Solange die Werte
-noch den Root-Credentials entsprechen, loggt das Init-Script eine WARN-Zeile.
+**Garage statt MinIO (2026-10):** `lumen-garage` (dxflrs/garage v1.3.1,
+Single-Node) ersetzt das EOL-MinIO. `lumen-garage-init` richtet Layout,
+API-Key und Bucket idempotent ueber die Admin-API ein
+(`backend/scripts/garage_init.py`). Der API-Key hat read+write auf genau
+diesen Bucket, kein owner-Recht. Neue `.env`-Werte:
 
-**MinIO ist EOL** (Community-Images nicht mehr pullbar, keine Security-Fixes).
-Der Caddy-Block mildert CVE-2025-31489 (Streaming-Uploads mit
-`STREAMING-*`-Payload werden mit 403 geblockt) und setzt eine Sandbox-CSP auf
-S3-Antworten. Mittelfristig: Migration auf RustFS (Dev/Test laufen schon
-darauf) oder Garage.
+```bash
+GARAGE_RPC_SECRET=$(openssl rand -hex 32)
+GARAGE_ADMIN_TOKEN=$(openssl rand -hex 32)
+GARAGE_S3_ENDPOINT=http://lumen-garage:3900
+GARAGE_S3_REGION=garage
+GARAGE_S3_ACCESS_KEY_ID=GK$(openssl rand -hex 12)
+GARAGE_S3_SECRET_ACCESS_KEY=$(openssl rand -hex 32)
+```
+
+**Migration MinIO -> Garage** macht `deploy.sh` (Schritt 5b) einmalig, solange
+der Alt-Container `lumen-minio` laeuft: Bucket per `scripts.s3_archive` aus
+MinIO exportieren, nach Garage importieren, Manifeste (Key + Groesse)
+vergleichen, Archiv verschluesselt als `bucket-minio-migration-*.tar.gz.gpg`
+in `BACKUP_DIR` ablegen, `lumen-minio` entfernen. Scheitert der Abgleich,
+bricht das Script ab; `lumen-minio` bleibt (ohne `caddy-proxy`-Netz) stehen. Das Volume
+`lumen_lumen-minio-data` bleibt fuer einen Rollback; nach ein paar Tagen
+Betrieb: `docker volume rm lumen_lumen-minio-data` und `MINIO_*` aus `.env`.
+
+**Uploads per Pre-Signed POST:** die signierte Policy begrenzt die Groesse
+(`content-length-range` = angekuendigte Dateigroesse), Key und Content-Type.
+Caddy laesst auf `/lumen-images/*` nur GET/HEAD/POST durch (405 sonst) und
+setzt eine Sandbox-CSP auf S3-Antworten.
 
 ## Backup
 
-```bash
-# Lumen-DB
-docker compose -f deployment/docker-compose.prod.yml exec lumen-db \
-    pg_dump -U lumen lumen > /opt/backups/lumen-$(date +%Y%m%d).sql
+`deployment/backup.sh` (Cron auf dem VPS) sichert beide Postgres-DBs und den
+Bucket (`scripts.s3_archive export`, Objekt-Ebene als tar), verschluesselt
+alles per `gpg --symmetric` (AES256) und kopiert es optional per rsync weg.
+Ohne lesbare Passphrase-Datei bricht es ab. rsync laeuft ohne `--delete`
+(lokales Loeschen raeumt die Offsite-Kopie nicht ab) — Retention am Ziel
+separat einrichten.
 
-# Garage hat eigene Replikation; optional Bucket-Snapshot
-docker exec garage /garage bucket snapshot lumen-images
+```bash
+# Einmalig: Passphrase anlegen (zusaetzlich offline/im Passwortmanager ablegen!)
+openssl rand -base64 32 > /opt/lumen/deployment/.backup-passphrase
+chmod 600 /opt/lumen/deployment/.backup-passphrase
+# .env: BACKUP_PASSPHRASE_FILE=/opt/lumen/deployment/.backup-passphrase
+#       BACKUP_REMOTE=backup@<host>:/srv/lumen   (SSH-Key des Cron-Users)
+```
+
+Restore:
+
+```bash
+P=/opt/lumen/deployment/.backup-passphrase
+gpg --batch --passphrase-file $P -d lumen-db-<TS>.sql.gz.gpg | gunzip \
+  | docker exec -i lumen-db psql -U lumen lumen
+gpg --batch --passphrase-file $P -d bucket-<TS>.tar.gz.gpg | gunzip \
+  | docker exec -i lumen-api python -m scripts.s3_archive import
 ```
 
 ## Rollback

@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     keycloak_admin_client_secret: str = ""
 
     # Garage S3 (siehe ADR-011) — Endpoints fuer Production via .env;
-    # in Tests werden diese durch eine MinIO-Container-Fixture ueberschrieben.
+    # in Tests werden diese durch eine Garage-Container-Fixture ueberschrieben.
     garage_s3_endpoint: str = "http://localhost:3900"
     # Oeffentliche S3-Basis-URL fuer Pre-Signed-URLs (browser-erreichbar).
     # Leer = identisch mit garage_s3_endpoint (dev/single-host). In Production

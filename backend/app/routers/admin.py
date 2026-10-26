@@ -27,6 +27,8 @@ from app.auth import current_admin
 from app.database import get_db
 from app.models import Feedback, Image, Preset, PresetReport, User
 from app.schemas import (
+    AdminReportedPresetOut,
+    AdminReportOut,
     AdminStatsOut,
     AdminUserOut,
     AdminUserPatchIn,
@@ -277,21 +279,52 @@ async def patch_feedback(
 # ----- Moderation (gemeldete Presets) -----
 
 
-@router.get("/presets/reported", response_model=list[PresetOut])
+@router.get("/presets/reported", response_model=list[AdminReportedPresetOut])
 async def list_reported_presets(
     _admin: User = Depends(current_admin),
     db: AsyncSession = Depends(get_db),
-) -> list[PresetOut]:
+) -> list[AdminReportedPresetOut]:
     """Alle Presets mit mindestens einer Meldung — inkl. der per Auto-Hide
-    auf privat zurueckgesetzten. Grundlage fuer die Restore-Entscheidung."""
+    auf privat zurueckgesetzten. Grundlage fuer die Restore-Entscheidung.
+    Meldungen ohne Reporter-Identitaet (nur Grund + Zeitpunkt)."""
     rows = (
         await db.execute(
-            select(Preset)
+            select(Preset, User.email, User.is_disabled)
+            .join(User, User.id == Preset.user_id)
             .where(Preset.report_count > 0)
             .order_by(desc(Preset.report_count), desc(Preset.updated_at))
+            .limit(200)
         )
-    ).scalars().all()
-    return [PresetOut.model_validate(p) for p in rows]
+    ).all()
+    ids = [p.id for p, _, _ in rows]
+    reports: dict[UUID, list[AdminReportOut]] = {i: [] for i in ids}
+    if ids:
+        for r in (
+            await db.execute(
+                select(PresetReport)
+                .where(PresetReport.preset_id.in_(ids))
+                .order_by(PresetReport.created_at)
+            )
+        ).scalars():
+            reports[r.preset_id].append(
+                AdminReportOut(reason=r.reason, created_at=r.created_at)
+            )
+    return [
+        AdminReportedPresetOut(
+            id=p.id,
+            name=p.name,
+            description=p.description,
+            genre=p.genre,
+            visibility=p.visibility,
+            report_count=p.report_count,
+            owner_id=p.user_id,
+            owner_email=email,
+            owner_is_disabled=disabled,
+            updated_at=p.updated_at,
+            reports=reports[p.id],
+        )
+        for p, email, disabled in rows
+    ]
 
 
 @router.post("/presets/{preset_id}/clear-reports", response_model=PresetOut)

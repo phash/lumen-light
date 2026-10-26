@@ -1,4 +1,4 @@
-"""S3-Storage-Service fuer Garage (Production) bzw. MinIO (Tests).
+"""S3-Storage-Service fuer Garage (Production) (Production, Dev und Tests).
 
 Wrapper um boto3 — bietet Pre-Signed-URL-Erzeugung, HEAD und DELETE.
 Pixel-Daten laufen NICHT durch dieses Modul; der Browser uploadt direkt
@@ -57,7 +57,15 @@ class StorageService:
             region_name=self._settings.garage_s3_region,
             aws_access_key_id=self._settings.garage_s3_access_key_id,
             aws_secret_access_key=self._settings.garage_s3_secret_access_key,
-            config=Config(signature_version="s3v4", s3={"addressing_style": "path"}),
+            # Flexible Checksums nur wenn noetig: botocore-Defaults (seit 1.36)
+            # vergleichen CRCs, die Garage bei Multipart-Objekten anders bildet
+            # -> FlexibleChecksumError beim Lesen. Empfehlung fuer Nicht-AWS-S3.
+            config=Config(
+                signature_version="s3v4",
+                s3={"addressing_style": "path"},
+                request_checksum_calculation="when_required",
+                response_checksum_validation="when_required",
+            ),
         )
 
     @property
@@ -83,17 +91,25 @@ class StorageService:
             raise ValueError(f"Unerwartetes bucket_key-Format: {bucket_key!r}")
         return f"{user_part}/staging/{image_part}"
 
-    def presign_put(self, key: str, content_type: str) -> tuple[str, int]:
-        url = self._presign_client.generate_presigned_url(
-            "put_object",
-            Params={
-                "Bucket": self.bucket,
-                "Key": key,
-                "ContentType": content_type,
-            },
+    def presign_post(
+        self, key: str, content_type: str, max_size: int
+    ) -> tuple[str, dict[str, str], int]:
+        """Pre-Signed POST (Browser-Form-Upload). Anders als ein Pre-Signed PUT
+        traegt die signierte Policy ein content-length-range — S3 lehnt
+        groessere Bodies ab, bevor sie im Bucket landen. Key und Content-Type
+        sind ebenfalls an die Policy gebunden (kein Umschreiben im Formular)."""
+        post = self._presign_client.generate_presigned_post(
+            Bucket=self.bucket,
+            Key=key,
+            Fields={"Content-Type": content_type},
+            Conditions=[
+                ["content-length-range", 1, max_size],
+                {"Content-Type": content_type},
+            ],
             ExpiresIn=self._settings.presigned_url_expires_in,
         )
-        return url, self._settings.presigned_url_expires_in
+        fields = {k: str(v) for k, v in post["fields"].items()}
+        return post["url"], fields, self._settings.presigned_url_expires_in
 
     def presign_get(self, key: str) -> tuple[str, int]:
         url = self._presign_client.generate_presigned_url(

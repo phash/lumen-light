@@ -107,7 +107,7 @@ export default function Datenschutz() {
 
       <h2 className="mt-8 text-xl text-stone-200 italic">4. Speicherort und Empfänger</h2>
       <p className="mt-3">
-        Postgres-Datenbank, S3-Bucket (MinIO) und Keycloak-Realm liegen auf
+        Postgres-Datenbank, S3-Bucket (Garage) und Keycloak-Realm liegen auf
         einem deutschen IONOS-VPS. Auftragsverarbeiter: IONOS SE als Hoster.
         Bilder selbst werden ausschließlich auf diesem VPS gespeichert.
       </p>

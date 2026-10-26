@@ -39,6 +39,9 @@ def upgrade() -> None:
         "account_tombstones",
         sa.Column("sub_hash", sa.String(64), primary_key=True),
         sa.Column("deleted_at", sa.DateTime(timezone=True), nullable=False),
+        # Sperre ueberlebt die Selbstloeschung: Re-Provisionierung desselben
+        # sub startet wieder gesperrt (keine Ban-Umgehung per DELETE /me).
+        sa.Column("banned", sa.Boolean(), nullable=False, server_default=sa.text("false")),
     )
 
 

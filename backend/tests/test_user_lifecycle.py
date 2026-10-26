@@ -1,14 +1,5 @@
 """DSGVO-Endpoints: DELETE /me + GET /me/export."""
-import urllib.request
-
-
-def _put_to_url(url: str, data: bytes, content_type: str) -> None:
-    req = urllib.request.Request(
-        url, data=data, method="PUT",
-        headers={"Content-Type": content_type},
-    )
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        assert 200 <= resp.status < 300
+from tests.s3_upload import upload_via_init
 
 
 # JPEG-Magic-Bytes vorne — confirm() validiert den Content-Type.
@@ -23,7 +14,7 @@ async def _upload_image(client, headers, payload=b"\xff\xd8\xff\xe0" + b"x" * 10
         },
     )
     init_body = init.json()
-    _put_to_url(init_body["uploadUrl"], payload, "image/jpeg")
+    upload_via_init(init_body, payload, "image/jpeg")
     confirm = await client.post(
         f"/api/v1/images/{init_body['id']}/confirm", headers=headers
     )
@@ -97,6 +88,45 @@ async def test_nach_loeschung_neu_ausgestellter_token_darf_provisionieren(
     assert me_again.status_code == 200, me_again.text
     assert me_again.json()["id"] != user_a["user"]["id"]
     assert me_again.json()["email"] == user_a["user"]["email"]
+
+
+async def test_gesperrter_user_bleibt_nach_selbstloeschung_gesperrt(
+    client, user_a, db_session,
+):
+    """Ban-Umgehung: ein gesperrter User loescht sich selbst und loggt sich
+    neu ein -> der neu provisionierte Account muss wieder gesperrt sein."""
+    from datetime import timedelta
+    from uuid import UUID
+
+    from sqlalchemy import select, update
+
+    from app.models import AccountTombstone, User
+
+    await db_session.execute(
+        update(User)
+        .where(User.id == UUID(user_a["user"]["id"]))
+        .values(is_disabled=True)
+    )
+    await db_session.commit()
+
+    r1 = await client.delete("/api/v1/auth/me", headers=user_a["headers"])
+    assert r1.status_code == 204
+    await db_session.execute(
+        update(AccountTombstone).values(
+            deleted_at=AccountTombstone.deleted_at - timedelta(hours=1)
+        )
+    )
+    await db_session.commit()
+
+    me_again = await client.get("/api/v1/auth/me", headers=user_a["headers"])
+    assert me_again.status_code == 403, me_again.text
+    db_session.expire_all()
+    revived = (
+        await db_session.execute(
+            select(User).where(User.email == user_a["user"]["email"])
+        )
+    ).scalar_one()
+    assert revived.is_disabled is True
 
 
 async def test_delete_me_loescht_alle_objekte_unter_user_prefix(client, user_a):

@@ -2,9 +2,15 @@
 #
 # Voraussetzungen auf dem VPS:
 #   - Docker network 'caddy-proxy' existiert (cluster-shared)
-#   - Keycloak laeuft im caddy-proxy-Network (Realm 'lumen' importiert)
-#   - Garage laeuft, Bucket lumen-images existiert (siehe infra/garage/init.sh)
 #   - .env enthaelt POSTGRES_*, KEYCLOAK_*, GARAGE_*, CORS_ORIGIN
+#
+# Netztrennung: NUR lumen-web haengt im cluster-geteilten caddy-proxy-Netz.
+# API, Keycloak, Garage, DB und Redis sind ausschliesslich in lumen-internal;
+# nginx (frontend/nginx.conf) reicht /api, /auth und /lumen-images intern
+# weiter. Fremde Container im Cluster erreichen nur lumen-web; nginx wendet
+# dieselben Pfad-Policies an wie Caddy (Admin-Konsole 404, S3 nur GET/POST).
+# Rest-Risiko: sie koennen dort X-Forwarded-For setzen (eigener Rate-Limit-
+# Bucket) — Caddy selbst verwirft client-seitiges XFF.
 #   - deployment/config.prod.js mit den richtigen Frontend-Werten existiert
 #
 # Initiales Deployment macht Manuel — siehe infra/deployment-runbook.md.
@@ -102,67 +108,57 @@ services:
         condition: service_healthy
     networks:
       - lumen-internal
-      - caddy-proxy
     cap_drop:
       - ALL
     mem_limit: 2g
     pids_limit: 512
 
-  # S3-Storage (MinIO, S3-kompatibel). Same-Origin zur SPA (ueber Caddy
-  # /lumen-images), daher kein CORS noetig — CORS-Origin trotzdem defensiv
-  # gesetzt. Bucket-Anlage via lumen-minio-init.
-  lumen-minio:
+  # S3-Storage: Garage (Single-Node), wie die anderen Cluster-Projekte.
+  # Nur lumen-internal; der Browser erreicht es same-origin ueber
+  # Caddy -> lumen-web(nginx) -> /lumen-images. Secrets per Env, die
+  # Konfig-Datei im Repo enthaelt keine.
+  lumen-garage:
     <<: *hardening
-    image: minio/minio:RELEASE.2024-12-18T13-15-44Z
-    container_name: lumen-minio
+    image: dxflrs/garage:v1.3.1
+    container_name: lumen-garage
     restart: unless-stopped
-    command: ["server", "/data"]
+    command: ["/garage", "-c", "/etc/garage.toml", "server"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      MINIO_API_CORS_ALLOW_ORIGIN: ${CORS_ORIGIN}
+      GARAGE_RPC_SECRET: ${GARAGE_RPC_SECRET}
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
     volumes:
-      - lumen-minio-data:/data
+      - ../infra/garage/garage.prod.toml:/etc/garage.toml:ro
+      - lumen-garage-meta:/var/lib/garage/meta
+      - lumen-garage-data:/var/lib/garage/data
     networks:
       - lumen-internal
-      - caddy-proxy
-    mem_limit: 1g
+    cap_drop:
+      - ALL
+    mem_limit: 512m
     pids_limit: 256
 
-  # Bucket-Anlage + least-privilege S3-User fuer die API (nur Objekt-
-  # Operationen auf dem einen Bucket, keine Admin-Rechte). Credentials als
-  # Env statt Command-Line-Args (nicht in `ps` sichtbar).
-  lumen-minio-init:
-    image: minio/mc:RELEASE.2024-11-17T19-35-25Z
+  # Idempotente Einrichtung ueber die Garage-Admin-API (das Garage-Image hat
+  # keine Shell): Layout, API-Key (least privilege: read+write auf genau
+  # diesen Bucket, kein owner), Bucket. Stdlib-only Script aus dem Backend.
+  lumen-garage-init:
+    <<: *hardening
+    image: python:3.12-alpine
     depends_on:
-      - lumen-minio
+      - lumen-garage
+    command: ["python", "/garage_init.py"]
     environment:
-      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
-      BUCKET: ${GARAGE_S3_BUCKET}
-      API_KEY: ${GARAGE_S3_ACCESS_KEY_ID}
-      API_SECRET: ${GARAGE_S3_SECRET_ACCESS_KEY}
-    entrypoint:
-      - /bin/sh
-      - -c
-      - >
-        until mc alias set local http://lumen-minio:9000 "$$MINIO_ROOT_USER" "$$MINIO_ROOT_PASSWORD" >/dev/null; do
-          echo "warte auf MinIO..."; sleep 2;
-        done;
-        mc mb --ignore-existing "local/$$BUCKET";
-        mc anonymous set none "local/$$BUCKET";
-        if [ "$$API_KEY" != "$$MINIO_ROOT_USER" ]; then
-          printf '{"Version":"2012-10-17","Statement":[{"Effect":"Allow","Action":["s3:GetBucketLocation","s3:ListBucket"],"Resource":["arn:aws:s3:::%s"]},{"Effect":"Allow","Action":["s3:GetObject","s3:PutObject","s3:DeleteObject","s3:AbortMultipartUpload"],"Resource":["arn:aws:s3:::%s/*"]}]}' "$$BUCKET" "$$BUCKET" > /tmp/lumen-api-policy.json;
-          mc admin user add local "$$API_KEY" "$$API_SECRET";
-          mc admin policy create local lumen-api /tmp/lumen-api-policy.json;
-          mc admin policy attach local lumen-api --user "$$API_KEY" || true;
-          echo "Scoped S3-User fuer lumen-api bereit.";
-        else
-          echo "WARN: lumen-api nutzt MinIO-Root-Credentials (GARAGE_S3_ACCESS_KEY_ID = MINIO_ROOT_USER).";
-        fi;
-        echo "Bucket $$BUCKET bereit.";
+      GARAGE_ADMIN_URL: http://lumen-garage:3903
+      GARAGE_ADMIN_TOKEN: ${GARAGE_ADMIN_TOKEN}
+      GARAGE_S3_BUCKET: ${GARAGE_S3_BUCKET}
+      GARAGE_S3_ACCESS_KEY_ID: ${GARAGE_S3_ACCESS_KEY_ID}
+      GARAGE_S3_SECRET_ACCESS_KEY: ${GARAGE_S3_SECRET_ACCESS_KEY}
+    volumes:
+      - ../backend/scripts/garage_init.py:/garage_init.py:ro
     networks:
       - lumen-internal
+    user: "65534:65534"
+    cap_drop:
+      - ALL
     restart: "no"
 
   lumen-api:
@@ -178,7 +174,7 @@ services:
       KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE}
       JWK_CACHE_SECONDS: ${JWK_CACHE_SECONDS:-600}
       GARAGE_S3_ENDPOINT: ${GARAGE_S3_ENDPOINT}
-      # Oeffentliche Basis-URL fuer Pre-Signed-URLs (Browser via Caddy /lumen-images).
+      # Oeffentliche Basis-URL fuer Pre-Signed-URLs (Browser via Caddy/nginx /lumen-images).
       GARAGE_S3_PUBLIC_ENDPOINT: ${GARAGE_S3_PUBLIC_ENDPOINT}
       GARAGE_S3_REGION: ${GARAGE_S3_REGION}
       GARAGE_S3_BUCKET: ${GARAGE_S3_BUCKET}
@@ -190,18 +186,20 @@ services:
       LUMEN_ENV: production
       # Multi-Worker: gemeinsamer Redis-Store fuer slowapi-Counter.
       LUMEN_RATELIMIT_STORAGE: "redis://lumen-redis:6379/0"
-      # X-Forwarded-For nur von Caddy vertrauen (sonst sieht der Rate-Limiter
-      # nur die Caddy-IP). API ist ausschliesslich ueber das caddy-proxy- bzw.
-      # lumen-internal-Netz erreichbar (keine published ports).
+      # X-Forwarded-For vertrauen (sonst sieht der Rate-Limiter nur die
+      # nginx-IP). API ist ausschliesslich im lumen-internal-Netz erreichbar
+      # (keine published ports, nicht im caddy-proxy-Netz); nginx reicht
+      # Caddys X-Forwarded-For unveraendert durch.
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-*}
     depends_on:
       lumen-db:
         condition: service_healthy
       lumen-redis:
         condition: service_healthy
+      lumen-garage-init:
+        condition: service_completed_successfully
     networks:
       - lumen-internal
-      - caddy-proxy
     cap_drop:
       - ALL
     mem_limit: 2g
@@ -220,8 +218,11 @@ services:
       # Frontend Run-Time-Config — wird vom VPS-Host bereitgestellt,
       # ueberschreibt das Default config.js im Image.
       - ./config.prod.js:/usr/share/nginx/html/config.js:ro
+    # caddy-proxy: einziger Eingang von Caddy. lumen-internal: Upstreams
+    # API/Keycloak/Garage (siehe frontend/nginx.conf).
     networks:
       - caddy-proxy
+      - lumen-internal
     # nginx-Master braucht nur Port-80-Bind + Worker-User-Wechsel.
     cap_drop:
       - ALL
@@ -241,4 +242,9 @@ networks:
 volumes:
   lumen-db-data:
   lumen-redis-data:
+  lumen-garage-meta:
+  lumen-garage-data:
+  # Alt-Volume der MinIO-Instanz (vor 2026-10). Bleibt deklariert, damit
+  # `down` es nicht verwaist; nach erfolgreicher Migration manuell entfernen
+  # (siehe infra/deployment-runbook.md).
   lumen-minio-data:

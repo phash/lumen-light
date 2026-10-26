@@ -38,6 +38,8 @@ function makeFakeApi(): FakeApi {
     adminStats: vi.fn(),
     adminListFeedback: vi.fn(),
     adminPatchFeedback: vi.fn(),
+    adminListReportedPresets: vi.fn(),
+    adminClearPresetReports: vi.fn(),
     applyPresetBatch: vi.fn(),
   };
 }
@@ -47,11 +49,12 @@ const fakeFile = new File([new Uint8Array([1, 2, 3, 4])], "photo.jpg", {
 });
 
 describe("uploadImage", () => {
-  it("init -> PUT to presigned -> confirm", async () => {
+  it("init -> POST an presigned -> confirm", async () => {
     const api = makeFakeApi();
     const init: ImageInit = {
       id: "img-1",
-      uploadUrl: "https://garage.local/bucket/key",
+      uploadUrl: "https://garage.local/bucket",
+      uploadFields: { key: "u/staging/img-1", policy: "p", "Content-Type": "image/jpeg" },
       expiresIn: 900,
     };
     const confirmed: Image = {
@@ -76,18 +79,26 @@ describe("uploadImage", () => {
 
     expect(api.initUpload).toHaveBeenCalledWith("photo.jpg", "image/jpeg", 4);
     expect(fetchMock).toHaveBeenCalledWith(
-      "https://garage.local/bucket/key",
-      expect.objectContaining({ method: "PUT", body: fakeFile }),
+      "https://garage.local/bucket",
+      expect.objectContaining({ method: "POST" }),
     );
+    const call = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    const form = call[1].body;
+    expect(form).toBeInstanceOf(FormData);
+    // Policy-Felder vor "file" — S3 ignoriert Felder nach der Datei.
+    const names = [...(form as FormData).keys()];
+    expect(names).toEqual(["key", "policy", "Content-Type", "file"]);
+    expect((form as FormData).get("key")).toBe("u/staging/img-1");
     expect(api.confirmUpload).toHaveBeenCalledWith("img-1");
     expect(result).toEqual(confirmed);
   });
 
-  it("wirft bei S3-PUT-Fehler", async () => {
+  it("wirft bei S3-POST-Fehler", async () => {
     const api = makeFakeApi();
     api.initUpload.mockResolvedValue({
       id: "img-1",
       uploadUrl: "u",
+      uploadFields: {},
       expiresIn: 900,
     } satisfies ImageInit);
     const fetchMock = vi.fn(() =>

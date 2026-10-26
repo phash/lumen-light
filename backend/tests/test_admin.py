@@ -215,11 +215,23 @@ async def test_admin_kann_auto_verstecktes_preset_wiederherstellen(
     )
     await db_session.commit()
 
+    from uuid import UUID
+
+    from app.models import PresetReport
+
+    db_session.add(PresetReport(preset_id=UUID(pid), reason="Spam-Name"))
+    await db_session.commit()
+
     listed = await client.get(
         "/api/v1/admin/presets/reported", headers=admin_user["headers"]
     )
     assert listed.status_code == 200
-    assert pid in [p["id"] for p in listed.json()]
+    entry = next(p for p in listed.json() if p["id"] == pid)
+    # Moderations-UI braucht Gruende + Creator (fuer "Nutzer sperren").
+    assert entry["reportCount"] == 3
+    assert entry["ownerEmail"] == user_a["user"]["email"]
+    assert entry["ownerId"] == user_a["user"]["id"]
+    assert [r["reason"] for r in entry["reports"]] == ["Spam-Name"]
 
     cleared = await client.post(
         f"/api/v1/admin/presets/{pid}/clear-reports", headers=admin_user["headers"]

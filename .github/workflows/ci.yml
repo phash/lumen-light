@@ -2,7 +2,7 @@ name: CI
 
 # Pflicht-Checks pro PR + push auf main:
 #   - Frontend: lint, typecheck, vitest (mit Coverage), build
-#   - Backend:  pytest (mit testcontainers fuer Postgres + RustFS-S3 + Keycloak,
+#   - Backend:  pytest (mit testcontainers fuer Postgres + Garage-S3 + Keycloak,
 #               inkl. Coverage-Report).
 # E2E (Playwright) laeuft NICHT hier (Stack-Boot dauert) — siehe die eigene
 # Workflow-Datei .github/workflows/e2e.yml (nightly cron + workflow_dispatch).

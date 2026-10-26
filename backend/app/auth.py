@@ -379,18 +379,21 @@ def hash_sub(sub: str) -> str:
     return hashlib.sha256(sub.encode("utf-8")).hexdigest()
 
 
-async def _reject_if_tombstoned(db: AsyncSession, sub: str, iat: Any) -> None:
+async def _reject_if_tombstoned(db: AsyncSession, sub: str, iat: Any) -> bool:
     """Blockt die JIT-Wiederbelebung eines geloeschten Accounts durch einen
     Token, der VOR der Loeschung ausgestellt wurde (iat <= deleted_at).
     Ein nach der Loeschung neu ausgestellter Token (erneuter Login, falls der
-    KC-Account noch existiert) darf dagegen frisch provisionieren."""
+    KC-Account noch existiert) darf dagegen frisch provisionieren.
+
+    Liefert True, wenn der geloeschte Account gesperrt war — der neue User
+    wird dann gesperrt angelegt (keine Ban-Umgehung per Selbstloeschung)."""
     tomb = (
         await db.execute(
             select(AccountTombstone).where(AccountTombstone.sub_hash == hash_sub(sub))
         )
     ).scalar_one_or_none()
     if tomb is None:
-        return
+        return False
     try:
         issued = datetime.fromtimestamp(float(iat), tz=timezone.utc)
     except (TypeError, ValueError, OverflowError):
@@ -400,6 +403,7 @@ async def _reject_if_tombstoned(db: AsyncSession, sub: str, iat: Any) -> None:
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Konto wurde gelöscht — bitte erneut anmelden.",
         )
+    return tomb.banned
 
 
 async def _get_or_create_user(
@@ -408,8 +412,8 @@ async def _get_or_create_user(
     result = await db.execute(select(User).where(User.keycloak_sub == sub))
     user = result.scalar_one_or_none()
     if user is None:
-        await _reject_if_tombstoned(db, sub, iat)
-        user = User(keycloak_sub=sub, email=email)
+        banned = await _reject_if_tombstoned(db, sub, iat)
+        user = User(keycloak_sub=sub, email=email, is_disabled=banned)
         db.add(user)
         try:
             await db.flush()  # User-ID erzeugen, ohne zu committen
