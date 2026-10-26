@@ -3,7 +3,7 @@
 # src/editor/lensProfile.ts `../../../infra/lensfun/profiles.json` importiert.
 # frontend/ und infra/ muessen daher als Geschwister im Image liegen.
 # -> compose: build.context = .. , build.dockerfile = frontend/Dockerfile
-FROM node:22-alpine AS build
+FROM node:26-alpine AS build
 WORKDIR /app/frontend
 
 # Projekt nutzt pnpm (pnpm-lock.yaml ist Single Source of Truth, npm-Lockfile
