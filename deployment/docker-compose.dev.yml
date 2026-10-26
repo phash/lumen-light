@@ -54,7 +54,7 @@ services:
   # Garage wie in Production (dxflrs/garage, Single-Node). S3 auf
   # localhost:9000 (Container 3900), damit Backend-Env und Doku gleich bleiben.
   s3:
-    image: dxflrs/garage:v1.3.1
+    image: dxflrs/garage:v2.4.1
     container_name: lumen-dev-s3
     restart: unless-stopped
     command: ["/garage", "-c", "/etc/garage.toml", "server"]

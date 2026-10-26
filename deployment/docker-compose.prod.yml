@@ -119,7 +119,7 @@ services:
   # Konfig-Datei im Repo enthaelt keine.
   lumen-garage:
     <<: *hardening
-    image: dxflrs/garage:v1.3.1
+    image: dxflrs/garage:v2.4.1
     container_name: lumen-garage
     restart: unless-stopped
     command: ["/garage", "-c", "/etc/garage.toml", "server"]
