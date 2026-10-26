@@ -142,7 +142,7 @@ services:
   # diesen Bucket, kein owner), Bucket. Stdlib-only Script aus dem Backend.
   lumen-garage-init:
     <<: *hardening
-    image: python:3.12-alpine
+    image: python:3.15-alpine
     depends_on:
       - lumen-garage
     command: ["python", "/garage_init.py"]
