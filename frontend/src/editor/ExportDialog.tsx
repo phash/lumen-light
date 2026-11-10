@@ -64,7 +64,7 @@ export default function ExportDialog({
       data-testid="export-dialog"
       role="dialog"
       aria-labelledby="export-dialog-title"
-      className="absolute bottom-20 left-2 sm:left-6 w-72 max-w-[calc(100%-1rem)] bg-stone-900/95 backdrop-blur border border-stone-700 p-4 text-sm space-y-3"
+      className="absolute bottom-20 left-2 sm:left-6 z-50 w-72 max-w-[calc(100%-1rem)] bg-stone-900/95 backdrop-blur border border-stone-700 p-4 text-sm space-y-3"
     >
       <h2 id="export-dialog-title" className="text-stone-200">Export</h2>
 

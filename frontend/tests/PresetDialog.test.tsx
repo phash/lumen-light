@@ -246,6 +246,20 @@ describe("PresetDialog", () => {
     await waitFor(() => expect(api.listPresets).toHaveBeenCalledTimes(2));
   });
 
+  it("Loeschen: Frage als Text, Verb als Button, Fokus danach auf der Ueberschrift", async () => {
+    const api = makeFakeApi([makePreset({ id: "x", name: "ToDelete" })]);
+    renderDialog(api);
+    await waitFor(() => screen.getByTestId("preset-item-x"));
+    await userEvent.click(screen.getByTestId("preset-delete-x"));
+    expect(screen.getByText("Endgültig löschen?")).toBeInTheDocument();
+    const confirm = screen.getByTestId("preset-delete-confirm-x");
+    expect(confirm).toHaveTextContent(/^Löschen$/);
+    await userEvent.click(confirm);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId("preset-dialog-title")),
+    );
+  });
+
   it("Loeschen eines oeffentlichen Presets warnt zusaetzlich", async () => {
     const api = makeFakeApi([makePreset({ id: "pub", visibility: "public" })]);
     renderDialog(api);

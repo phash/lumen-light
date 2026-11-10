@@ -77,7 +77,7 @@ export default function BatchApplyModal({ imageIds, onClose, onApplied }: Props)
       onClose={onClose}
       testId="batch-apply-modal"
       labelledBy="batch-apply-title"
-      backdropClassName="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+      backdropClassName="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       cardClassName="w-full max-w-[380px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
     >
         <div id="batch-apply-title" className="px-4 py-3 border-b border-stone-800 text-stone-200">

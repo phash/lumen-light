@@ -89,4 +89,34 @@ describe("Slider", () => {
     const v = screen.getByTestId("slider-contrast-value");
     expect(v.className).toContain("stone-400");
   });
+
+  it("Enter und Entf setzen auf den Default zurueck", () => {
+    const onChange = vi.fn();
+    renderSlider({ value: 0.5, defaultValue: 0.2, onChange });
+    const track = screen.getByRole("slider");
+    fireEvent.keyDown(track, { key: "Enter" });
+    expect(onChange).toHaveBeenLastCalledWith(0.2);
+    onChange.mockClear();
+    fireEvent.keyDown(track, { key: "Delete" });
+    expect(onChange).toHaveBeenLastCalledWith(0.2);
+  });
+
+  it("Tooltip ist per aria-describedby erreichbar", () => {
+    render(
+      <Slider
+        adjustmentKey="contrast"
+        label="Kontrast"
+        value={0}
+        defaultValue={0}
+        min={-1}
+        max={1}
+        step={0.01}
+        tooltip="Hebt Mitteltoene an"
+        onChange={vi.fn()}
+      />,
+    );
+    expect(screen.getByRole("slider")).toHaveAccessibleDescription(
+      "Hebt Mitteltoene an",
+    );
+  });
 });

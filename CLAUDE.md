@@ -92,7 +92,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `backend/app/auth.py` | JWT-Verify (PyJWT, RS256-Whitelist), JIT-User-Provisioning + 20 Default-Presets (4 Looks + 6 Genre + 10 Motiv: Macro/Astro/Food/Hochzeit/Innen/Konzert/Strand/Schnee/Herbst/Architektur). `current_admin`-Dep prueft Realm-Role `admin`. |
 | `backend/app/schemas.py` | Adjustments, Mask-Discriminated-Union (`MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`), `extra="forbid"`. `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` → Wire-Keys camelCase, Eingang akzeptiert beide via `populate_by_name=True`. |
 | `backend/app/rate_limit.py` | slowapi-Limiter (SHA-256-Token-Hash-Key, IP-Fallback). `LUMEN_RATELIMIT_STORAGE` ueber env auf Redis-URI fuer Multi-Worker-Setups |
-| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) → 010_purges_tombstones (`storage_purges`: Janitor-Retry fehlgeschlagener S3-Prefix-Purges aus DELETE /me; `account_tombstones`: SHA-256(sub)+deleted_at gegen JIT-Wiederbelebung) → 011_review_2026_11 (`presets.preview_key`, `preset_applies` fuer Apply-Dedupe pro User/Tag, `storage_purges.not_before`) |
+| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) → 010_purges_tombstones (`storage_purges`: Janitor-Retry fehlgeschlagener S3-Prefix-Purges aus DELETE /me; `account_tombstones`: SHA-256(sub)+deleted_at gegen JIT-Wiederbelebung) → 011_review_2026_11 (`presets.preview_key`, `preset_applies` fuer Apply-Dedupe pro User/Tag, `storage_purges.not_before`) → 012_review_2026_11_r2 (`keycloak_deletions`-Retry-Tabelle, `users.publish_blocked_until`, Index `preset_applies(preset_id)`) |
 | `backend/schemas/edit-groups.json` | Single Source fuer das Gruppen->Feld-Mapping (8 Gruppen: tone/color/hsl/curve/detail/masks/crop/lens). Backend liest zur Laufzeit, Frontend importiert beim Build (Vite-Repo-Root-Context). |
 | `backend/app/profile_groups.py` | Laedt die JSON, stellt `GROUPS`, `KNOWN_GROUP_KEYS`, `merge_edit_state(...)` bereit. Batch-Apply-Endpoint nutzt `merge_edit_state` fuer nicht-destruktiven Merge. |
 | `frontend/src/editor/profileGroups.ts` | Importiert `backend/schemas/edit-groups.json`, exportiert `GROUPS`, `defaultEnabledGroups()`, `mergeGroups(base, profile, enabled)`. Gleicher Repo-Root-Build-Context wie `lensProfile.ts`. |
@@ -281,6 +281,8 @@ gesetzt — pytest läuft sonst gegen 429er.
   REST; `/auth/admin/*` ist in Caddy+nginx 404. Service-Account-Client
   `lumen-admin` (nur `manage-users`) legt `deploy.sh` an und schreibt das
   Secret in `.env`.
+- **Deploy-Env**: `deployment/lib/env.sh` (`load_dotenv`, `ensure_private_file`) statt `. .env` — kein Shell-Expand; `$` nur in `'...'`. `.env` wird auf 600 gesetzt. `KC_BOOTSTRAP_ADMIN_*` nur beim Erst-Install (nie in `.env`).
+- **Preview-Builds** gedrosselt: max 2 parallel pro Prozess, 25 MB Quelle, 10/min pro User; versionierte Keys `{uid}/previews/{preset_id}-{hex}.jpg`.
 - **Web-Container unprivilegiert**: `nginx-unprivileged` auf Port 8080.
 - **Editor-Autosave**: `useEditAutosave` (in `Editor.tsx`) flusht per
   `keepalive` bei Unmount/`pagehide`/Tab-Hidden; jede Bild-Ladung bekommt

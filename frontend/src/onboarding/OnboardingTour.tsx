@@ -111,14 +111,23 @@ export default function OnboardingTour({ onClose }: Props) {
   }, []);
 
   // Escape = Tour ueberspringen (wie der ✕-/Später-Button).
+  // Capture-Phase am window + stopImmediatePropagation: laeuft vor allen
+  // anderen window-/document-Listenern (Editor-Shortcuts) und stoppt auch
+  // weitere Listener am selben Ziel. Ein ueber der Tour geoeffneter Dialog
+  // (z.B. Presets im Preset-Schritt) behaelt aber sein eigenes Escape.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      const otherDialog = document.querySelector(
+        '[aria-modal="true"]:not([data-testid="onboarding-tour"])',
+      );
+      if (otherDialog) return;
       e.stopPropagation();
+      e.stopImmediatePropagation();
       handleSkip();
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
   }, [handleSkip]);
 
   // Fokus bei Schrittwechsel auf die Karte ziehen.

@@ -43,12 +43,14 @@ const SHORTCUTS: ReadonlyArray<{
     group: "Slider",
     items: [
       { keys: "Doppelklick", desc: "Slider auf Default zurücksetzen" },
+      { keys: "Enter / Entf", desc: "Fokussierten Slider auf Default zurücksetzen" },
       { keys: "← / →", desc: "Fokussierten Slider in kleinen Schritten ändern" },
       { keys: "Shift + ← / →", desc: "Fokussierten Slider in großen Schritten ändern" },
       { keys: "Pos1 / Ende", desc: "Slider auf Minimum / Maximum" },
       { keys: "Mausrad über Bild", desc: "Zoom" },
       { keys: "+ / −", desc: "Hinein- / Herauszoomen" },
       { keys: "Drag im Bild", desc: "Pan" },
+      { keys: "Shift + Pfeiltasten", desc: "Pan (Bildansicht fokussiert)" },
     ],
   },
   {
@@ -66,7 +68,7 @@ export default function ShortcutCheatsheet({ open, onClose }: Props) {
       onClose={onClose}
       testId="shortcut-cheatsheet"
       labelledBy="shortcut-cheatsheet-title"
-      backdropClassName="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4"
+      backdropClassName="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       cardClassName="w-full max-w-[420px] max-h-[80vh] overflow-y-auto bg-stone-900 border border-stone-700 text-sm"
     >
       <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
@@ -82,6 +84,13 @@ export default function ShortcutCheatsheet({ open, onClose }: Props) {
         </button>
       </div>
       <div className="px-4 py-3 space-y-4">
+        <p
+          data-testid="shortcut-single-key-hint"
+          className="text-xs text-stone-400"
+        >
+          Einzeltasten-Kürzel (0, R, P, \, +, −, ?) kannst du im Account
+          unter „Tastenkürzel“ abschalten.
+        </p>
         {SHORTCUTS.map((group) => (
           <section key={group.group}>
             <h3 className="text-[10px] uppercase tracking-[0.2em] text-stone-400 mb-2">

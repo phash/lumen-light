@@ -20,6 +20,8 @@ export COMPOSE_PROJECT_NAME=lumen
 COMPOSE=(docker compose -f deployment/docker-compose.prod.yml --env-file deployment/.env)
 
 cd "$REPO_DIR"
+# shellcheck source=lib/env.sh
+. deployment/lib/env.sh
 
 # Caddy-Block ersetzen. Neue Datei erst als Kopie bauen und mit dem
 # Cluster-Caddy-Image validieren — eine kaputte Live-Datei wuerde beim
@@ -65,9 +67,13 @@ PY
 # ein leer exportierter Altwert wuerde sonst gewinnen). Modus "if-empty"
 # schreibt nur, wenn der Wert fehlt/leer ist; "force" ueberschreibt.
 # Werte per Env an python (nicht in argv/ps), Datei-Inode + Modus bleiben.
+# Nur Zeichen, die load_dotenv unquoted 1:1 zuruecklesen kann (kein
+# Leerzeichen/#/Quote/$) — die Werte sind hex bzw. KC-Secrets (alnum).
 env_set() {
   local mode="$1" name="$2" value="$3"
   if [ "$mode" = "if-empty" ] && [ -n "${!name:-}" ]; then return 0; fi
+  [[ "$value" =~ ^[A-Za-z0-9._~:/@+=,-]*$ ]] \
+    || { echo "FEHLER: env_set $name: Wert mit unzulaessigen Zeichen (nicht in .env geschrieben)"; return 1; }
   ENV_NAME="$name" ENV_VALUE="$value" python3 - deployment/.env <<'PY'
 import os, re, sys
 path, name, value = sys.argv[1], os.environ["ENV_NAME"], os.environ["ENV_VALUE"]
@@ -97,6 +103,29 @@ ensure_db_roles() {
     bash -euo pipefail -s < deployment/initdb/02-app-roles.sh
 }
 
+# Keycloak schon initialisiert (Master-Realm in der DB 'keycloak')? Abfrage
+# als POSTGRES_USER ueber den lokalen Socket. Jeder Fehler (DB/Tabelle fehlt)
+# zaehlt als "nicht initialisiert" -> Bootstrap-Admin wird uebergeben; bei
+# bestehendem Master-Realm ignoriert Keycloak den ohnehin (harmlos).
+kc_initialized() {
+  docker exec lumen-db psql -U "$POSTGRES_USER" -d keycloak -tAc \
+    "SELECT count(*) FROM realm WHERE name = 'master'" 2>/dev/null \
+    | tr -d '[:space:]' | grep -qx '[1-9][0-9]*'
+}
+
+# Das KC-Image hat KEIN curl — daher von lumen-api aus pruefen (hat curl und
+# erreicht lumen-keycloak ueber das gemeinsame Netz).
+wait_keycloak() {
+  for _ in $(seq 1 80); do
+    if docker exec lumen-api curl -fsS \
+        http://lumen-keycloak:8080/auth/realms/master/.well-known/openid-configuration >/dev/null 2>&1; then
+      echo "   Keycloak bereit."; return 0
+    fi
+    sleep 3
+  done
+  echo "FEHLER: Keycloak nicht bereit"; "${COMPOSE[@]}" logs --tail 40 lumen-keycloak; return 1
+}
+
 echo "==> [1/8] Code aktualisieren (git pull)"
 # Fehlgeschlagener Pull darf NICHT stillschweigend alten Code deployen.
 # Bewusster Deploy des lokalen Stands: SKIP_PULL=1 bash deployment/deploy.sh
@@ -107,7 +136,15 @@ fi
 echo "==> [2/8] Konfiguration pruefen"
 test -f deployment/.env            || { echo "FEHLER: deployment/.env fehlt (aus .env.example)"; exit 1; }
 test -f deployment/config.prod.js  || { echo "FEHLER: deployment/config.prod.js fehlt"; exit 1; }
-set -a; . deployment/.env; set +a
+# Secrets: nur fuer den Deploy-User lesbar (Review L10). Danach .env als
+# Daten laden, NICHT als Shell-Code sourcen (Review L11, lib/env.sh).
+ensure_private_file deployment/.env || exit 1
+load_dotenv deployment/.env || exit 1
+if [ -n "${BACKUP_PASSPHRASE_FILE:-}" ]; then
+  ensure_private_file "$BACKUP_PASSPHRASE_FILE" || exit 1
+fi
+: "${KC_ADMIN_USER:?KC_ADMIN_USER fehlt in .env (kcadm-Login)}"
+: "${KC_ADMIN_PASSWORD:?KC_ADMIN_PASSWORD fehlt in .env (kcadm-Login)}"
 # DB-Rollen-Passwoerter (Review M1): fehlen sie, hier generieren und in .env
 # eintragen (hex -> URL-sicher in DATABASE_URL). Bestehende Werte bleiben.
 env_set if-empty LUMEN_DB_APP_PASSWORD "$(python3 -c 'import secrets;print(secrets.token_hex(24))')"
@@ -135,6 +172,21 @@ python3 -c "import re,os,sys;k=os.environ.get('GARAGE_S3_ACCESS_KEY_ID','');s=os
 # Erst die DB (inkl. Rollen-Umstellung), dann den Rest mit den neuen
 # Least-Privilege-Credentials.
 ensure_db_roles
+# Bootstrap-Admin (Review L12): KC_BOOTSTRAP_ADMIN_* stehen in compose ohne
+# Wert -> nur gesetzt, wenn sie hier exportiert sind. Das passiert NUR bei
+# leerer KC-DB (Erst-Install); sonst landet das Admin-Passwort nicht in der
+# Container-Env. kcadm (Schritt 6) loggt sich mit KC_ADMIN_* aus .env ein
+# (per docker exec -e), nicht ueber die Container-Env.
+if grep -Eq '^[[:space:]]*(export[[:space:]]+)?KC_BOOTSTRAP_ADMIN_' deployment/.env; then
+  echo "FEHLER: KC_BOOTSTRAP_ADMIN_* in deployment/.env entfernen (KC_ADMIN_USER/_PASSWORD genuegen)"; exit 1
+fi
+unset KC_BOOTSTRAP_ADMIN_USERNAME KC_BOOTSTRAP_ADMIN_PASSWORD
+KC_FIRST_INSTALL=0
+if ! kc_initialized; then
+  KC_FIRST_INSTALL=1
+  export KC_BOOTSTRAP_ADMIN_USERNAME="$KC_ADMIN_USER" KC_BOOTSTRAP_ADMIN_PASSWORD="$KC_ADMIN_PASSWORD"
+  echo "   Keycloak-DB leer -> Bootstrap-Admin '$KC_ADMIN_USER' wird einmalig uebergeben"
+fi
 "${COMPOSE[@]}" up -d
 
 echo "==> [5/8] Caddy-Block sofort umstellen"
@@ -143,16 +195,7 @@ echo "==> [5/8] Caddy-Block sofort umstellen"
 swap_caddy_block
 
 echo "==> [5a/8] Auf Keycloak warten (well-known)"
-# Das KC-Image hat KEIN curl — daher von lumen-api aus pruefen (hat curl und
-# erreicht lumen-keycloak ueber das gemeinsame Netz).
-for i in $(seq 1 80); do
-  if docker exec lumen-api curl -fsS \
-      http://lumen-keycloak:8080/auth/realms/master/.well-known/openid-configuration >/dev/null 2>&1; then
-    echo "   Keycloak bereit."; break
-  fi
-  sleep 3
-  [ "$i" = 80 ] && { echo "FEHLER: Keycloak nicht bereit"; "${COMPOSE[@]}" logs --tail 40 lumen-keycloak; exit 1; }
-done
+wait_keycloak || exit 1
 
 echo "==> [5b/8] Einmalige Migration MinIO -> Garage (nur solange lumen-minio laeuft)"
 # lumen-minio ist seit der Garage-Umstellung kein Compose-Service mehr, laeuft
@@ -231,7 +274,11 @@ keys = ["passwordPolicy", "eventsEnabled", "eventsExpiration",
         "bruteForceProtected", "permanentLockout", "failureFactor",
         "maxFailureWaitSeconds", "minimumQuickLoginWaitSeconds",
         "waitIncrementSeconds", "quickLoginCheckMilliSeconds",
-        "maxDeltaTimeSeconds"]
+        "maxDeltaTimeSeconds",
+        # Token-/Session-Laufzeiten + Registrierung (Review L13)
+        "accessTokenLifespan", "ssoSessionMaxLifespan", "ssoSessionIdleTimeout",
+        "revokeRefreshToken", "refreshTokenMaxReuse",
+        "duplicateEmailsAllowed", "registrationAllowed"]
 print(json.dumps({k: r[k] for k in keys}))
 PY
 # Client-Felder aus der Realm-JSON; die Prod-Domain darin wird auf $DOMAIN
@@ -290,6 +337,41 @@ fi
 [ -n "$ACID" ] || { echo "FEHLER: Client lumen-admin nicht anlegbar"; exit 1; }
 "${KCADM[@]}" add-roles -r lumen --uusername service-account-lumen-admin \
   --cclientid realm-management --rolename manage-users </dev/null
+# Review M3 (accepted risk, docs/08 R9): Client-Flags gegenlesen — nur
+# client_credentials, confidential, Access-Token 60 s. Abweichung = Abbruch.
+"${KCADM[@]}" get "clients/$ACID" -r lumen </dev/null | python3 -c '
+import json, sys
+c = json.load(sys.stdin)
+want = {"publicClient": False, "standardFlowEnabled": False, "implicitFlowEnabled": False,
+        "directAccessGrantsEnabled": False, "serviceAccountsEnabled": True}
+bad = [k for k, v in want.items() if c.get(k) != v]
+if c.get("attributes", {}).get("access.token.lifespan") != "60":
+    bad.append("attributes.access.token.lifespan")
+if bad:
+    sys.exit("FEHLER: lumen-admin-Client weicht ab: " + ", ".join(bad))
+'
+# Service-Account hat GENAU realm-management/manage-users: alles andere
+# (v.a. default-roles-lumen, das KC jedem Service-Account gibt) entfernen.
+SAID="$("${KCADM[@]}" get "clients/$ACID/service-account-user" -r lumen --fields id \
+  --format csv --noquotes </dev/null | tr -d '\r')"
+[ -n "$SAID" ] || { echo "FEHLER: service-account-lumen-admin nicht gefunden"; exit 1; }
+"${KCADM[@]}" get "users/$SAID/role-mappings" -r lumen </dev/null | python3 -c '
+import json, sys
+m = json.load(sys.stdin)
+for r in m.get("realmMappings", []):
+    print("realm", "-", r["name"])
+for cid, cm in (m.get("clientMappings") or {}).items():
+    for r in cm.get("mappings", []):
+        if (cid, r["name"]) != ("realm-management", "manage-users"):
+            print("client", cid, r["name"])
+' | while read -r kind cid role; do
+  if [ "$kind" = realm ]; then
+    "${KCADM[@]}" remove-roles -r lumen --uid "$SAID" --rolename "$role" </dev/null
+  else
+    "${KCADM[@]}" remove-roles -r lumen --uid "$SAID" --cclientid "$cid" --rolename "$role" </dev/null
+  fi
+  if [ "$kind" = realm ]; then echo "   service-account-lumen-admin: Realm-Rolle $role entfernt"; else echo "   service-account-lumen-admin: Rolle $cid/$role entfernt"; fi
+done
 ASECRET="$("${KCADM[@]}" get "clients/$ACID/client-secret" -r lumen </dev/null \
   | python3 -c "import json,sys;print(json.load(sys.stdin)['value'])")"
 [ -n "$ASECRET" ] || { echo "FEHLER: lumen-admin-Secret nicht lesbar"; exit 1; }
@@ -308,6 +390,15 @@ else
   echo "   WARN: KEYCLOAK_ADMIN_CLIENT_ID=$KEYCLOAK_ADMIN_CLIENT_ID (nicht lumen-admin) — unveraendert"
 fi
 unset ASECRET OLD_SECRET
+
+if [ "$KC_FIRST_INSTALL" = 1 ]; then
+  echo "==> [6b/8] Keycloak ohne Bootstrap-Admin-Env neu erzeugen (Erst-Install)"
+  # Admin-Account bleibt in der KC-DB; nur das Passwort verschwindet aus der
+  # Container-Env (docker inspect).
+  unset KC_BOOTSTRAP_ADMIN_USERNAME KC_BOOTSTRAP_ADMIN_PASSWORD
+  "${COMPOSE[@]}" up -d --no-deps lumen-keycloak
+  wait_keycloak || exit 1
+fi
 
 echo "==> [7/8] Smoke-Test"
 sleep 3

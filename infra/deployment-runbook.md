@@ -197,6 +197,24 @@ automatisch. deploy.sh legt vorher ein Backup an (`SKIP_BACKUP=1` zum
 Ueberspringen). Bootstrap-Admin heisst jetzt `KC_BOOTSTRAP_ADMIN_*` (greift
 nur bei leerer KC-DB).
 
+**Bootstrap-Admin nicht in der Container-Env (2026-11):** In compose stehen
+`KC_BOOTSTRAP_ADMIN_USERNAME/_PASSWORD` ohne Wert. `deploy.sh` exportiert sie
+(aus `KC_ADMIN_USER/_PASSWORD`) NUR, wenn die DB `keycloak` noch keinen
+Master-Realm hat, und erzeugt `lumen-keycloak` am Ende des Erst-Installs ohne
+sie neu (Schritt 6b). Der Admin-Account bleibt in der KC-DB; `kcadm` loggt sich
+weiter mit `KC_ADMIN_*` aus `.env` ein (per `docker exec -e KC_CLI_PASSWORD`).
+`KC_BOOTSTRAP_ADMIN_*` NICHT in `.env` eintragen (deploy.sh bricht dann ab).
+Wird das Admin-Passwort in Keycloak geaendert, `KC_ADMIN_PASSWORD` in `.env`
+nachziehen — sonst scheitert Schritt 6.
+
+**`.env` wird nicht mehr gesourct (2026-11):** `deploy.sh`/`backup.sh` lesen sie
+mit `load_dotenv` (`deployment/lib/env.sh`): `KEY=WERT`, optionale `"..."`/`'...'`,
+`#`-Kommentare, keine Expansion. Ein `$` in unquoted oder `"..."`-Werten bricht
+ab (compose wuerde dort expandieren) — literales `$` in `'...'` setzen.
+Beide Scripts erzwingen `chmod 600` auf `.env` und `BACKUP_PASSPHRASE_FILE`
+und brechen ab, wenn das nicht geht (fremder Owner) und die Datei fuer
+Gruppe/Andere lesbar bleibt. Tests: `bash deployment/tests/test-env.sh`.
+
 **Keycloak-Admin-Konsole ist nicht mehr oeffentlich** (Caddy liefert 404 fuer
 `/auth/admin` + `/auth/admin/*` komplett inkl. Admin-REST-API aller Realms,
 sowie `/auth/realms/master/*`; nginx spiegelt das). Die API ruft die
@@ -262,7 +280,7 @@ Idempotent; Passwort-Rotation = Wert in `.env` aendern + `deploy.sh`.
 Manuell (ohne deploy.sh):
 
 ```bash
-set -a; . deployment/.env; set +a
+. deployment/lib/env.sh && load_dotenv deployment/.env   # .env als Daten, nicht als Shell-Code
 docker exec -i -e LUMEN_DB_APP_PASSWORD -e KEYCLOAK_DB_PASSWORD lumen-db \
   bash -euo pipefail -s < deployment/initdb/02-app-roles.sh
 ```
@@ -272,11 +290,18 @@ docker exec -i -e LUMEN_DB_APP_PASSWORD -e KEYCLOAK_DB_PASSWORD lumen-db \
 `deploy.sh` (Schritt 6a) legt ihn idempotent an, liest das von Keycloak
 generierte Secret und schreibt `KEYCLOAK_ADMIN_CLIENT_ID/SECRET` in `.env`
 (danach `lumen-api` neu erzeugt). Damit loescht `DELETE /me` auch den
-Keycloak-Account. Secret rotieren: in KC neu generieren
+Keycloak-Account. Bei jedem Lauf erzwungen: nur client_credentials (Flags
+werden zurueckgelesen, Abweichung = Abbruch), Access-Token 60 s, und der
+Service-Account behaelt GENAU `manage-users` (alle anderen Rollen inkl.
+`default-roles-lumen` werden entfernt). Restrisiko siehe
+`docs/08-risiken-offene-fragen.md` R9. Secret rotieren: in KC neu generieren
 (`kcadm.sh create clients/<id>/client-secret -r lumen`) + `deploy.sh`.
 
 **Realm-Haertung:** `deploy.sh` uebertraegt aus `lumen-realm.prod.json`
-zusaetzlich `verifyEmail`, `sslRequired`, Brute-Force-Parameter und fuer
+zusaetzlich `verifyEmail`, `sslRequired`, Brute-Force-Parameter,
+Token-/Session-Laufzeiten (`accessTokenLifespan`, `ssoSessionMaxLifespan`,
+`ssoSessionIdleTimeout`, `revokeRefreshToken`, `refreshTokenMaxReuse`) sowie
+`duplicateEmailsAllowed`/`registrationAllowed` und fuer
 `lumen-frontend` `directAccessGrantsEnabled=false`, Redirect-URIs,
 Web-Origins und Attribute (Merge, nichts anderes wird geloescht).
 

@@ -29,6 +29,9 @@
   "failureFactor": 3,
   "accessTokenLifespan": 900,
   "ssoSessionMaxLifespan": 2592000,
+  "ssoSessionIdleTimeout": 1800,
+  "revokeRefreshToken": false,
+  "refreshTokenMaxReuse": 0,
   "passwordPolicy": "length(12) and digits(1) and notUsername(undefined) and notEmail(undefined) and passwordHistory(3)",
   "clients": [
     {

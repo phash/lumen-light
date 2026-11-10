@@ -69,4 +69,80 @@ describe("Header", () => {
     expect(order).toEqual(["cache", "signout"]);
     vi.unstubAllGlobals();
   });
+
+  function renderAt(path: string, isAuthenticated = false) {
+    return renderWithAuth(<Header />, {
+      auth: makeFakeAuth({
+        isAuthenticated,
+        user: isAuthenticated
+          ? makeFakeUser({ profile: { sub: "s", email: "a@example.com" } as never })
+          : null,
+      }),
+      wrapper: (c) => <MemoryRouter initialEntries={[path]}>{c}</MemoryRouter>,
+    });
+  }
+
+  function langLinks() {
+    const group = screen.getByTestId("lang-switch");
+    const [de, en] = Array.from(group.querySelectorAll("a"));
+    if (!de || !en) throw new Error("Sprachlinks fehlen");
+    return { de, en };
+  }
+
+  it("/en markiert EN als aktuelle Sprache", () => {
+    renderAt("/en");
+    const { de, en } = langLinks();
+    expect(en).toHaveAttribute("aria-current", "true");
+    expect(de).not.toHaveAttribute("aria-current");
+  });
+
+  it("/ markiert DE als aktuelle Sprache", () => {
+    renderAt("/");
+    const { de, en } = langLinks();
+    expect(de).toHaveAttribute("aria-current", "true");
+    expect(en).not.toHaveAttribute("aria-current");
+  });
+
+  it("/entwurf bleibt deutsch", () => {
+    renderAt("/entwurf");
+    expect(langLinks().de).toHaveAttribute("aria-current", "true");
+    expect(screen.getByRole("link", { name: "Bibliothek" })).toBeInTheDocument();
+  });
+
+  it("Sprachlinks: sichtbarer Text ist Teil des zugaenglichen Namens", () => {
+    renderAt("/");
+    const { de, en } = langLinks();
+    expect(de).not.toHaveAttribute("aria-label");
+    expect(de).toHaveAccessibleName(/^DE ?\(Deutsch\)$/);
+    expect(en).toHaveAccessibleName(/^EN ?\(English\)$/);
+  });
+
+  it("Mobile-Menue oeffnet und schliesst, Links sind erreichbar", async () => {
+    renderAt("/", true);
+    const burger = screen.getByTestId("header-burger");
+    expect(burger).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByTestId("header-mobile-nav")).not.toBeInTheDocument();
+    await userEvent.click(burger);
+    expect(burger).toHaveAttribute("aria-expanded", "true");
+    const nav = screen.getByTestId("header-mobile-nav");
+    const hrefs = Array.from(nav.querySelectorAll("a")).map((a) => a.getAttribute("href"));
+    expect(hrefs).toEqual(
+      expect.arrayContaining(["/", "/editor", "/library", "/marketplace", "/account"]),
+    );
+    expect(screen.getByTestId("header-mobile-logout")).toBeInTheDocument();
+    await userEvent.click(burger);
+    expect(screen.queryByTestId("header-mobile-nav")).not.toBeInTheDocument();
+  });
+
+  it("Klick auf einen Link im Mobile-Menue schliesst es", async () => {
+    renderAt("/");
+    await userEvent.click(screen.getByTestId("header-burger"));
+    const nav = screen.getByTestId("header-mobile-nav");
+    const editorLink = Array.from(nav.querySelectorAll("a")).find(
+      (a) => a.getAttribute("href") === "/editor",
+    );
+    if (!editorLink) throw new Error("Editor-Link fehlt");
+    await userEvent.click(editorLink);
+    expect(screen.queryByTestId("header-mobile-nav")).not.toBeInTheDocument();
+  });
 });

@@ -48,6 +48,26 @@ describe("FeedbackDialog", () => {
     expect(api.submitFeedback).not.toHaveBeenCalled();
   });
 
+  it("Zaehler zeigt Minimum, Hinweis erklaert den deaktivierten Button", async () => {
+    render(makeFakeApi());
+    const ta = screen.getByTestId("feedback-message");
+    expect(screen.getByTestId("feedback-message-counter")).toHaveTextContent(
+      "0 / 2000 (min. 10)",
+    );
+    expect(screen.getByTestId("feedback-min-hint")).toHaveTextContent("");
+    await userEvent.type(ta, "kurz");
+    expect(screen.getByTestId("feedback-message-counter")).toHaveTextContent(
+      "4 / 2000 (min. 10)",
+    );
+    expect(screen.getByTestId("feedback-min-hint")).toHaveTextContent(
+      "Bitte mindestens 10 Zeichen schreiben.",
+    );
+    // Anleitung ist sichtbar und per aria-describedby verknuepft.
+    expect(ta).not.toHaveAttribute("placeholder");
+    expect(ta).toHaveAccessibleDescription(/Mindestens 10, höchstens 2000 Zeichen/);
+    expect(screen.getByLabelText("Nachricht")).toBe(ta);
+  });
+
   it("ruft submitFeedback mit kind, message, page und Honeypot=leer auf", async () => {
     const api = makeFakeApi();
     render(api);

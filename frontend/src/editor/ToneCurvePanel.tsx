@@ -84,6 +84,10 @@ export default function ToneCurvePanel({
   // Nach Hinzufuegen/Entfernen per Tastatur den Fokus auf diesen Index setzen.
   const pendingFocusRef = useRef<number | null>(null);
   const pointRefs = useRef<Array<SVGCircleElement | null>>([]);
+  // Gesetzt, sobald eine Geste auf einem Punkt beginnt: der folgende
+  // click (der je nach Pointer-Capture am SVG landen kann) darf keinen
+  // zusaetzlichen Punkt anlegen.
+  const suppressClickRef = useRef(false);
 
   // Laeuft nach jedem Render: offenen Fokus-Request einloesen.
   useEffect(() => {
@@ -156,6 +160,7 @@ export default function ToneCurvePanel({
 
   const onPointerDown = (idx: number) => (e: React.PointerEvent<SVGCircleElement>) => {
     e.stopPropagation();
+    suppressClickRef.current = true;
     e.currentTarget.setPointerCapture(e.pointerId);
     setDragIndex(idx);
   };
@@ -180,7 +185,17 @@ export default function ToneCurvePanel({
     setDragIndex(null);
   };
 
+  const onSvgPointerDown = () => {
+    // Geste auf dem Hintergrund (Punkt-Handler stoppen Propagation).
+    suppressClickRef.current = false;
+  };
+
   const onSvgClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (suppressClickRef.current) {
+      // Click nach Pointerdown/Drag auf einem Punkt — kein neuer Punkt.
+      suppressClickRef.current = false;
+      return;
+    }
     if (effective.points.length >= TONE_CURVE_MAX_POINTS) return;
     if (!svgRef.current) return;
     // Nur reagieren, wenn nicht auf einem Punkt geklickt wurde — die
@@ -203,6 +218,7 @@ export default function ToneCurvePanel({
         height={SIZE}
         viewBox={`0 0 ${SIZE} ${SIZE}`}
         className="block bg-stone-900 border border-stone-800 rounded select-none touch-none"
+        onPointerDown={onSvgPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
@@ -262,6 +278,11 @@ export default function ToneCurvePanel({
                 className="outline-none focus-visible:stroke-amber-300 focus-visible:[stroke-width:2]"
                 onKeyDown={onPointKeyDown(idx, inner)}
                 onPointerDown={onPointerDown(idx)}
+                onClick={(e) => {
+                  // Klick auf einen Punkt darf nicht zum SVG-Add durchbubbeln.
+                  e.stopPropagation();
+                  suppressClickRef.current = false;
+                }}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
                   if (inner) onRemovePoint(idx);

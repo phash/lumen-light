@@ -37,6 +37,12 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Veroeffentlichungs-Sperre (Migration 012): gesetzt, wenn ein eigenes
+    # Preset per Auto-Hide zurueckgezogen wurde; Admin-clear-reports hebt sie
+    # auf. Solange in der Zukunft -> kein Publish.
+    publish_blocked_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     presets: Mapped[list["Preset"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
@@ -288,8 +294,12 @@ class AccountTombstone(Base):
 class PresetApply(Base):
     """Dedupe fuer den Marketplace-Apply-Zaehler (Migration 011): ein
     Eintrag pro (user, preset, Tag). apply_count steigt nur, wenn der
-    Eintrag neu angelegt wurde."""
+    Eintrag neu angelegt wurde. Der Janitor loescht Eintraege vor heute
+    (Retention) — fuer das Dedupe genuegt der aktuelle Tag."""
     __tablename__ = "preset_applies"
+    __table_args__ = (
+        Index("ix_preset_applies_preset_id", "preset_id"),
+    )
 
     user_id: Mapped[UUID] = mapped_column(
         PG_UUID(as_uuid=True),
@@ -302,3 +312,25 @@ class PresetApply(Base):
         primary_key=True,
     )
     day: Mapped[date] = mapped_column(Date, primary_key=True)
+
+
+class KeycloakDeletion(Base):
+    """Ausstehende Keycloak-Account-Loeschung aus DELETE /me (Migration 012).
+    Wird in derselben Transaktion wie der Grabstein angelegt; der Janitor
+    wiederholt fehlgeschlagene Admin-API-Calls mit Backoff und loescht die
+    Row bei Erfolg (204/404). keycloak_sub im Klartext ist noetig, um den
+    Account loeschen zu koennen — er lebt nur bis zur erfolgreichen
+    Loeschung. Keine FK: der User ist bereits geloescht."""
+    __tablename__ = "keycloak_deletions"
+
+    keycloak_sub: Mapped[str] = mapped_column(String(255), primary_key=True)
+    attempts: Mapped[int] = mapped_column(
+        Integer, nullable=False, server_default=text("0"), default=0
+    )
+    last_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
+    next_attempt_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )

@@ -51,10 +51,18 @@ class Settings(BaseSettings):
     # Wegraeumen haengender Uploads/Prefixe durch den Janitor.
     janitor_grace_seconds: int = 15 * 60
 
-    # Retention (Janitor): erledigtes Feedback und Marketplace-Meldungen
-    # werden nach dieser Frist geloescht (DSGVO Speicherbegrenzung).
+    # Retention (Janitor): erledigtes und anonymisiertes Feedback sowie
+    # Marketplace-Meldungen (nur nicht-oeffentlicher, nicht auto-versteckter
+    # Presets) werden nach dieser Frist geloescht (DSGVO Speicherbegrenzung).
     feedback_retention_days: int = 365
     report_retention_days: int = 365
+    # Hoechstalter fuer Feedback in JEDEM Status (auch nie bearbeitetes).
+    feedback_max_age_days: int = 730
+
+    # Veroeffentlichungs-Sperre nach Auto-Hide eines eigenen Presets
+    # (users.publish_blocked_until = jetzt + Frist; Admin-clear-reports hebt
+    # sie vorzeitig auf).
+    publish_block_days: int = 30
 
     # App-seitiges Body-Limit fuer alle Requests (JSON-API). Pixel laufen
     # per Pre-Signed PUT direkt nach S3, die groessten legitimen JSON-Bodies

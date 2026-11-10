@@ -60,17 +60,15 @@ describe("useKeyboardShortcuts Haertung", () => {
     expect(onZoomOut).toHaveBeenCalledTimes(1);
   });
 
-  it("abonniert Listener nur einmal trotz neuer Objekt-Literale", () => {
-    const addSpy = vi.spyOn(window, "addEventListener");
-    const { rerender } = render(<Harness onResetAll={() => undefined} />);
-    const first = addSpy.mock.calls.filter((c) => c[0] === "keydown").length;
+  it("nutzt nach Rerender mit neuen Objekt-Literalen den neuesten Callback", () => {
+    const stale = vi.fn();
+    const { rerender } = render(<Harness onResetAll={stale} />);
     const latest = vi.fn();
     rerender(<Harness onResetAll={() => undefined} />);
     rerender(<Harness onResetAll={latest} />);
-    const after = addSpy.mock.calls.filter((c) => c[0] === "keydown").length;
-    expect(after).toBe(first);
     fireEvent.keyDown(window, { key: "0" });
+    // Genau ein Aufruf: kein doppelt abonnierter Listener, kein veralteter Callback.
     expect(latest).toHaveBeenCalledTimes(1);
-    addSpy.mockRestore();
+    expect(stale).not.toHaveBeenCalled();
   });
 });

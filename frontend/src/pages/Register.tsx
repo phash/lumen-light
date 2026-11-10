@@ -1,6 +1,9 @@
 import { useAuth } from "react-oidc-context";
 
+import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
+
 export default function Register() {
+  usePageMeta(`Registrieren${TITLE_SUFFIX}`, "de");
   const auth = useAuth();
 
   const onRegister = () => {

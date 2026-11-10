@@ -42,3 +42,13 @@ export function nudgeDelta(e: NudgeKeyEvent): { dx: number; dy: number } | null 
  */
 export const HANDLE_HIT_CLASS =
   "absolute w-6 h-6 -ml-3 -mt-3 flex items-center justify-center rounded-full outline-none focus-visible:ring-2 focus-visible:ring-amber-300";
+
+/**
+ * Gegen-Skalierung der Handles: der Overlay-Wrapper (EditorOverlayCanvas)
+ * setzt `--overlay-inv-zoom` = 1/zoom. Damit bleiben Trefferflaeche (24px)
+ * und Fokus-Ring bei jedem Zoom gleich gross. Die Handles zentrieren sich
+ * ueber negative Margins, `transform-origin: center` haelt sie am Punkt.
+ */
+export const INV_ZOOM_SCALE = "scale(var(--overlay-inv-zoom, 1))";
+export const INV_ZOOM_SCALE_X = "scaleX(var(--overlay-inv-zoom, 1))";
+export const INV_ZOOM_SCALE_Y = "scaleY(var(--overlay-inv-zoom, 1))";

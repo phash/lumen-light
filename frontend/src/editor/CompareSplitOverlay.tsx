@@ -1,6 +1,6 @@
 import { useRef } from "react";
 
-import { nudgeDelta } from "./overlayKeys";
+import { INV_ZOOM_SCALE_X, INV_ZOOM_SCALE_Y, nudgeDelta } from "./overlayKeys";
 
 interface Props {
   readonly snapshotUrl: string;
@@ -118,11 +118,14 @@ export default function CompareSplitOverlay({
         onPointerUp={end}
         onPointerCancel={end}
         className="absolute top-0 bottom-0 w-1 -ml-0.5 bg-amber-200/60 cursor-ew-resize pointer-events-auto outline-none focus-visible:ring-2 focus-visible:ring-amber-300 before:absolute before:inset-y-0 before:-left-3 before:-right-3 before:content-['']"
-        style={{ left: barLeft, touchAction: "none" }}
+        style={{ left: barLeft, touchAction: "none", transform: INV_ZOOM_SCALE_X }}
         aria-label="Vorher-Nachher-Trennlinie verschieben"
       >
         {/* Griff */}
-        <div className="absolute top-1/2 -translate-y-1/2 -ml-2 w-5 h-12 bg-amber-200 border-2 border-stone-900 flex items-center justify-center">
+        <div
+          className="absolute top-1/2 -translate-y-1/2 -ml-2 w-5 h-12 bg-amber-200 border-2 border-stone-900 flex items-center justify-center"
+          style={{ transform: INV_ZOOM_SCALE_Y }}
+        >
           <span className="text-[10px] text-stone-900 font-mono leading-none">‖</span>
         </div>
       </div>

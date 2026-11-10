@@ -120,18 +120,20 @@ def test_delete_user_network_error_returns_false(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_delete_me_calls_keycloak_admin(client, user_a):
-    """DELETE /me ruft kc_delete_user mit dem keycloak_sub auf."""
+async def test_delete_me_calls_keycloak_admin(client, user_a, monkeypatch):
+    """DELETE /me ruft die KC-Loeschung mit dem keycloak_sub auf."""
+    monkeypatch.setattr(keycloak_admin, "is_configured", lambda: True)
     sub = user_a["keycloak_sub"]
-    with patch("app.routers.auth.kc_delete_user", return_value=True) as mock_kc:
+    with patch("app.routers.auth.kc_attempt_delete", return_value=None) as mock_kc:
         r = await client.delete("/api/v1/auth/me", headers=user_a["headers"])
     assert r.status_code == 204, r.text
     mock_kc.assert_called_once_with(sub)
 
 
 @pytest.mark.asyncio
-async def test_delete_me_succeeds_even_if_keycloak_admin_fails(client, user_a):
+async def test_delete_me_succeeds_even_if_keycloak_admin_fails(client, user_a, monkeypatch):
     """KC-Ausfall darf das App-Cleanup NICHT verhindern."""
-    with patch("app.routers.auth.kc_delete_user", return_value=False):
+    monkeypatch.setattr(keycloak_admin, "is_configured", lambda: True)
+    with patch("app.routers.auth.kc_attempt_delete", return_value="HTTP 503"):
         r = await client.delete("/api/v1/auth/me", headers=user_a["headers"])
     assert r.status_code == 204, r.text

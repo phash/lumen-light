@@ -1,3 +1,5 @@
+import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
+
 /**
  * Datenschutzerklaerung — DSGVO Art. 13. Statisch und konservativ
  * formuliert; im Selfhost-Use-Case zwischen Bekannten genuegt das.
@@ -9,10 +11,11 @@
  * Endprodukt.
  */
 export default function Datenschutz() {
+  usePageMeta(`Datenschutz${TITLE_SUFFIX}`, "de");
   return (
     <section data-testid="page-datenschutz" className="px-8 py-12 max-w-3xl mx-auto text-stone-300">
       <h1 className="text-3xl text-stone-100">Datenschutz</h1>
-      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-11-10</p>
+      <p className="mt-2 text-stone-400 text-sm">Stand: 2026-11-10</p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">1. Verantwortlicher</h2>
       <p className="mt-3">
@@ -235,7 +238,7 @@ export default function Datenschutz() {
         (Matomo, Abschnitt 4b) arbeitet cookieless.
       </p>
 
-      <p className="mt-12 text-xs text-stone-500">
+      <p className="mt-12 text-xs text-stone-400">
         Dieser Text ist ein Vorlagentext. Vor einem öffentlichen Launch
         sollte er anwaltlich geprüft werden.
       </p>

@@ -44,7 +44,13 @@ export default function Histogram({ canvas, tick }: Props) {
       className="h-20 w-full bg-stone-950 rounded-sm border border-stone-800/60 overflow-hidden relative"
     >
       {bins && (
-        <svg viewBox={`0 0 ${bins.r.length} 40`} preserveAspectRatio="none" className="w-full h-full">
+        <svg
+          viewBox={`0 0 ${bins.r.length} 40`}
+          preserveAspectRatio="none"
+          className="w-full h-full"
+          role="img"
+          aria-label="RGB-Histogramm"
+        >
           {(["r", "g", "b"] as const).map((channel, i) => {
             const arr = bins[channel];
             const path =

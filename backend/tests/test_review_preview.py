@@ -58,7 +58,8 @@ async def test_veroeffentlichen_erzeugt_verkleinerte_vorschau_ohne_metadaten(
     )
     assert r.status_code == 201, r.text
     preset = await _preset_row(db_session, r.json()["id"])
-    assert preset.preview_key == f"{user_a['user']['id']}/previews/{preset.id}.jpg"
+    assert preset.preview_key is not None
+    assert preset.preview_key.startswith(f"{user_a['user']['id']}/previews/{preset.id}-")
 
     data = _get_object(preset.preview_key)
     img = PILImage.open(io.BytesIO(data))
@@ -154,7 +155,9 @@ async def test_vorschaubild_wechsel_erzeugt_neue_vorschau(client, user_a, db_ses
         json=_preset_body("Wechsel", blue),
     )
     assert r2.status_code == 200, r2.text
-    px = PILImage.open(io.BytesIO(_get_object(key))).convert("RGB").getpixel((5, 5))
+    new_key = (await _preset_row(db_session, preset_id)).preview_key
+    assert new_key is not None and new_key != key
+    px = PILImage.open(io.BytesIO(_get_object(new_key))).convert("RGB").getpixel((5, 5))
     assert isinstance(px, tuple)
     assert px[2] > 200 and px[0] < 60
 

@@ -113,7 +113,7 @@ export default function Landing({ lang = "de" }: LandingProps) {
 
       {/* Footer */}
       <div className="px-8 py-6 border-t border-stone-800/60">
-        <div className="max-w-4xl mx-auto flex flex-wrap gap-4 text-xs text-stone-500">
+        <div className="max-w-4xl mx-auto flex flex-wrap gap-4 text-xs text-stone-400">
           <Link to="/datenschutz" className="hover:text-stone-300">{c.footer.privacy}</Link>
           <Link to="/impressum" className="hover:text-stone-300">{c.footer.imprint}</Link>
           <a

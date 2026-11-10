@@ -115,9 +115,11 @@ export default function Admin() {
       </div>
 
       <div
-        className="mt-6"
+        className="mt-6 outline-none"
         role="tabpanel"
         id="admin-tabpanel"
+        data-testid="admin-tabpanel"
+        tabIndex={-1}
         aria-labelledby={`admin-tab-${tab}`}
       >
         {tab === "users" && <UsersTab onChange={reloadStats} />}
@@ -196,9 +198,13 @@ function UsersTab({ onChange }: { onChange: () => void }) {
   useEffect(load, [load]);
 
   const onToggle = async (u: AdminUser) => {
+    if (busy === u.id) return;
     setConfirmId(null);
     setBusy(u.id);
     setErr(null);
+    // Nach Abschluss (oder Fehler) zurueck auf den wiederhergestellten Toggle,
+    // sonst faellt der Fokus mit dem Confirm-Button in den Body.
+    requestFocus(`admin-user-toggle-${u.id}`);
     try {
       const updated = await api.adminPatchUser(u.id, !u.isDisabled);
       setUsers((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
@@ -221,8 +227,17 @@ function UsersTab({ onChange }: { onChange: () => void }) {
           {err}
         </div>
       )}
-      <div className="overflow-x-auto border border-stone-800">
+      {/* Scroll-Container per Tastatur erreichbar (horizontal scrollbar). */}
+      <div
+        className="overflow-x-auto border border-stone-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+        tabIndex={0}
+        role="region"
+        aria-label="Nutzertabelle"
+      >
         <table className="w-full text-sm">
+          <caption className="sr-only">
+            Registrierte Nutzer mit Presets, Bildern, Feedback und Sperrstatus
+          </caption>
           <thead className="bg-stone-900 text-stone-400 text-[11px] uppercase tracking-[0.15em]">
             <tr>
               <th className="text-left px-3 py-2">E-Mail</th>
@@ -264,13 +279,15 @@ function UsersTab({ onChange }: { onChange: () => void }) {
                 <td className="px-3 py-2">
                   {confirmId === u.id ? (
                     <span className="flex items-center gap-2 whitespace-nowrap">
+                      <span className="text-xs text-stone-300">Nutzer sperren?</span>
                       <AutoFocusButton
                         onClick={() => void onToggle(u)}
-                        disabled={busy === u.id}
+                        aria-disabled={busy === u.id}
+                        aria-label={`${u.email} sperren`}
                         data-testid={`admin-user-toggle-confirm-${u.id}`}
-                        className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] border border-red-700 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                        className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] border border-red-700 text-red-300 hover:bg-red-900/30 aria-disabled:opacity-50"
                       >
-                        Wirklich sperren?
+                        Sperren
                       </AutoFocusButton>
                       <button
                         type="button"
@@ -288,16 +305,24 @@ function UsersTab({ onChange }: { onChange: () => void }) {
                     <button
                       type="button"
                       onClick={() => {
+                        // aria-disabled statt disabled: Button bleibt
+                        // fokussierbar, der Fokus geht waehrend busy nicht verloren.
+                        if (busy === u.id) return;
                         if (u.isDisabled) void onToggle(u);
                         else setConfirmId(u.id);
                       }}
-                      disabled={busy === u.id}
+                      aria-disabled={busy === u.id}
+                      aria-label={
+                        u.isDisabled
+                          ? `${u.email}: Gesperrt — Aktivieren`
+                          : `${u.email} sperren`
+                      }
                       data-testid={`admin-user-toggle-${u.id}`}
                       className={`px-2 py-1 text-[10px] uppercase tracking-[0.2em] border ${
                         u.isDisabled
                           ? "border-red-700 text-red-300 hover:bg-red-900/30"
                           : "border-stone-700 text-stone-400 hover:border-amber-300/50"
-                      } disabled:opacity-50`}
+                      } aria-disabled:opacity-50`}
                     >
                       {u.isDisabled ? "Gesperrt — Aktivieren" : "Sperren"}
                     </button>
@@ -577,10 +602,16 @@ function ReportsTab({ onChange }: { onChange: () => void }) {
   useEffect(load, [load]);
 
   const clearReports = async (p: AdminReportedPreset) => {
+    if (busy === p.id) return;
     setBusy(p.id);
     setErr(null);
+    // Fokus-Ziel nach dem Entfernen: naechster Eintrag, sonst vorheriger,
+    // sonst das Tab-Panel.
+    const idx = items.findIndex((x) => x.id === p.id);
+    const neighbor = items[idx + 1] ?? items[idx - 1];
     try {
       await api.adminClearPresetReports(p.id);
+      requestFocus(neighbor ? `admin-report-clear-${neighbor.id}` : "admin-tabpanel");
       // Ohne Meldungen faellt das Preset aus der Moderationsliste.
       setItems((prev) => prev.filter((x) => x.id !== p.id));
       onChange();
@@ -592,9 +623,11 @@ function ReportsTab({ onChange }: { onChange: () => void }) {
   };
 
   const toggleOwner = async (p: AdminReportedPreset) => {
+    if (busy === p.id) return;
     setConfirmId(null);
     setBusy(p.id);
     setErr(null);
+    requestFocus(`admin-report-owner-toggle-${p.id}`);
     try {
       const updated = await api.adminPatchUser(p.ownerId, !p.ownerIsDisabled);
       setItems((prev) =>
@@ -662,22 +695,26 @@ function ReportsTab({ onChange }: { onChange: () => void }) {
                   <button
                     type="button"
                     onClick={() => void clearReports(p)}
-                    disabled={busy === p.id}
+                    aria-disabled={busy === p.id}
                     data-testid={`admin-report-clear-${p.id}`}
                     title="Meldungen verwerfen — der Creator darf das Preset wieder veröffentlichen."
-                    className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] border border-stone-700 text-stone-300 hover:border-amber-300/50 disabled:opacity-40"
+                    className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] border border-stone-700 text-stone-300 hover:border-amber-300/50 aria-disabled:opacity-40"
                   >
                     Meldungen verwerfen
                   </button>
                   {confirmId === p.id ? (
                     <>
+                      <span className="self-center text-xs text-stone-300">
+                        Creator sperren?
+                      </span>
                       <AutoFocusButton
                         onClick={() => void toggleOwner(p)}
-                        disabled={busy === p.id}
+                        aria-disabled={busy === p.id}
+                        aria-label={`${p.ownerEmail} sperren`}
                         data-testid={`admin-report-owner-confirm-${p.id}`}
-                        className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] border border-red-700 text-red-300 hover:bg-red-900/30 disabled:opacity-40"
+                        className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] border border-red-700 text-red-300 hover:bg-red-900/30 aria-disabled:opacity-40"
                       >
-                        Creator wirklich sperren?
+                        Sperren
                       </AutoFocusButton>
                       <button
                         type="button"
@@ -695,16 +732,17 @@ function ReportsTab({ onChange }: { onChange: () => void }) {
                     <button
                       type="button"
                       onClick={() => {
+                        if (busy === p.id) return;
                         if (p.ownerIsDisabled) void toggleOwner(p);
                         else setConfirmId(p.id);
                       }}
-                      disabled={busy === p.id}
+                      aria-disabled={busy === p.id}
                       data-testid={`admin-report-owner-toggle-${p.id}`}
                       className={`px-2 py-1 text-[10px] uppercase tracking-[0.2em] border ${
                         p.ownerIsDisabled
                           ? "border-red-700 text-red-300 hover:bg-red-900/30"
                           : "border-stone-700 text-stone-400 hover:border-red-700"
-                      } disabled:opacity-40`}
+                      } aria-disabled:opacity-40`}
                     >
                       {p.ownerIsDisabled ? "Creator entsperren" : "Creator sperren"}
                     </button>

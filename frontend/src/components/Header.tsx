@@ -5,6 +5,7 @@ import { NavLink, useLocation } from "react-router-dom";
 import { clearOfflineCaches } from "../auth/clearCaches";
 import { useIsAdmin } from "../auth/useIsAdmin";
 import { CONTENT, type HeaderContent } from "../i18n/content";
+import { isEnPath } from "../i18n/locale";
 import FeedbackDialog from "./FeedbackDialog";
 
 function navLinks(
@@ -42,10 +43,10 @@ function LangSwitch({
         className={isEn ? "text-stone-400 hover:text-amber-200" : "text-amber-200 font-medium"}
         hrefLang="de"
         lang="de"
-        aria-label={h.langNameDe}
         aria-current={isEn ? undefined : "true"}
       >
-        DE
+        {/* Sichtbarer Text bleibt Teil des Namens (WCAG 2.5.3). */}
+        DE<span className="sr-only"> ({h.langNameDe})</span>
       </a>
       <span className="text-stone-500" aria-hidden="true">/</span>
       <a
@@ -53,10 +54,9 @@ function LangSwitch({
         className={isEn ? "text-amber-200 font-medium" : "text-stone-400 hover:text-amber-200"}
         hrefLang="en"
         lang="en"
-        aria-label={h.langNameEn}
         aria-current={isEn ? "true" : undefined}
       >
-        EN
+        EN<span className="sr-only"> ({h.langNameEn})</span>
       </a>
     </span>
   );
@@ -66,7 +66,7 @@ export default function Header() {
   const auth = useAuth();
   const isAdmin = useIsAdmin();
   // Aktive Landing-Locale fuer den Sprachumschalter (EN-Landing liegt auf /en).
-  const isEnActive = useLocation().pathname.startsWith("/en");
+  const isEnActive = isEnPath(useLocation().pathname);
   const h = CONTENT[isEnActive ? "en" : "de"].header;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);

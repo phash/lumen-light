@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from uuid import UUID
+from uuid import UUID, uuid4
 
 import boto3
 from botocore.client import Config
@@ -112,10 +112,12 @@ class StorageService:
         return post["url"], fields, self._settings.presigned_url_expires_in
 
     def make_preview_key(self, user_id: UUID, preset_id: UUID) -> str:
-        """<user_id>/previews/<preset_id>.jpg — serverseitig erzeugte,
-        metadatenfreie Marketplace-Vorschau. Gleicher User-Prefix, damit der
-        Prefix-Purge aus DELETE /me sie mit erfasst."""
-        return f"{user_id}/previews/{preset_id}.jpg"
+        """<user_id>/previews/<preset_id>-<version>.jpg — serverseitig
+        erzeugte, metadatenfreie Marketplace-Vorschau. Gleicher User-Prefix,
+        damit der Prefix-Purge aus DELETE /me sie mit erfasst. Jeder Aufruf
+        liefert einen neuen Key: eine neue Vorschau ueberschreibt nie die
+        aktuell referenzierte (Rollback-sicher)."""
+        return f"{user_id}/previews/{preset_id}-{uuid4().hex[:12]}.jpg"
 
     def presign_get(self, key: str, *, attachment: bool = False) -> tuple[str, int]:
         """Pre-Signed GET. attachment=True setzt response-content-disposition

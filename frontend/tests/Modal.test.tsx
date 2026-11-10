@@ -65,4 +65,45 @@ describe("Modal", () => {
     await userEvent.keyboard("{Escape}");
     expect(document.activeElement).toBe(opener);
   });
+
+  it("behaelt den Fokus bei Re-Render mit neuer onClose-Identitaet", async () => {
+    function Harness() {
+      const [text, setText] = useState("");
+      return (
+        // Inline-Arrow: jede Eingabe erzeugt eine neue onClose-Identitaet.
+        <Modal onClose={() => setText("")} testId="m" ariaLabel="Test">
+          <button data-testid="first">Erstes</button>
+          <textarea
+            data-testid="ta"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+        </Modal>
+      );
+    }
+    render(<Harness />);
+    const ta = screen.getByTestId("ta");
+    await userEvent.click(ta);
+    await userEvent.keyboard("abc");
+    expect(ta).toHaveValue("abc");
+    expect(document.activeElement).toBe(ta);
+  });
+
+  it("ruft beim Escape die aktuelle onClose-Version auf", async () => {
+    const first = vi.fn();
+    const second = vi.fn();
+    const { rerender } = render(
+      <Modal onClose={first} ariaLabel="Test">
+        <button>OK</button>
+      </Modal>,
+    );
+    rerender(
+      <Modal onClose={second} ariaLabel="Test">
+        <button>OK</button>
+      </Modal>,
+    );
+    await userEvent.keyboard("{Escape}");
+    expect(first).not.toHaveBeenCalled();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
 });

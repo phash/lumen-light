@@ -101,7 +101,7 @@ export default function EditorBanners({
       {cameraInfo && (
         <p
           data-testid="editor-camera-info"
-          className="absolute top-6 right-6 text-xs uppercase tracking-[0.2em] text-stone-500"
+          className="absolute top-6 right-6 text-xs uppercase tracking-[0.2em] text-stone-400"
         >
           {cameraInfo}
         </p>

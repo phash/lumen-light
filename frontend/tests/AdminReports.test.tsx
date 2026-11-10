@@ -106,3 +106,69 @@ describe("Admin Meldungen-Tab", () => {
     expect(await screen.findByTestId("admin-reports-empty")).toBeInTheDocument();
   });
 });
+
+describe("Admin Fokus und Bestaetigungen", () => {
+  it("Verwerfen des letzten Eintrags fokussiert das Tab-Panel", async () => {
+    const api = makeFakeApi();
+    render(api);
+    await userEvent.click(screen.getByTestId("admin-tab-reports"));
+    await userEvent.click(await screen.findByTestId("admin-report-clear-p-1"));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId("admin-tabpanel")),
+    );
+  });
+
+  it("Creator-Sperre: Frage als Text, Verb als Button, Fokus zurueck auf den Toggle", async () => {
+    const api = makeFakeApi();
+    render(api);
+    await userEvent.click(screen.getByTestId("admin-tab-reports"));
+    await userEvent.click(await screen.findByTestId("admin-report-owner-toggle-p-1"));
+    expect(screen.getByText("Creator sperren?")).toBeInTheDocument();
+    const confirm = screen.getByTestId("admin-report-owner-confirm-p-1");
+    expect(confirm).toHaveTextContent(/^Sperren$/);
+    expect(confirm).toHaveAccessibleName("creator@example.com sperren");
+    await userEvent.click(confirm);
+    await waitFor(() =>
+      expect(document.activeElement).toBe(
+        screen.getByTestId("admin-report-owner-toggle-p-1"),
+      ),
+    );
+  });
+
+  it("Nutzer sperren: Tabelle hat Caption, Region und benannte Buttons", async () => {
+    const api = makeFakeApi();
+    api.adminListUsers.mockResolvedValue([USER]);
+    api.adminPatchUser.mockResolvedValue({ ...USER, isDisabled: true });
+    render(api);
+    const toggle = await screen.findByTestId("admin-user-toggle-u-1");
+    expect(toggle).toHaveAccessibleName("anna@example.com sperren");
+    expect(screen.getByRole("region", { name: "Nutzertabelle" })).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+    expect(screen.getByRole("table")).toHaveAccessibleName(/Registrierte Nutzer/);
+    await userEvent.click(toggle);
+    const confirm = screen.getByTestId("admin-user-toggle-confirm-u-1");
+    expect(confirm).toHaveTextContent(/^Sperren$/);
+    await userEvent.click(confirm);
+    expect(api.adminPatchUser).toHaveBeenCalledWith("u-1", true);
+    await waitFor(() =>
+      expect(screen.getByTestId("admin-user-toggle-u-1")).toHaveTextContent(
+        "Gesperrt — Aktivieren",
+      ),
+    );
+    expect(document.activeElement).toBe(screen.getByTestId("admin-user-toggle-u-1"));
+  });
+});
+
+const USER = {
+  id: "u-1",
+  email: "anna@example.com",
+  handle: null,
+  isDisabled: false,
+  presetCount: 0,
+  publishedPresetCount: 0,
+  imageCount: 0,
+  feedbackCount: 0,
+  createdAt: "2026-10-01T00:00:00Z",
+};

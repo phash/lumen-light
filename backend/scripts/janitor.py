@@ -1,4 +1,4 @@
-"""CLI-Entry fuer den Janitor (Upload-Cleanup, Purges, Retention).
+"""CLI-Entry fuer den Janitor (Upload-Cleanup, Purges, Retention, KC-Loeschungen).
 
 Aufruf via Cron im Production-Stack:
 
@@ -29,6 +29,7 @@ from app.janitor import (
     pending_ttl,
     prune_pending_uploads,
     prune_retention,
+    retry_keycloak_deletions,
     retry_storage_purges,
     sweep_stale_staging,
 )
@@ -62,13 +63,28 @@ def _steps(ttl_minutes: int) -> list[tuple[str, Step]]:
 
     async def retention(db: AsyncSession, _storage: StorageService) -> dict[str, Any]:
         r = await prune_retention(db)
-        return {"feedbackDeleted": r.feedback_deleted, "reportsDeleted": r.reports_deleted}
+        return {
+            "feedbackDeleted": r.feedback_deleted,
+            "reportsDeleted": r.reports_deleted,
+            "appliesDeleted": r.applies_deleted,
+        }
+
+    async def keycloak(db: AsyncSession, _storage: StorageService) -> dict[str, Any]:
+        r = await retry_keycloak_deletions(db)
+        return {
+            "keycloakConfigured": r.configured,
+            "keycloakCandidates": r.candidates,
+            "keycloakDeleted": r.deleted,
+            "keycloakErrors": r.errors,
+            "keycloakGivenUp": r.given_up,
+        }
 
     return [
         ("pending", pending),
         ("staging", staging),
         ("purges", purges),
         ("retention", retention),
+        ("keycloak", keycloak),
     ]
 
 

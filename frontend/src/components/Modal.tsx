@@ -38,12 +38,19 @@ export default function Modal({
   cardTestId,
   labelledBy,
   ariaLabel,
-  backdropClassName = "fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4",
+  backdropClassName = "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4",
   cardClassName,
   closeOnBackdrop = true,
   children,
 }: ModalProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
+  // onClose im Ref halten: Aufrufer uebergeben oft Inline-Arrows. Waere
+  // onClose eine Effect-Dependency, liefe der Fokus-Effekt bei jedem
+  // Parent-Re-Render neu und zoege den Fokus aufs erste Element zurueck.
+  const onCloseRef = useRef(onClose);
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     const card = cardRef.current;
@@ -69,7 +76,7 @@ export default function Modal({
         // stopPropagation, damit Editor-Shortcuts (globaler keydown) nicht
         // zusaetzlich feuern, waehrend ein Dialog offen ist.
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !card) return;
@@ -95,7 +102,8 @@ export default function Modal({
       document.removeEventListener("keydown", onKey, true);
       previouslyFocused?.focus();
     };
-  }, [onClose]);
+    // Nur Mount/Unmount — onClose kommt ueber onCloseRef.
+  }, []);
 
   return (
     <div

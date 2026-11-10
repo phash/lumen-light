@@ -15,6 +15,10 @@ import {
   setFaceDetectionConsent,
 } from "../editor/consent";
 import { genreLabel } from "../editor/genreLabel";
+import {
+  getSingleKeyShortcutsEnabled,
+  setSingleKeyShortcutsEnabled,
+} from "../editor/shortcutPrefs";
 import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
 import { useFocusRequest } from "../hooks/useFocusRequest";
 import OnboardingTour from "../onboarding/OnboardingTour";
@@ -62,6 +66,9 @@ export default function Account() {
     () => getOnboardingState(),
   );
   const [tourOpen, setTourOpen] = useState(false);
+  const [singleKeyShortcuts, setSingleKeyShortcuts] = useState<boolean>(() =>
+    getSingleKeyShortcutsEnabled(),
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -256,6 +263,29 @@ export default function Account() {
           >
             Tour {onboardingState === "completed" ? "erneut " : ""}starten
           </button>
+        </section>
+
+        <section data-testid="account-shortcuts">
+          <h2 className="text-stone-300 italic">Tastenkürzel</h2>
+          <p id="account-single-key-hint" className="mt-1 text-sm text-stone-400">
+            Einzeltasten-Kürzel im Editor (0, R, P, \, +, −, ?) lösen
+            Aktionen ohne Strg/Cmd aus. Wenn du Spracheingabe oder
+            Bedienhilfen nutzt, kannst du sie hier abschalten —
+            Kombinationen wie Strg/Cmd + Z bleiben aktiv.
+          </p>
+          <label className="mt-3 flex items-center gap-2 text-sm text-stone-300 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={singleKeyShortcuts}
+              aria-describedby="account-single-key-hint"
+              onChange={(e) => {
+                setSingleKeyShortcuts(e.target.checked);
+                setSingleKeyShortcutsEnabled(e.target.checked);
+              }}
+              data-testid="account-single-key-shortcuts"
+            />
+            Einzeltasten-Kürzel aktivieren
+          </label>
         </section>
 
         <section data-testid="account-profile">

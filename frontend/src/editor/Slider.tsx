@@ -1,4 +1,4 @@
-import { useCallback, useRef } from "react";
+import { useCallback, useId, useRef } from "react";
 
 import {
   type AdjustmentKey,
@@ -30,6 +30,7 @@ export default function Slider({
   onChange,
 }: Props) {
   const trackRef = useRef<HTMLDivElement>(null);
+  const tooltipId = useId();
   const draggingRef = useRef(false);
 
   const range = max - min;
@@ -102,6 +103,11 @@ export default function Slider({
       case "End":
         next = max;
         break;
+      // Tastatur-Pendant zum Doppelklick: auf Default zuruecksetzen.
+      case "Enter":
+      case "Delete":
+        next = defaultValue;
+        break;
       default:
         return;
     }
@@ -138,6 +144,7 @@ export default function Slider({
         aria-valuemax={max}
         aria-valuenow={value}
         aria-valuetext={formatAdjustmentValue(adjustmentKey, value)}
+        aria-describedby={tooltip ? tooltipId : undefined}
         tabIndex={0}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -164,6 +171,12 @@ export default function Slider({
           style={{ left: `${pct}%` }}
         />
       </div>
+      {tooltip && (
+        // Tooltip fuer Screenreader/Tastatur — title allein ist nicht zugaenglich.
+        <span id={tooltipId} className="sr-only">
+          {tooltip}
+        </span>
+      )}
     </div>
   );
 }
