@@ -272,7 +272,8 @@ class _JwkCache:
 
     def __init__(self) -> None:
         self._keys_by_kid: dict[str, dict[str, Any]] = {}
-        self._fetched_at: float = 0.0
+        # -inf = nie geladen: gilt unabhaengig von der Host-Uptime als abgelaufen.
+        self._fetched_at: float = float("-inf")
         self._failed_at: float | None = None
         self._lock = threading.Lock()
 
@@ -376,7 +377,7 @@ class _JwkCache:
     def reset(self) -> None:
         """Fuer Tests: Cache nach Container-Restart invalidieren."""
         self._keys_by_kid = {}
-        self._fetched_at = 0.0
+        self._fetched_at = float("-inf")
         self._failed_at = None
 
 

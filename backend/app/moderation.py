@@ -45,10 +45,10 @@ async def block_publishing(
     )
 
 
-async def release_publish_block(db: AsyncSession, user_id: UUID) -> None:
-    """Sperre aufheben (Admin hat Meldungen verworfen) — aber nur, wenn
-    kein weiteres eigenes Preset mehr auto-versteckt ist."""
-    still_hidden = (
+async def has_auto_hidden_preset(db: AsyncSession, user_id: UUID) -> bool:
+    """True, solange ein eigenes Preset wegen Meldungen versteckt ist und
+    die Moderation (clear-reports) noch aussteht."""
+    hit = (
         await db.execute(
             select(Preset.id)
             .where(
@@ -59,7 +59,22 @@ async def release_publish_block(db: AsyncSession, user_id: UUID) -> None:
             .limit(1)
         )
     ).scalar_one_or_none()
-    if still_hidden is not None:
+    return hit is not None
+
+
+async def may_publish(db: AsyncSession, user: User) -> bool:
+    """Gesperrt, solange der Timer laeuft ODER ein eigenes Preset noch
+    auto-versteckt ist — der Timer allein darf eine offene Moderation
+    nicht aufheben."""
+    if is_publish_blocked(user):
+        return False
+    return not await has_auto_hidden_preset(db, user.id)
+
+
+async def release_publish_block(db: AsyncSession, user_id: UUID) -> None:
+    """Sperre aufheben (Admin hat Meldungen verworfen) — aber nur, wenn
+    kein weiteres eigenes Preset mehr auto-versteckt ist."""
+    if await has_auto_hidden_preset(db, user_id):
         return
     await db.execute(
         update(User)

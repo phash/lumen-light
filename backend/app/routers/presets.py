@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import current_user
 from app.config import settings
 from app.database import get_db
-from app.moderation import REPORT_AUTOHIDE_THRESHOLD, is_publish_blocked
+from app.moderation import REPORT_AUTOHIDE_THRESHOLD, may_publish
 from app.models import Image, ImageEdit, Preset, User
 from app.previews import delete_preview_object, sync_preset_preview
 from app.profile_groups import merge_edit_state
@@ -77,12 +77,13 @@ async def ensure_preset_quota(db: AsyncSession, user: User) -> None:
         )
 
 
-async def _ensure_may_publish(user: User) -> None:
+async def _ensure_may_publish(db: AsyncSession, user: User) -> None:
     """Solange die Publish-Sperre des Users laeuft (gesetzt beim Auto-Hide
-    eines eigenen Presets, Migration 012), darf er nichts veroeffentlichen.
-    Die Sperre haengt am User: Loeschen oder Umbenennen des versteckten
-    Presets umgeht sie nicht (L3)."""
-    if is_publish_blocked(user):
+    eines eigenen Presets, Migration 012) oder ein eigenes Preset noch
+    auto-versteckt ist, darf er nichts veroeffentlichen. Die Sperre haengt
+    am User: Loeschen oder Umbenennen des versteckten Presets umgeht sie
+    nicht (L3); ein abgelaufener Timer hebt offene Moderation nicht auf."""
+    if not await may_publish(db, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
@@ -187,7 +188,7 @@ async def create_preset(
         db, user, payload.preview_image_id, public=payload.visibility == "public"
     )
     if payload.visibility == "public":
-        await _ensure_may_publish(user)
+        await _ensure_may_publish(db, user)
     # L9: Namenskonflikt VOR dem (teuren) Vorschau-Build erkennen.
     await _ensure_name_free(db, user, payload.name)
     published_at: datetime | None = (
@@ -270,7 +271,7 @@ async def update_preset(
             ),
         )
     if payload.visibility == "public" and not was_public:
-        await _ensure_may_publish(user)
+        await _ensure_may_publish(db, user)
     # Vorschau neu erzeugen, wenn erstmals veroeffentlicht oder das
     # Vorschaubild gewechselt wurde.
     regenerate = (not was_public) or p.preview_image_id != payload.preview_image_id

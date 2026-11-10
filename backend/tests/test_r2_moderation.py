@@ -152,3 +152,24 @@ async def test_clear_reports_entfernt_restliche_vorschau(
     assert (await _preset_row(db_session, pid)).preview_key is None
     with pytest.raises(ObjectNotFound):
         get_storage().head(key)
+
+
+async def test_abgelaufene_sperre_blockiert_solange_preset_versteckt_ist(
+    client, user_a, reporters, db_session
+):
+    pid, _ = await _publish(client, user_a, "Noch-Versteckt")
+    await _auto_hide(client, pid, reporters)
+    # Timer abgelaufen, Moderation aber noch offen (Preset weiter versteckt).
+    await db_session.execute(
+        update(User)
+        .where(User.id == UUID(user_a["user"]["id"]))
+        .values(publish_blocked_until=datetime.now(timezone.utc) - timedelta(minutes=1))
+    )
+    await db_session.commit()
+    image_id = await upload_image(client, user_a["headers"])
+    r = await client.post(
+        "/api/v1/presets",
+        headers=user_a["headers"],
+        json=_preset_body("Neuer-Versuch", image_id),
+    )
+    assert r.status_code == 403, r.text
