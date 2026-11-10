@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 import jwt
 import pytest
+from fastapi import HTTPException
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import rsa
 
@@ -194,3 +195,42 @@ def test_development_warnt_nicht(monkeypatch, caplog):
     with caplog.at_level(logging.WARNING):
         warn_on_insecure_config()
     assert not any("KEYCLOAK_ADMIN_CLIENT_ID" in rec.getMessage() for rec in caplog.records)
+
+
+def _expired_cache_with_key(kid: str, age_seconds: float) -> None:
+    auth._jwk_cache.reset()
+    auth._jwk_cache._keys_by_kid = {kid: {"kid": kid}}  # noqa: SLF001
+    auth._jwk_cache._fetched_at = time.monotonic() - age_seconds  # noqa: SLF001
+
+
+def test_jwks_ausfall_nutzt_alten_key_nur_innerhalb_der_gnadenfrist(monkeypatch):
+    def _fail() -> None:
+        raise HTTPException(status_code=503, detail="down")
+
+    monkeypatch.setattr(auth._jwk_cache, "_fetch", _fail)
+    # Knapp abgelaufen: alter Key wird weiter akzeptiert.
+    _expired_cache_with_key("k", settings.jwk_cache_seconds + 10)
+    assert auth._jwk_cache.get("k") == {"kid": "k"}
+    # Weit jenseits der Gnadenfrist: fail closed.
+    _expired_cache_with_key(
+        "k", settings.jwk_cache_seconds + auth._JwkCache.STALE_GRACE_SECONDS + 10
+    )
+    with pytest.raises(HTTPException) as exc:
+        auth._jwk_cache.get("k")
+    assert exc.value.status_code == 503
+
+
+def test_jwks_ausfall_drosselt_erneute_abrufe(monkeypatch):
+    calls = 0
+
+    def _fail() -> None:
+        nonlocal calls
+        calls += 1
+        raise HTTPException(status_code=503, detail="down")
+
+    monkeypatch.setattr(auth._jwk_cache, "_fetch", _fail)
+    _expired_cache_with_key("k", settings.jwk_cache_seconds + 10)
+    for _ in range(20):
+        auth._jwk_cache.get("k")
+    # Nach dem ersten Fehlschlag kein Abruf pro Request mehr (Backoff).
+    assert calls == 1

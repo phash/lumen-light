@@ -263,11 +263,28 @@ class _JwkCache:
     """
 
     KID_MISS_REFETCH_SECONDS = 30.0
+    # Keycloak-Ausfall: abgelaufene Keys hoechstens so lange ueber die TTL
+    # hinaus weiter nutzen, danach fail closed (503).
+    STALE_GRACE_SECONDS = 3600.0
+    # Nach einem fehlgeschlagenen Abruf so lange keinen neuen versuchen —
+    # sonst blockiert jeder Request bis zu 5 s unter dem Lock.
+    FETCH_FAILURE_BACKOFF_SECONDS = 15.0
 
     def __init__(self) -> None:
         self._keys_by_kid: dict[str, dict[str, Any]] = {}
         self._fetched_at: float = 0.0
+        self._failed_at: float | None = None
         self._lock = threading.Lock()
+
+    def _within_stale_grace(self) -> bool:
+        age = time.monotonic() - self._fetched_at
+        return age <= settings.jwk_cache_seconds + self.STALE_GRACE_SECONDS
+
+    def _in_failure_backoff(self) -> bool:
+        return (
+            self._failed_at is not None
+            and time.monotonic() - self._failed_at < self.FETCH_FAILURE_BACKOFF_SECONDS
+        )
 
     def _is_expired(self) -> bool:
         return (time.monotonic() - self._fetched_at) > settings.jwk_cache_seconds
@@ -306,12 +323,20 @@ class _JwkCache:
             with self._lock:
                 # Double-Checked: ein paralleler Thread hat evtl. schon geladen.
                 if self._is_expired():
+                    stale_ok = kid in self._keys_by_kid and self._within_stale_grace()
+                    if stale_ok and self._in_failure_backoff():
+                        # Letzter Abruf ist eben erst gescheitert: alten Key
+                        # nutzen, ohne Keycloak erneut anzufragen.
+                        return self._keys_by_kid[kid]
                     try:
                         self._fetch()
+                        self._failed_at = None
                     except HTTPException:
+                        self._failed_at = time.monotonic()
                         # Keycloak kurz weg, Key aber (abgelaufen) im Cache:
-                        # weiter mit dem alten Key statt alle User auszusperren.
-                        if kid not in self._keys_by_kid:
+                        # innerhalb der Gnadenfrist weiter mit dem alten Key
+                        # statt alle User auszusperren; danach fail closed.
+                        if not stale_ok:
                             raise
                 elif kid not in self._keys_by_kid and (
                     time.monotonic() - self._fetched_at
@@ -329,6 +354,7 @@ class _JwkCache:
         """Fuer Tests: Cache nach Container-Restart invalidieren."""
         self._keys_by_kid = {}
         self._fetched_at = 0.0
+        self._failed_at = None
 
 
 _jwk_cache = _JwkCache()
