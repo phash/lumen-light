@@ -84,9 +84,9 @@ describe("Slider", () => {
     expect(v.className).toContain("amber");
   });
 
-  it("Wertanzeige ist grau (stone-500) am default", () => {
+  it("Wertanzeige ist grau (stone-400) am default", () => {
     renderSlider({ value: 0 });
     const v = screen.getByTestId("slider-contrast-value");
-    expect(v.className).toContain("stone-500");
+    expect(v.className).toContain("stone-400");
   });
 });

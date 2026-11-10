@@ -3,6 +3,7 @@ import { useLocation } from "react-router-dom";
 
 import { useApi } from "../api/use-api";
 import type { FeedbackKind } from "../api/client";
+import Modal from "./Modal";
 
 interface Props {
   open: boolean;
@@ -23,6 +24,9 @@ export default function FeedbackDialog({ open, onClose }: Props) {
   const [website, setWebsite] = useState(""); // Honeypot — bleibt leer
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<string | null>(null);
+  // "success" bleibt stehen, bis der User selbst schliesst — kein
+  // Auto-Close mehr (war mit 1.2s zu schnell zum Lesen).
+  const [feedbackTone, setFeedbackTone] = useState<"success" | "error">("error");
   const messageRef = useRef<HTMLTextAreaElement | null>(null);
 
   // Wir sind bewusst gegen setState-in-Effect (siehe react-hooks/set-state-
@@ -37,21 +41,14 @@ export default function FeedbackDialog({ open, onClose }: Props) {
     }
   }, [open]);
 
-  // Esc-Close fuer A11y. Mounted nur wenn Dialog offen.
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose]);
+  // Esc-Close, Focus-Trap und Fokus-Rueckgabe uebernimmt das Modal.
 
   if (!open) return null;
 
   const submit = async () => {
     const trimmed = message.trim();
     if (trimmed.length < 10) {
+      setFeedbackTone("error");
       setFeedback("Bitte mindestens 10 Zeichen schreiben.");
       return;
     }
@@ -66,11 +63,11 @@ export default function FeedbackDialog({ open, onClose }: Props) {
         // gefuellte Werte werden silent verworfen.
         website,
       });
-      setFeedback("Danke — Feedback erhalten.");
+      setFeedbackTone("success");
+      setFeedback("Danke — Feedback erhalten. Du kannst den Dialog jetzt schließen.");
       setMessage("");
-      // Nach 1.2s auto-close, damit User den Erfolg sieht
-      setTimeout(onClose, 1200);
     } catch (err) {
+      setFeedbackTone("error");
       setFeedback(
         err instanceof Error ? err.message : "Senden fehlgeschlagen.",
       );
@@ -80,18 +77,13 @@ export default function FeedbackDialog({ open, onClose }: Props) {
   };
 
   return (
-    <div
-      data-testid="feedback-dialog"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="feedback-dialog-title"
-      className="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-4"
-      onClick={onClose}
+    <Modal
+      onClose={onClose}
+      cardTestId="feedback-dialog"
+      labelledBy="feedback-dialog-title"
+      backdropClassName="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-4"
+      cardClassName="w-full max-w-md bg-stone-900 border border-stone-700 text-sm outline-none"
     >
-      <div
-        className="w-full max-w-md bg-stone-900 border border-stone-700 text-sm"
-        onClick={(e) => e.stopPropagation()}
-      >
         <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
           <h2 id="feedback-dialog-title" className="text-stone-200">Feedback senden</h2>
           <button
@@ -99,18 +91,19 @@ export default function FeedbackDialog({ open, onClose }: Props) {
             data-testid="feedback-close"
             onClick={onClose}
             aria-label="Schließen"
-            className="text-stone-500 hover:text-stone-200"
+            className="text-stone-400 hover:text-stone-200"
           >
             ✕
           </button>
         </div>
 
         <div className="px-4 py-3 space-y-3">
-          <div className="flex gap-2">
+          <div className="flex gap-2" role="group" aria-label="Art des Feedbacks">
             {KIND_OPTIONS.map((opt) => (
               <button
                 key={opt.value}
                 type="button"
+                aria-pressed={kind === opt.value}
                 onClick={() => setKind(opt.value)}
                 data-testid={`feedback-kind-${opt.value}`}
                 className={`flex-1 px-2 py-1.5 text-xs uppercase tracking-[0.2em] border ${
@@ -124,7 +117,12 @@ export default function FeedbackDialog({ open, onClose }: Props) {
             ))}
           </div>
 
+          <label htmlFor="feedback-message" className="sr-only">
+            Nachricht
+          </label>
           <textarea
+            id="feedback-message"
+            aria-describedby="feedback-message-counter"
             ref={messageRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
@@ -136,7 +134,10 @@ export default function FeedbackDialog({ open, onClose }: Props) {
             className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200"
           />
 
-          <div className="text-[10px] text-stone-500 text-right tabular-nums">
+          <div
+            id="feedback-message-counter"
+            className="text-[11px] text-stone-400 text-right tabular-nums"
+          >
             {message.trim().length} / 2000
           </div>
 
@@ -166,23 +167,30 @@ export default function FeedbackDialog({ open, onClose }: Props) {
             </label>
           </div>
 
-          {feedback && (
-            <div
-              data-testid="feedback-status"
-              className="text-xs text-amber-200"
-            >
-              {feedback}
-            </div>
-          )}
+          {/* Live-Regionen immer im DOM, damit Screenreader Aenderungen ansagen. */}
+          <div role="status">
+            {feedback && feedbackTone === "success" && (
+              <div data-testid="feedback-status" className="text-xs text-amber-200">
+                {feedback}
+              </div>
+            )}
+          </div>
+          <div role="alert">
+            {feedback && feedbackTone === "error" && (
+              <div data-testid="feedback-status" className="text-xs text-red-400">
+                {feedback}
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="px-4 py-3 border-t border-stone-800 flex justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-stone-500 hover:text-stone-300"
+            className="px-3 py-1 text-[10px] uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200"
           >
-            Abbrechen
+            {feedbackTone === "success" && feedback ? "Schließen" : "Abbrechen"}
           </button>
           <button
             type="button"
@@ -194,7 +202,6 @@ export default function FeedbackDialog({ open, onClose }: Props) {
             {busy ? "Senden …" : "Senden"}
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   );
 }

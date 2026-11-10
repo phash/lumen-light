@@ -225,7 +225,7 @@ Browser          Backend (FastAPI)         Garage
 
 ```
 lumen.mr-development.de        → /api/v1/* → lumen-api:4100
-                               → Rest      → lumen-web:80
+                               → Rest      → lumen-web:8080
 
 auth.mr-development.de         → keycloak:8080
   (oder Subdomain pro Realm)

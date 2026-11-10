@@ -1,7 +1,7 @@
 # Lumen · light — Block fuer /opt/caddyserver/Caddyfile.
 #
 # Single-Domain-Topologie, EIN Upstream (Netztrennung, Security-Review 2026-10):
-#   lumen.mr-development.de -> lumen-web:80 (nginx)
+#   lumen.mr-development.de -> lumen-web:8080 (nginx-unprivileged)
 #     /api/*          -> nginx -> lumen-api:4100      (FastAPI)
 #     /auth/*         -> nginx -> lumen-keycloak:8080 (KC_HTTP_RELATIVE_PATH=/auth)
 #     /lumen-images/* -> nginx -> lumen-garage:3900   (S3, Pre-Signed POST/GET)
@@ -28,15 +28,18 @@ lumen.mr-development.de {
         request_body {
             max_size 2MB
         }
-        reverse_proxy lumen-web:80
+        reverse_proxy lumen-web:8080
     }
 
-    # Master-Realm + Admin-Konsolen NICHT ins Internet (Password-Spraying auf
-    # den Bootstrap-Admin). Admin-Arbeit per SSH-Tunnel bzw. kcadm im
-    # Container (siehe infra/deployment-runbook.md). Die Admin-REST-API des
-    # lumen-Realms (/auth/admin/realms/lumen/...) bleibt erreichbar — die
-    # API nutzt sie fuer DELETE /me (Service-Account, Bearer-Token).
-    @kc_admin path /auth/realms/master /auth/realms/master/* /auth/admin/master/* /auth/admin/realms/master /auth/admin/realms/master/* /auth/admin/*/console /auth/admin/*/console/*
+    # Master-Realm + die KOMPLETTE Admin-Oberflaeche/-REST-API (/auth/admin/*,
+    # alle Realms) NICHT ins Internet (Password-Spraying auf den Bootstrap-
+    # Admin, Angriffsflaeche der Admin-REST-API). Admin-Arbeit per SSH-Tunnel
+    # bzw. kcadm im Container (siehe infra/deployment-runbook.md). Die API
+    # spricht die Admin-REST-API fuer DELETE /me intern an
+    # (KEYCLOAK_INTERNAL_URL=http://lumen-keycloak:8080/auth, Review L2).
+    # Account-Konsole (/auth/realms/lumen/account) bleibt erreichbar.
+    # nginx (frontend/nginx.conf) spiegelt diese Regel.
+    @kc_admin path /auth/realms/master /auth/realms/master/* /auth/admin /auth/admin/*
     handle @kc_admin {
         respond "Not found" 404
     }
@@ -45,7 +48,7 @@ lumen.mr-development.de {
     # fuer seine Login-Seiten — wir ueberschreiben sie hier bewusst NICHT.
     @auth path /auth/*
     handle @auth {
-        reverse_proxy lumen-web:80
+        reverse_proxy lumen-web:8080
     }
 
     # S3 (Garage). Pre-Signed POST (Upload) und GET (Download) laufen
@@ -73,7 +76,7 @@ lumen.mr-development.de {
             Content-Security-Policy "default-src 'none'; sandbox"
             X-Content-Type-Options "nosniff"
         }
-        reverse_proxy lumen-web:80
+        reverse_proxy lumen-web:8080
     }
 
     # Schema-Disclosure hart blocken (Defense-in-Depth zum LUMEN_ENV-Toggle).
@@ -83,14 +86,27 @@ lumen.mr-development.de {
     }
 
     # SPA (nginx) — strikte CSP NUR fuer die App-Antworten (nicht /auth).
-    # script-src erlaubt von musikersuche.org NUR die exakte Datei
-    # /matomo/matomo.js (nicht die ganze Origin). 'wasm-unsafe-eval' ist
-    # fuer den libraw-wasm-RAW-Decoder noetig (WebAssembly.instantiate) und
-    # erlaubt KEIN JS-eval. Kein 'unsafe-inline'/'unsafe-eval' im script-src.
+    # Nur Caddy setzt sie (Browser kommen nie direkt an nginx).
+    # - Matomo (musikersuche.org): script-src NUR die exakte Datei
+    #   /matomo/matomo.js, connect-src NUR der Tracker-Endpunkt
+    #   /matomo/matomo.php (sendBeacon/XHR), img-src nur /matomo/ (Pixel-
+    #   Fallback). Keine SRI moeglich: matomo.js aendert sich mit jedem
+    #   Matomo-Update der Fremdinstanz (Hash-Bruch = stilles Tracking-Aus).
+    # - Face-Detection (opt-in, faceDetector.ts): TF.js laedt das Modell
+    #   (model.json + Weights) von tfhub.dev/mediapipe/tfjs-model/
+    #   face_detection/short/1/ -> 30x-Redirect zu www.kaggle.com -> zu
+    #   storage.googleapis.com. Der Erst-Request ist auf den exakten Modell-
+    #   Pfad begrenzt; fuer Redirect-Ziele ignoriert CSP den Pfad (CSP3
+    #   §6.7.2.8), daher dort nur Host-Quellen. SRI gibt es fuer fetch()
+    #   nicht — saubere Loesung waere das Modell selbst unter /models/ zu
+    #   hosten (Backlog), dann entfallen alle drei Hosts.
+    # - 'wasm-unsafe-eval' ist fuer den libraw-wasm-RAW-Decoder noetig
+    #   (WebAssembly.instantiate) und erlaubt KEIN JS-eval. Kein
+    #   'unsafe-inline'/'unsafe-eval' im script-src.
     handle {
         header {
-            Content-Security-Policy "default-src 'self'; img-src 'self' blob: data: https://musikersuche.org; media-src 'self' blob:; connect-src 'self' https://musikersuche.org https://tfhub.dev https://storage.googleapis.com https://www.kaggle.com; script-src 'self' 'wasm-unsafe-eval' https://musikersuche.org/matomo/matomo.js; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+            Content-Security-Policy "default-src 'self'; img-src 'self' blob: data: https://musikersuche.org/matomo/; media-src 'self' blob:; connect-src 'self' https://musikersuche.org/matomo/matomo.php https://tfhub.dev/mediapipe/tfjs-model/face_detection/short/1/ https://www.kaggle.com https://storage.googleapis.com; script-src 'self' 'wasm-unsafe-eval' https://musikersuche.org/matomo/matomo.js; style-src 'self' 'unsafe-inline'; font-src 'self' data:; worker-src 'self' blob:; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
         }
-        reverse_proxy lumen-web:80
+        reverse_proxy lumen-web:8080
     }
 }

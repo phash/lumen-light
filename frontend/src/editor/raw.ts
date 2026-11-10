@@ -140,6 +140,10 @@ export async function decodeRaw(file: File): Promise<DecodedRaw> {
     };
   } catch (err) {
     throw err instanceof Error ? err : new Error(String(err));
+  } finally {
+    // libraw-wasm >= 1.6 startet pro Instanz einen Worker mit eigenem
+    // WASM-Heap -> immer freigeben, sonst leakt jedes RAW.
+    raw.dispose();
   }
 }
 

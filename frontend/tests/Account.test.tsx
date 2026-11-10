@@ -12,6 +12,7 @@ import {
 } from "../src/api/client";
 import { defaultAdjustments } from "../src/editor/adjustments";
 import Account from "../src/pages/Account";
+import * as clearCachesModule from "../src/auth/clearCaches";
 import { makeFakeAuth, makeFakeUser, renderWithAuth } from "./test-utils";
 
 interface FakeApi extends ApiClient {
@@ -20,6 +21,8 @@ interface FakeApi extends ApiClient {
   updateProfile: Mock;
   listPublishedPresets: Mock;
   updatePreset: Mock;
+  deleteMe: Mock;
+  exportMe: Mock;
 }
 
 function makeFakeApi(): FakeApi {
@@ -153,11 +156,25 @@ describe("Account", () => {
     ).toHaveTextContent(/bereits vergeben/);
   });
 
+  it("Ungueltiger Handle wird clientseitig abgefangen (aria-describedby)", async () => {
+    const api = makeFakeApi();
+    render(api);
+    const handle = await screen.findByTestId("account-handle");
+    await userEvent.type(handle, "Anna_X");
+    await userEvent.tab();
+    const err = await screen.findByTestId("account-handle-error");
+    expect(err).toHaveTextContent(/3.{1,2}40/);
+    expect(handle).toHaveAttribute("aria-describedby", "account-handle-error");
+    expect(handle).toHaveAttribute("aria-invalid", "true");
+    await userEvent.click(screen.getByTestId("account-profile-save"));
+    expect(api.updateProfile).not.toHaveBeenCalled();
+  });
+
   it("Profil-Save 422 zeigt Format-Hinweis", async () => {
     const api = makeFakeApi();
     api.updateProfile.mockRejectedValue(new ApiError(422, "invalid"));
     render(api);
-    await userEvent.type(await screen.findByTestId("account-handle"), "Anna ");
+    await userEvent.type(await screen.findByTestId("account-handle"), "anna");
     await userEvent.click(screen.getByTestId("account-profile-save"));
     expect(
       await screen.findByTestId("account-profile-feedback"),
@@ -201,5 +218,76 @@ describe("Account", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("account-published-a")).not.toBeInTheDocument(),
     );
+  });
+
+  it("zeigt Genre-Label statt Slug bei veroeffentlichten Presets", async () => {
+    const api = makeFakeApi();
+    api.listPublishedPresets.mockResolvedValue([
+      makePreset({ id: "a", genre: "landscape" }),
+    ]);
+    render(api);
+    expect(await screen.findByText(/Landschaft/)).toBeInTheDocument();
+  });
+
+  it("Konto loeschen: Bestaetigung -> deleteMe -> signoutRedirect", async () => {
+    const api = makeFakeApi();
+    api.deleteMe.mockResolvedValue(undefined);
+    vi.spyOn(clearCachesModule, "clearOfflineCaches").mockResolvedValue(undefined);
+    const signoutRedirect = vi.fn().mockResolvedValue(undefined);
+    const auth = makeFakeAuth({
+      isAuthenticated: true,
+      user: makeFakeUser(),
+      signoutRedirect,
+    });
+    vi.spyOn(useApiModule, "useApi").mockReturnValue(api);
+    renderWithAuth(<Account />, {
+      auth,
+      wrapper: (c) => <MemoryRouter>{c}</MemoryRouter>,
+    });
+    await userEvent.click(await screen.findByTestId("account-delete-trigger"));
+    expect(api.deleteMe).not.toHaveBeenCalled();
+    const confirm = screen.getByTestId("account-delete-confirm");
+    // Fokus springt auf die Bestaetigung.
+    expect(confirm).toHaveFocus();
+    await userEvent.click(confirm);
+    await waitFor(() => expect(api.deleteMe).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(signoutRedirect).toHaveBeenCalled());
+  });
+
+  it("Abbrechen der Loesch-Bestaetigung gibt den Fokus an den Ausloeser zurueck", async () => {
+    const api = makeFakeApi();
+    render(api);
+    await userEvent.click(await screen.findByTestId("account-delete-trigger"));
+    await userEvent.click(screen.getByTestId("account-delete-cancel"));
+    await waitFor(() =>
+      expect(screen.getByTestId("account-delete-trigger")).toHaveFocus(),
+    );
+    expect(api.deleteMe).not.toHaveBeenCalled();
+  });
+
+  it("Export laedt JSON als Datei herunter", async () => {
+    const api = makeFakeApi();
+    api.exportMe.mockResolvedValue({ id: "u-1", presets: [], images: [] });
+    const createUrl = vi.fn().mockReturnValue("blob:export");
+    const revokeUrl = vi.fn();
+    // Property-Deskriptoren sichern statt Methoden-Referenzen (unbound-method).
+    const origCreate = Object.getOwnPropertyDescriptor(URL, "createObjectURL");
+    const origRevoke = Object.getOwnPropertyDescriptor(URL, "revokeObjectURL");
+    Object.defineProperty(URL, "createObjectURL", { value: createUrl, configurable: true, writable: true });
+    Object.defineProperty(URL, "revokeObjectURL", { value: revokeUrl, configurable: true, writable: true });
+    const clickSpy = vi
+      .spyOn(HTMLAnchorElement.prototype, "click")
+      .mockImplementation(() => undefined);
+    render(api);
+    await userEvent.click(await screen.findByTestId("account-export"));
+    await waitFor(() => expect(api.exportMe).toHaveBeenCalled());
+    await waitFor(() => expect(clickSpy).toHaveBeenCalled());
+    expect(createUrl).toHaveBeenCalled();
+    expect(revokeUrl).toHaveBeenCalledWith("blob:export");
+    clickSpy.mockRestore();
+    if (origCreate) Object.defineProperty(URL, "createObjectURL", origCreate);
+    else Reflect.deleteProperty(URL, "createObjectURL");
+    if (origRevoke) Object.defineProperty(URL, "revokeObjectURL", origRevoke);
+    else Reflect.deleteProperty(URL, "revokeObjectURL");
   });
 });

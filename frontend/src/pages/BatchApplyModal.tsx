@@ -77,26 +77,30 @@ export default function BatchApplyModal({ imageIds, onClose, onApplied }: Props)
       onClose={onClose}
       testId="batch-apply-modal"
       labelledBy="batch-apply-title"
-      backdropClassName="fixed inset-0 z-40 flex items-center justify-center bg-black/60"
-      cardClassName="w-[380px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
+      backdropClassName="fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4"
+      cardClassName="w-full max-w-[380px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
     >
         <div id="batch-apply-title" className="px-4 py-3 border-b border-stone-800 text-stone-200">
-          Profil auf {imageIds.length}{" "}
+          Preset auf {imageIds.length}{" "}
           {imageIds.length === 1 ? "Bild" : "Bilder"} anwenden
         </div>
         <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
           {error && (
-            <p data-testid="batch-error" className="text-red-400 text-xs">
+            <p data-testid="batch-error" role="alert" className="text-red-400 text-xs">
               {error}
             </p>
           )}
+          <label htmlFor="batch-preset-select" className="sr-only">
+            Preset
+          </label>
           <select
+            id="batch-preset-select"
             data-testid="batch-preset-select"
             value={selectedId ?? ""}
             onChange={(e) => setSelectedId(e.target.value || null)}
             className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200"
           >
-            <option value="">Profil wählen…</option>
+            <option value="">Preset wählen …</option>
             {presets.map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
@@ -109,7 +113,7 @@ export default function BatchApplyModal({ imageIds, onClose, onApplied }: Props)
           <button
             type="button"
             onClick={onClose}
-            className="text-xs text-stone-500 hover:text-stone-300"
+            className="text-xs text-stone-400 hover:text-stone-200"
           >
             Abbrechen
           </button>

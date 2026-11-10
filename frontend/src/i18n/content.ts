@@ -39,6 +39,28 @@ export interface LandingContent {
   readonly marketplace: { readonly title: string; readonly description: string; readonly heading: string; readonly body: string };
   readonly howto: { readonly name: string; readonly steps: readonly string[] };
   readonly langSwitch: { readonly de: string; readonly en: string };
+  readonly header: HeaderContent;
+}
+
+export interface HeaderContent {
+  readonly nav: {
+    readonly start: string;
+    readonly editor: string;
+    readonly library: string;
+    readonly marketplace: string;
+    readonly account: string;
+    readonly admin: string;
+  };
+  readonly mainNavLabel: string;
+  readonly menuOpen: string;
+  readonly menuClose: string;
+  readonly feedback: string;
+  readonly feedbackLabel: string;
+  readonly login: string;
+  readonly logout: string;
+  readonly langSwitchLabel: string;
+  readonly langNameDe: string;
+  readonly langNameEn: string;
 }
 
 const de: LandingContent = {
@@ -61,7 +83,7 @@ const de: LandingContent = {
   features: [
     {
       title: "Alle wichtigen Regler",
-      body: "Belichtung, Kontrast, Lichter, Tiefen, Weiss, Schwarz, Temperatur, Tönung, Dynamik, Sättigung — die zehn klassischen Lightroom-Regler, vollständig im Browser via WebGL2.",
+      body: "Belichtung, Kontrast, Lichter, Tiefen, Weiß, Schwarz, Temperatur, Tönung, Dynamik, Sättigung — die zehn klassischen Lightroom-Regler, vollständig im Browser via WebGL2.",
     },
     {
       title: "Echte RAW-Dateien",
@@ -160,6 +182,26 @@ const de: LandingContent = {
     ],
   },
   langSwitch: { de: "DE", en: "EN" },
+  header: {
+    nav: {
+      start: "Start",
+      editor: "Editor",
+      library: "Bibliothek",
+      marketplace: "Marketplace",
+      account: "Account",
+      admin: "Admin",
+    },
+    mainNavLabel: "Hauptnavigation",
+    menuOpen: "Menü öffnen",
+    menuClose: "Menü schließen",
+    feedback: "Feedback",
+    feedbackLabel: "Feedback senden",
+    login: "Login",
+    logout: "Logout",
+    langSwitchLabel: "Sprache",
+    langNameDe: "Deutsch",
+    langNameEn: "English",
+  },
 };
 
 const en: LandingContent = {
@@ -281,6 +323,26 @@ const en: LandingContent = {
     ],
   },
   langSwitch: { de: "DE", en: "EN" },
+  header: {
+    nav: {
+      start: "Home",
+      editor: "Editor",
+      library: "Library",
+      marketplace: "Marketplace",
+      account: "Account",
+      admin: "Admin",
+    },
+    mainNavLabel: "Main navigation",
+    menuOpen: "Open menu",
+    menuClose: "Close menu",
+    feedback: "Feedback",
+    feedbackLabel: "Send feedback",
+    login: "Login",
+    logout: "Logout",
+    langSwitchLabel: "Language",
+    langNameDe: "Deutsch",
+    langNameEn: "English",
+  },
 };
 
 export const CONTENT: Record<Locale, LandingContent> = { de, en };

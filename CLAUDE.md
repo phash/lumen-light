@@ -92,7 +92,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `backend/app/auth.py` | JWT-Verify (PyJWT, RS256-Whitelist), JIT-User-Provisioning + 20 Default-Presets (4 Looks + 6 Genre + 10 Motiv: Macro/Astro/Food/Hochzeit/Innen/Konzert/Strand/Schnee/Herbst/Architektur). `current_admin`-Dep prueft Realm-Role `admin`. |
 | `backend/app/schemas.py` | Adjustments, Mask-Discriminated-Union (`MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`), `extra="forbid"`. `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` → Wire-Keys camelCase, Eingang akzeptiert beide via `populate_by_name=True`. |
 | `backend/app/rate_limit.py` | slowapi-Limiter (SHA-256-Token-Hash-Key, IP-Fallback). `LUMEN_RATELIMIT_STORAGE` ueber env auf Redis-URI fuer Multi-Worker-Setups |
-| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) → 010_purges_tombstones (`storage_purges`: Janitor-Retry fehlgeschlagener S3-Prefix-Purges aus DELETE /me; `account_tombstones`: SHA-256(sub)+deleted_at gegen JIT-Wiederbelebung) |
+| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) → 010_purges_tombstones (`storage_purges`: Janitor-Retry fehlgeschlagener S3-Prefix-Purges aus DELETE /me; `account_tombstones`: SHA-256(sub)+deleted_at gegen JIT-Wiederbelebung) → 011_review_2026_11 (`presets.preview_key`, `preset_applies` fuer Apply-Dedupe pro User/Tag, `storage_purges.not_before`) |
 | `backend/schemas/edit-groups.json` | Single Source fuer das Gruppen->Feld-Mapping (8 Gruppen: tone/color/hsl/curve/detail/masks/crop/lens). Backend liest zur Laufzeit, Frontend importiert beim Build (Vite-Repo-Root-Context). |
 | `backend/app/profile_groups.py` | Laedt die JSON, stellt `GROUPS`, `KNOWN_GROUP_KEYS`, `merge_edit_state(...)` bereit. Batch-Apply-Endpoint nutzt `merge_edit_state` fuer nicht-destruktiven Merge. |
 | `frontend/src/editor/profileGroups.ts` | Importiert `backend/schemas/edit-groups.json`, exportiert `GROUPS`, `defaultEnabledGroups()`, `mergeGroups(base, profile, enabled)`. Gleicher Repo-Root-Build-Context wie `lensProfile.ts`. |
@@ -250,7 +250,7 @@ gesetzt — pytest läuft sonst gegen 429er.
   Garage mit 400 ab. Test-Helper: `backend/tests/s3_upload.py`.
 - **Netztrennung Prod**: nur `lumen-web` im `caddy-proxy`-Netz; nginx
   (`frontend/nginx.conf`) proxied `/api`, `/auth`, `/lumen-images` intern.
-  Caddy-Block routet alles an `lumen-web:80`, Pfad-Policies bleiben im Caddy.
+  Caddy-Block routet alles an `lumen-web:8080`, Pfad-Policies bleiben im Caddy.
   Neue Services NICHT ins `caddy-proxy`-Netz haengen.
 - **Keycloak >= 26.x Audience-Mapper**: `included.client.audience` wirkt nur
   fuer EXISTIERENDE Clients. Es gibt keinen Client `lumen-api` -> Mapper
@@ -260,6 +260,32 @@ gesetzt — pytest läuft sonst gegen 429er.
   `{uid}/staging/{id}`, `confirm` kopiert serverseitig nach `originals/` und
   prueft Groesse + Magic-Bytes am finalen Objekt. Finale Keys werden nie
   zum Schreiben herausgegeben.
+- **Marketplace-Vorschau = serverseitiges JPEG** (`app/previews.py`): beim
+  Veroeffentlichen re-encodet Pillow das Preview-Bild (max 1600px, ohne
+  Metadaten) nach `{uid}/previews/{preset_id}.jpg`. Der Marketplace signiert
+  NUR `preview_key`, nie Originale. Test-/E2E-Fixtures brauchen daher echte,
+  dekodierbare JPEGs (`backend/tests/images.py`). Bestand: `deploy.sh` ruft
+  `scripts.backfill_previews` (idempotent).
+- **Kontingente**: `MAX_USER_STORAGE_BYTES` (10 GiB), `MAX_USER_IMAGES`
+  (5000), `MAX_USER_PRESETS` (500). `GET /images`/`GET /presets` paginieren
+  (`limit`/`offset`, max 500, Header `X-Total-Count`); `listImages` im
+  Frontend sammelt alle Seiten ein.
+- **RAW-Magic-Bytes**: CR2/NEF/ARW/DNG brauchen TIFF-Header, CR3 `ftypcrx `,
+  RAF `FUJIFILMCCD-RAW` — Fake-RAW-Bytes in Tests bekommen 415.
+- **DB-Rollen Prod**: API laeuft als `lumen_app`, Keycloak als `keycloak`
+  (keine Superuser; `deployment/initdb/02-app-roles.sh`, von `deploy.sh`
+  idempotent ausgefuehrt). Passwoerter `LUMEN_DB_APP_PASSWORD` /
+  `KEYCLOAK_DB_PASSWORD` in `.env` — manuelle `docker compose`-Aufrufe
+  scheitern ohne sie.
+- **KC intern**: Backend nutzt `KEYCLOAK_INTERNAL_URL` fuer JWKS/Token/Admin-
+  REST; `/auth/admin/*` ist in Caddy+nginx 404. Service-Account-Client
+  `lumen-admin` (nur `manage-users`) legt `deploy.sh` an und schreibt das
+  Secret in `.env`.
+- **Web-Container unprivilegiert**: `nginx-unprivileged` auf Port 8080.
+- **Editor-Autosave**: `useEditAutosave` (in `Editor.tsx`) flusht per
+  `keepalive` bei Unmount/`pagehide`/Tab-Hidden; jede Bild-Ladung bekommt
+  eine Generation (`beginLoad`) und setzt den Store via `resetForNewImage()`
+  komplett zurueck.
 - **Port 5173 belegt** (anderes Dev-Projekt): Vite weicht auf 5174 aus —
   KC-Client-Redirects, Backend-`CORS_ORIGIN` und S3-Bucket-CORS kennen nur
   5173. Fuer lokale E2E entweder den anderen Server stoppen oder 5174 zur

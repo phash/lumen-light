@@ -6,6 +6,7 @@ von Keycloak ausgestellt, hier nur verifiziert. Siehe ADR-010.
 from __future__ import annotations
 
 import hashlib
+import logging
 import threading
 import time
 from datetime import datetime, timezone
@@ -25,6 +26,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.config import settings
 from app.database import get_db
 from app.models import AccountTombstone, Preset, User
+
+
+logger = logging.getLogger(__name__)
 
 
 # Default-Presets, die bei JIT-Provisioning eines neuen Users angelegt werden.
@@ -269,12 +273,26 @@ class _JwkCache:
         return (time.monotonic() - self._fetched_at) > settings.jwk_cache_seconds
 
     def _fetch(self) -> None:
-        url = settings.keycloak_issuer.rstrip("/") + "/protocol/openid-connect/certs"
-        with httpx.Client(timeout=5.0) as c:
-            r = c.get(url)
-            r.raise_for_status()
-            data = r.json()
-        self._keys_by_kid = {k["kid"]: k for k in data.get("keys", []) if "kid" in k}
+        """JWKS laden. Netz-/HTTP-/JSON-Fehler -> 503 (Keycloak nicht
+        erreichbar) statt eines nackten 500. Bereits gecachte Keys bleiben
+        dabei erhalten (siehe get())."""
+        try:
+            with httpx.Client(timeout=5.0) as c:
+                r = c.get(jwks_url())
+                r.raise_for_status()
+                data = r.json()
+            keys = {
+                k["kid"]: k
+                for k in data.get("keys", [])
+                if isinstance(k, dict) and isinstance(k.get("kid"), str)
+            }
+        except (httpx.HTTPError, ValueError, AttributeError) as exc:
+            logger.warning("JWKS-Abruf fehlgeschlagen: %s", exc)
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Anmeldedienst vorübergehend nicht erreichbar.",
+            ) from exc
+        self._keys_by_kid = keys
         self._fetched_at = time.monotonic()
 
     def peek(self, kid: str) -> dict[str, Any] | None:
@@ -288,7 +306,13 @@ class _JwkCache:
             with self._lock:
                 # Double-Checked: ein paralleler Thread hat evtl. schon geladen.
                 if self._is_expired():
-                    self._fetch()
+                    try:
+                        self._fetch()
+                    except HTTPException:
+                        # Keycloak kurz weg, Key aber (abgelaufen) im Cache:
+                        # weiter mit dem alten Key statt alle User auszusperren.
+                        if kid not in self._keys_by_kid:
+                            raise
                 elif kid not in self._keys_by_kid and (
                     time.monotonic() - self._fetched_at
                     >= self.KID_MISS_REFETCH_SECONDS
@@ -308,6 +332,16 @@ class _JwkCache:
 
 
 _jwk_cache = _JwkCache()
+
+
+def jwks_url() -> str:
+    """JWKS-Endpoint. Mit KEYCLOAK_INTERNAL_URL intern (Container-Netz),
+    sonst ueber den oeffentlichen Issuer. Die iss-Pruefung bleibt in jedem
+    Fall gegen settings.keycloak_issuer."""
+    from app.keycloak_admin import realm_base_url
+
+    return realm_base_url() + "/protocol/openid-connect/certs"
+
 
 # Feste 401-Meldung: die PyJWT-Exception-Texte verraten Details der
 # Pruefung (Audience/Issuer-Werte, welcher Claim fehlt) — die gehoeren ins
@@ -362,8 +396,10 @@ def _decode_token(token: str) -> dict[str, Any]:
         raise HTTPException(status_code=401, detail="Token-Header unlesbar.") from exc
 
     kid = header.get("kid")
-    if not kid:
-        raise HTTPException(status_code=401, detail="Token ohne kid-Header.")
+    # isinstance: ein Listen-/Dict-kid waere unhashable -> TypeError -> 500.
+    # (PyJWT >= 2.10 lehnt solche Header bereits selbst ab — Defense in Depth.)
+    if not isinstance(kid, str) or not kid:
+        raise HTTPException(status_code=401, detail="Token ohne gültigen kid-Header.")
 
     jwk = _jwk_cache.get(kid)
     try:

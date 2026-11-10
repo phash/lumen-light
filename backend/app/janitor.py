@@ -4,7 +4,9 @@ Pre-Signed-URLs haben keine Content-Length-Range-Constraint, also kann
 ein Browser einen `init_upload` aufrufen und den `confirm` nie senden.
 Die DB-Row und ein potentiell schon hochgeladenes S3-Object bleiben
 dann zurueck (Bucket-Bloat). Dieser Janitor raeumt sie ab einem
-Schwellenalter (Default: 15 min) weg.
+Schwellenalter weg: Policy-Gueltigkeit (presigned_url_expires_in) plus
+Puffer (janitor_grace_seconds), Default 30 min. Kleinere TTLs werden
+angehoben — sonst verschwaende ein Upload, dessen Policy noch gilt.
 
 Geraeumt werden zwei Zustaende:
 - `pending`: nie bestaetigte Uploads (Browser hat confirm nie geschickt).
@@ -17,8 +19,17 @@ Zusaetzlich (Security-Review 2026-10):
   Pre-Signed PUTs) aelter als die URL-Gueltigkeit. Nach confirm wird Staging
   sofort geloescht; ein erneuter PUT mit der alten URL hinterlaesst aber
   einen Rest, den niemand mehr liest.
-- `retry_storage_purges()`: Prefix-Purges aus DELETE /me, die beim ersten
-  Versuch an S3 scheiterten (Tabelle storage_purges).
+- `retry_storage_purges()`: Prefix-Purges aus DELETE /me (Tabelle
+  storage_purges). Jede Loeschung merkt ihren Prefix vor; faellig erst ab
+  not_before (nach Ablauf der Upload-Policy), damit spaete Staging-Uploads
+  mit erfasst werden.
+- `prune_retention()` (Review 2026-11): erledigtes Feedback und alte
+  Marketplace-Meldungen nach Ablauf der Retention-Frist loeschen.
+
+Robustheit: Kandidaten werden per FOR UPDATE SKIP LOCKED gesperrt (kein
+Wettlauf mit confirm/DELETE oder einem parallelen Janitor-Lauf), geloescht
+wird per DELETE ... WHERE (kein StaleDataError bei parallel verschwundenen
+Rows).
 
 Alle Funktionen sind async und werden von `backend/scripts/janitor.py`
 (Cron) aufgerufen.
@@ -28,14 +39,24 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Image, StoragePurge, User
+from app.config import settings
+from app.models import Feedback, Image, PresetReport, StoragePurge, User
 from app.storage import StorageService
 
 
-PENDING_TTL = timedelta(minutes=15)
+# Obergrenze pro Lauf — haelt Sperren und Laufzeit klein, Rest im naechsten Lauf.
+BATCH_SIZE = 500
+_STALE_STATES = ("pending", "failed")
+
+
+def pending_ttl() -> timedelta:
+    """Mindestalter haengender Uploads: Policy-Gueltigkeit + Puffer."""
+    return timedelta(
+        seconds=settings.presigned_url_expires_in + settings.janitor_grace_seconds
+    )
 
 
 @dataclass
@@ -50,46 +71,57 @@ async def prune_pending_uploads(
     db: AsyncSession,
     storage: StorageService,
     *,
-    ttl: timedelta = PENDING_TTL,
+    ttl: timedelta | None = None,
     now: datetime | None = None,
 ) -> PruneResult:
     """Loescht haengengebliebene Uploads (pending + failed) aelter als ttl
-    aus S3 und DB.
+    (mindestens pending_ttl()) aus S3 und DB.
 
-    Reihenfolge: erst S3-Object weg, dann DB-Row. Wenn S3 wirft, bleibt
-    die DB-Row stehen (naechster Lauf versucht's wieder). Das ist
-    bewusst — sonst kann ein S3-Glitch zu einem Object fuehren, das in
-    der DB schon weg ist und somit nie wieder gefunden wird.
-    """
-    threshold = (now or datetime.now(timezone.utc)) - ttl
+    Die Kandidaten werden FOR UPDATE SKIP LOCKED gesperrt: ein paralleles
+    confirm (sperrt dieselbe Row) wartet, bis der Janitor fertig ist, und
+    findet die Row dann nicht mehr (404) — es kann also kein frisch
+    bestaetigtes Bild weggeraeumt werden. Reihenfolge: erst S3, dann DB.
+    Wirft S3, bleibt die Row stehen (naechster Lauf)."""
+    effective = max(ttl or pending_ttl(), pending_ttl())
+    threshold = (now or datetime.now(timezone.utc)) - effective
     result = await db.execute(
-        select(Image).where(
-            Image.upload_state.in_(("pending", "failed")),
+        select(Image)
+        .where(
+            Image.upload_state.in_(_STALE_STATES),
             Image.created_at < threshold,
         )
+        .order_by(Image.created_at)
+        .limit(BATCH_SIZE)
+        .with_for_update(skip_locked=True)
     )
     candidates = list(result.scalars().all())
 
     storage_deleted = 0
     storage_errors = 0
-    db_deleted = 0
-
+    done: list = []
     for image in candidates:
         try:
-            # Staging-Objekt (Ziel des Pre-Signed PUT) und finaler Key —
+            # Staging-Objekt (Ziel des Pre-Signed POST) und finaler Key —
             # beide idempotent, je nach Abbruchpunkt existiert einer davon.
             storage.delete(storage.staging_key_for(image.bucket_key))
             storage.delete(image.bucket_key)
             storage_deleted += 1
         except Exception:  # noqa: BLE001 — best effort, kein Crash
             storage_errors += 1
-            # DB-Row bleibt — naechster Janitor-Lauf versucht's nochmal.
             continue
-        await db.delete(image)
-        db_deleted += 1
+        done.append(image.id)
 
-    if db_deleted:
-        await db.commit()
+    db_deleted = 0
+    if done:
+        # WHERE upload_state: nur loeschen, was (noch) haengt.
+        res = await db.execute(
+            delete(Image)
+            .where(Image.id.in_(done), Image.upload_state.in_(_STALE_STATES))
+            .execution_options(synchronize_session="fetch")
+        )
+        db_deleted = int(res.rowcount or 0)  # type: ignore[attr-defined]
+    # Commit auch ohne Loeschung: gibt die Row-Sperren frei.
+    await db.commit()
 
     return PruneResult(
         candidates=len(candidates),
@@ -112,18 +144,14 @@ async def sweep_stale_staging(
     max_age: timedelta | None = None,
     now: datetime | None = None,
 ) -> StagingSweepResult:
-    """Loescht Staging-Objekte aelter als max_age (Default: Pre-Signed-URL-
-    Gueltigkeit, mindestens PENDING_TTL). Staging-Objekte noch offener
-    (pending) Uploads bleiben unberuehrt — die raeumt prune_pending_uploads.
+    """Loescht Staging-Objekte aelter als max_age (Default: pending_ttl()).
+    Staging-Objekte noch offener (pending) Uploads bleiben unberuehrt — die
+    raeumt prune_pending_uploads.
 
     Pro User ein list_objects_v2 auf <uid>/staging/ statt eines Scans ueber
     den ganzen Bucket (originals bleiben aussen vor)."""
-    from app.config import settings
-
     if max_age is None:
-        max_age = max(
-            PENDING_TTL, timedelta(seconds=settings.presigned_url_expires_in)
-        )
+        max_age = pending_ttl()
     threshold = (now or datetime.now(timezone.utc)) - max_age
 
     user_ids = (await db.execute(select(User.id))).scalars().all()
@@ -162,24 +190,84 @@ class PurgeRetryResult:
 
 
 async def retry_storage_purges(
-    db: AsyncSession, storage: StorageService
+    db: AsyncSession,
+    storage: StorageService,
+    *,
+    now: datetime | None = None,
 ) -> PurgeRetryResult:
-    """Wiederholt fehlgeschlagene Prefix-Purges aus DELETE /me. Erfolg ->
-    Row weg; Fehler -> attempts+1 und last_error, naechster Lauf probiert's
-    erneut."""
-    rows = list((await db.execute(select(StoragePurge))).scalars().all())
+    """Fuehrt faellige Prefix-Purges aus DELETE /me aus (not_before <= now).
+    Erfolg -> Row weg; Fehler -> attempts+1 und last_error, naechster Lauf
+    probiert's erneut. Idempotent: ein leerer Prefix ist ein No-op."""
+    current = now or datetime.now(timezone.utc)
+    rows = list(
+        (
+            await db.execute(
+                select(StoragePurge)
+                .where(StoragePurge.not_before <= current)
+                .order_by(StoragePurge.created_at)
+                .limit(BATCH_SIZE)
+                .with_for_update(skip_locked=True)
+            )
+        ).scalars().all()
+    )
     purged = 0
     errors = 0
     for row in rows:
+        prefix = row.prefix
         try:
-            storage.delete_prefix(row.prefix)
+            storage.delete_prefix(prefix)
         except Exception as exc:  # noqa: BLE001
-            row.attempts += 1
-            row.last_error = str(exc)[:500]
+            await db.execute(
+                update(StoragePurge)
+                .where(StoragePurge.prefix == prefix)
+                .values(
+                    attempts=StoragePurge.attempts + 1,
+                    last_error=str(exc)[:500],
+                )
+                .execution_options(synchronize_session="fetch")
+            )
             errors += 1
             continue
-        await db.delete(row)
+        await db.execute(
+            delete(StoragePurge)
+            .where(StoragePurge.prefix == prefix)
+            .execution_options(synchronize_session="fetch")
+        )
         purged += 1
-    if rows:
-        await db.commit()
+    await db.commit()
     return PurgeRetryResult(candidates=len(rows), purged=purged, errors=errors)
+
+
+@dataclass
+class RetentionResult:
+    feedback_deleted: int
+    reports_deleted: int
+
+
+async def prune_retention(
+    db: AsyncSession, *, now: datetime | None = None
+) -> RetentionResult:
+    """DSGVO-Speicherbegrenzung: erledigtes (closed) Feedback, dessen letzte
+    Aenderung aelter als feedback_retention_days ist, und Marketplace-
+    Meldungen aelter als report_retention_days loeschen. Offenes Feedback
+    bleibt, bis es bearbeitet wurde. presets.report_count bleibt als
+    denormalisierter Moderationsstand unveraendert."""
+    current = now or datetime.now(timezone.utc)
+    fb = await db.execute(
+        delete(Feedback).where(
+            Feedback.status == "closed",
+            Feedback.updated_at
+            < current - timedelta(days=settings.feedback_retention_days),
+        ).execution_options(synchronize_session="fetch")
+    )
+    rep = await db.execute(
+        delete(PresetReport).where(
+            PresetReport.created_at
+            < current - timedelta(days=settings.report_retention_days),
+        ).execution_options(synchronize_session="fetch")
+    )
+    await db.commit()
+    return RetentionResult(
+        feedback_deleted=int(fb.rowcount or 0),  # type: ignore[attr-defined]
+        reports_deleted=int(rep.rowcount or 0),  # type: ignore[attr-defined]
+    )

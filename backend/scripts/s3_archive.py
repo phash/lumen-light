@@ -20,7 +20,10 @@ from __future__ import annotations
 import sys
 import tarfile
 import time
+from dataclasses import dataclass
 from typing import IO
+
+from botocore.exceptions import ClientError
 
 from app.config import settings
 from app.storage import StorageService
@@ -36,12 +39,40 @@ class _ReadOnly:
         self.read = fh.read
 
 
-def export_bucket(storage: StorageService, out: IO[bytes]) -> int:
+@dataclass
+class ExportResult:
+    exported: int
+    skipped_staging: int
+    vanished: int
+
+
+def _is_staging(key: str) -> bool:
+    """<uid>/staging/<id>: Ziel der Upload-Policy, nie gelesen, wird nach
+    confirm bzw. vom Janitor entfernt — gehoert nicht ins Backup."""
+    return "/staging/" in key
+
+
+def export_bucket(storage: StorageService, out: IO[bytes]) -> ExportResult:
+    """Alle Objekte (ausser Staging) als tar-Stream. Objekte, die zwischen
+    Listing und GET verschwinden (Janitor, DELETE /me), werden uebersprungen
+    und gezaehlt statt den ganzen Export abzubrechen. Andere Fehler
+    (Netz, Rechte) brechen ab -> Exit != 0."""
     client = storage._client
-    count = 0
+    result = ExportResult(exported=0, skipped_staging=0, vanished=0)
     with tarfile.open(fileobj=out, mode="w|", format=tarfile.PAX_FORMAT) as tar:
         for obj in storage.list_objects(""):
-            body = client.get_object(Bucket=storage.bucket, Key=obj.key)
+            if _is_staging(obj.key):
+                result.skipped_staging += 1
+                continue
+            try:
+                body = client.get_object(Bucket=storage.bucket, Key=obj.key)
+            except ClientError as exc:
+                if exc.response.get("Error", {}).get("Code") in {
+                    "404", "NoSuchKey", "NotFound",
+                }:
+                    result.vanished += 1
+                    continue
+                raise
             info = tarfile.TarInfo(name=obj.key)
             info.size = int(body["ContentLength"])
             info.mtime = int(obj.last_modified.timestamp())
@@ -49,8 +80,8 @@ def export_bucket(storage: StorageService, out: IO[bytes]) -> int:
             # Stream statt read(): Objekte bis 200 MB, der API-Container
             # teilt sein Memory-Limit mit dem laufenden Server.
             tar.addfile(info, body["Body"])
-            count += 1
-    return count
+            result.exported += 1
+    return result
 
 
 def import_bucket(storage: StorageService, src: IO[bytes]) -> int:
@@ -81,12 +112,15 @@ def import_bucket(storage: StorageService, src: IO[bytes]) -> int:
 
 
 def manifest(storage: StorageService) -> list[str]:
-    """Sortierte "key<TAB>size"-Zeilen — Inhaltsabgleich zweier Buckets."""
+    """Sortierte "key<TAB>size"-Zeilen — Inhaltsabgleich zweier Buckets.
+    Staging-Objekte fehlen wie im Export, damit Manifest(Quelle) nach
+    export|import mit Manifest(Ziel) vergleichbar bleibt."""
     paginator = storage._client.get_paginator("list_objects_v2")
     lines = [
         f"{o['Key']}\t{o['Size']}"
         for page in paginator.paginate(Bucket=storage.bucket)
         for o in page.get("Contents", [])
+        if not _is_staging(o["Key"])
     ]
     return sorted(lines)
 
@@ -105,11 +139,18 @@ def main(argv: list[str]) -> int:
         return 0
     started = time.monotonic()
     if argv[1] == "export":
-        n = export_bucket(storage, sys.stdout.buffer)
-    else:
-        n = import_bucket(storage, sys.stdin.buffer)
+        res = export_bucket(storage, sys.stdout.buffer)
+        print(
+            f"s3_archive export: {res.exported} Objekte, "
+            f"{res.skipped_staging} Staging uebersprungen, "
+            f"{res.vanished} verschwunden, Bucket {storage.bucket}, "
+            f"{time.monotonic() - started:.1f}s",
+            file=sys.stderr,
+        )
+        return 0
+    n = import_bucket(storage, sys.stdin.buffer)
     print(
-        f"s3_archive {argv[1]}: {n} Objekte, Bucket {storage.bucket}, "
+        f"s3_archive import: {n} Objekte, Bucket {storage.bucket}, "
         f"{time.monotonic() - started:.1f}s",
         file=sys.stderr,
     )

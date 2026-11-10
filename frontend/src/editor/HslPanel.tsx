@@ -118,7 +118,7 @@ export default function HslPanel({ hsl, onChange, onReset }: Props) {
                 className="w-full"
                 data-testid={`hsl-slider-${axis}-${ch}`}
               />
-              <span className="text-right tabular-nums text-stone-500">
+              <span className="text-right tabular-nums text-stone-400">
                 {formatPct(v)}
               </span>
             </label>
@@ -130,7 +130,7 @@ export default function HslPanel({ hsl, onChange, onReset }: Props) {
         type="button"
         onClick={onReset}
         data-testid="hsl-reset"
-        className="w-full py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40 transition-colors"
+        className="w-full py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-400 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40 transition-colors"
       >
         HSL zurücksetzen
       </button>

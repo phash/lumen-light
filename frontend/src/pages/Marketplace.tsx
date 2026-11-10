@@ -2,7 +2,7 @@
  * Preset-Marketplace (F1).
  *
  * Liste oeffentlicher Presets mit Genre-Filter, Suche, Sort, Pagination.
- * Karten-Klick oeffnet Detail-Modal mit Anwenden / In-Bibliothek-Kopieren /
+ * Karten-Klick oeffnet Detail-Modal mit Anwenden / Zu-Presets-Kopieren /
  * Melden. Anwenden ueberschreibt den Editor-State; Routing landet im
  * Editor.
  */
@@ -17,7 +17,11 @@ import {
   type PresetGenre,
 } from "../api/client";
 import { useApi } from "../api/use-api";
+import AutoFocusButton from "../components/AutoFocusButton";
 import Modal from "../components/Modal";
+import { useFocusRequest } from "../hooks/useFocusRequest";
+import { usePageMeta } from "../hooks/usePageMeta";
+import { CONTENT } from "../i18n/content";
 import { wireToMasks } from "../editor/maskSerializer";
 import { useEditorStore } from "../editor/store";
 
@@ -25,6 +29,7 @@ import { ALL_GENRES, GENRE_LABEL } from "../editor/genreLabel";
 import MarketplaceIntro from "./MarketplaceIntro";
 
 export default function Marketplace() {
+  usePageMeta(CONTENT.de.marketplace.title);
   const api = useApi();
   const navigate = useNavigate();
   const [genre, setGenre] = useState<PresetGenre | "">("");
@@ -38,6 +43,8 @@ export default function Marketplace() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<MarketplaceDetail | null>(null);
+  // ID der Karte, deren Detail gerade geladen wird (Lade-Feedback).
+  const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
 
   // Debounce-Suche, damit jede Tastatur-Eingabe nicht das Backend trifft.
   useEffect(() => {
@@ -100,11 +107,14 @@ export default function Marketplace() {
 
   const openDetail = useCallback(
     async (id: string) => {
+      setDetailLoadingId(id);
       try {
         const detail = await api.getMarketplacePreset(id);
         setSelected(detail);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Detail-Laden fehlgeschlagen");
+      } finally {
+        setDetailLoadingId(null);
       }
     },
     [api],
@@ -114,8 +124,8 @@ export default function Marketplace() {
     <section data-testid="page-marketplace" className="px-8 py-8 max-w-6xl mx-auto">
       <MarketplaceIntro lang="de" />
       <h2 className="text-3xl text-stone-100">Marketplace</h2>
-      <p className="mt-2 text-sm text-stone-500">
-        Öffentliche Presets aus der Community — anwenden, in eigene Bibliothek
+      <p className="mt-2 text-sm text-stone-400">
+        Öffentliche Presets aus der Community — anwenden, zu deinen Presets
         kopieren oder melden.
       </p>
 
@@ -156,7 +166,7 @@ export default function Marketplace() {
           type="search"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Suche..."
+          placeholder="Suche …"
           aria-label="Presets durchsuchen"
           data-testid="marketplace-search"
           className="bg-stone-900 border border-stone-700 text-stone-200 text-sm px-3 py-1.5 w-48"
@@ -167,16 +177,23 @@ export default function Marketplace() {
         <div
           className="mt-4 px-3 py-2 bg-red-900/40 border border-red-800 text-red-200 text-sm"
           data-testid="marketplace-error"
+          role="alert"
         >
           {error}
         </div>
       )}
+
+      <p role="status" className="sr-only" data-testid="marketplace-status">
+        {loading ? "Presets werden geladen …" : ""}
+        {detailLoadingId ? "Preset wird geöffnet …" : ""}
+      </p>
 
       <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         {items.map((item) => (
           <MarketplaceCard
             key={item.id}
             item={item}
+            busy={detailLoadingId === item.id}
             onClick={() => void openDetail(item.id)}
           />
         ))}
@@ -186,7 +203,7 @@ export default function Marketplace() {
               <div
                 key={i}
                 data-testid="marketplace-skeleton"
-                className="bg-stone-900/70 border border-stone-800 overflow-hidden animate-pulse"
+                className="bg-stone-900/70 border border-stone-800 overflow-hidden animate-pulse motion-reduce:animate-none"
               >
                 <div className="w-full aspect-square bg-stone-800/60" />
                 <div className="p-3 space-y-2">
@@ -199,7 +216,7 @@ export default function Marketplace() {
         )}
         {items.length === 0 && !loading && (
           <div
-            className="col-span-full text-stone-500 text-sm py-12 text-center"
+            className="col-span-full text-stone-400 text-sm py-12 text-center"
             data-testid="marketplace-empty"
           >
             Noch keine Presets in diesem Filter.
@@ -229,7 +246,7 @@ export default function Marketplace() {
             data-testid="marketplace-load-more"
             className="px-6 py-2 text-xs uppercase tracking-[0.2em] border border-stone-700 text-stone-300 hover:border-amber-300/40 disabled:opacity-50"
           >
-            {loading ? "Lade…" : "Mehr laden"}
+            {loading ? "Lädt …" : "Mehr laden"}
           </button>
         </div>
       )}
@@ -266,8 +283,12 @@ function DetailModal({
     const [busy, setBusy] = useState<"apply" | "fork" | "report" | null>(null);
     const [feedback, setFeedback] = useState<string | null>(null);
     const [reportReason, setReportReason] = useState("");
+    // Inline-Rueckfrage statt window.confirm, wenn die aktuelle
+    // Bearbeitung ueberschrieben wuerde.
+    const [confirmOverwrite, setConfirmOverwrite] = useState(false);
     const applyAdjustments = useEditorStore((s) => s.applyAdjustments);
     const applyMasks = useEditorStore((s) => s.applyMasks);
+    const requestFocus = useFocusRequest();
 
     // Browsen ist oeffentlich; Aktionen brauchen ein Konto. Anonyme User
     // werden zur Anmeldung geschickt (mit Rueck-Pfad wie in RequireAuth),
@@ -278,7 +299,7 @@ function DetailModal({
       return true;
     };
 
-    const onApply = async () => {
+    const onApply = async (force = false) => {
       if (requireLogin()) return;
       // Schutz vor unbeabsichtigtem Verlust: wenn der User aktuell
       // an einem Bild arbeitet, vor dem Ueberschreiben nachfragen.
@@ -289,12 +310,11 @@ function DetailModal({
           if (k === "hsl" || k === "toneCurve") return v !== null;
           return typeof v === "number" && Math.abs(v) > 1e-4;
         });
-      if (dirty) {
-        const ok = window.confirm(
-          "Aktuelle Bearbeitung wird durch das Marketplace-Preset überschrieben. Fortfahren?",
-        );
-        if (!ok) return;
+      if (dirty && !force) {
+        setConfirmOverwrite(true);
+        return;
       }
+      setConfirmOverwrite(false);
       setBusy("apply");
       try {
         const res = await api.applyMarketplacePreset(detail.id);
@@ -313,7 +333,7 @@ function DetailModal({
       setBusy("fork");
       try {
         await api.forkMarketplacePreset(detail.id);
-        setFeedback("In deine Bibliothek kopiert.");
+        setFeedback("Zu deinen Presets hinzugefügt.");
       } catch (err) {
         setFeedback(err instanceof Error ? err.message : "Kopieren fehlgeschlagen");
       } finally {
@@ -351,7 +371,7 @@ function DetailModal({
           {detail.previewUrl ? (
             <img
               src={detail.previewUrl}
-              alt={detail.name}
+              alt={`Vorschau: ${detail.name}`}
               className="w-full h-64 object-contain bg-stone-900"
             />
           ) : (
@@ -361,12 +381,12 @@ function DetailModal({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <h2 id="marketplace-detail-title" className="text-xl text-stone-100">{detail.name}</h2>
-                <p className="text-sm text-stone-500">
+                <p className="text-sm text-stone-400">
                   {detail.creatorHandle ? `@${detail.creatorHandle}` : "Anonym"}
                   {detail.genre ? ` · ${GENRE_LABEL[detail.genre]}` : ""}
                 </p>
               </div>
-              <span className="text-xs text-stone-500 tabular-nums">
+              <span className="text-xs text-stone-400 tabular-nums">
                 {detail.applyCount} Anwendungen
               </span>
             </div>
@@ -374,11 +394,44 @@ function DetailModal({
               <p className="text-sm whitespace-pre-wrap">{detail.description}</p>
             )}
             {detail.creatorBio && (
-              <p className="text-xs text-stone-500 italic">{detail.creatorBio}</p>
+              <p className="text-xs text-stone-400 italic">{detail.creatorBio}</p>
             )}
 
-            {feedback && (
-              <div className="text-xs text-amber-200">{feedback}</div>
+            <div role="status" className="text-xs text-amber-200">
+              {feedback}
+            </div>
+
+            {confirmOverwrite && (
+              <div
+                data-testid="marketplace-overwrite-confirm"
+                className="border border-amber-300/40 bg-amber-200/5 p-3 text-xs space-y-2"
+              >
+                <p className="text-stone-200">
+                  Deine aktuelle Bearbeitung wird durch dieses Preset
+                  überschrieben. Fortfahren?
+                </p>
+                <div className="flex gap-2">
+                  <AutoFocusButton
+                    data-testid="marketplace-overwrite-yes"
+                    disabled={busy !== null}
+                    onClick={() => void onApply(true)}
+                    className="px-3 py-1 uppercase tracking-[0.2em] bg-amber-200/15 border border-amber-300 text-amber-200 hover:bg-amber-200/25 disabled:opacity-50"
+                  >
+                    Überschreiben
+                  </AutoFocusButton>
+                  <button
+                    type="button"
+                    data-testid="marketplace-overwrite-no"
+                    onClick={() => {
+                      setConfirmOverwrite(false);
+                      requestFocus("marketplace-apply");
+                    }}
+                    className="px-3 py-1 uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200"
+                  >
+                    Abbrechen
+                  </button>
+                </div>
+              </div>
             )}
 
             {!auth.isAuthenticated && (
@@ -408,28 +461,32 @@ function DetailModal({
                 data-testid="marketplace-fork"
                 className="px-4 py-2 text-xs uppercase tracking-[0.2em] border border-stone-700 text-stone-300 hover:border-amber-300/40 disabled:opacity-50"
               >
-                In meine Bibliothek
+                Zu meinen Presets
               </button>
               <button
                 type="button"
                 onClick={onClose}
-                className="px-4 py-2 text-xs uppercase tracking-[0.2em] text-stone-500 hover:text-stone-300"
+                className="px-4 py-2 text-xs uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200"
               >
                 Schließen
               </button>
             </div>
 
             <details className="pt-2 text-xs">
-              <summary className="cursor-pointer text-stone-500 hover:text-stone-300">
+              <summary className="cursor-pointer text-stone-400 hover:text-stone-200">
                 Melden
               </summary>
               <div className="mt-2 space-y-2">
+                <label htmlFor="marketplace-report-reason" className="sr-only">
+                  Grund der Meldung
+                </label>
                 <textarea
+                  id="marketplace-report-reason"
                   value={reportReason}
                   onChange={(e) => setReportReason(e.target.value)}
                   rows={2}
                   maxLength={500}
-                  placeholder="Grund — Spam, Plagiat, NSFW…"
+                  placeholder="Grund — Spam, Plagiat, NSFW …"
                   className="w-full bg-stone-900 border border-stone-700 text-stone-200 p-2"
                   data-testid="marketplace-report-reason"
                 />
@@ -459,22 +516,27 @@ function genreBtn(active: boolean): string {
 
 function MarketplaceCard({
   item,
+  busy,
   onClick,
 }: {
   item: MarketplaceListItem;
+  busy: boolean;
   onClick: () => void;
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      aria-busy={busy}
       data-testid={`marketplace-card-${item.id}`}
-      className="text-left bg-stone-900/70 border border-stone-800 hover:border-amber-300/40 transition-colors overflow-hidden"
+      className={`text-left bg-stone-900/70 border border-stone-800 hover:border-amber-300/40 transition-colors overflow-hidden ${
+        busy ? "opacity-60 cursor-progress" : ""
+      }`}
     >
       {item.previewUrl ? (
         <img
           src={item.previewUrl}
-          alt={item.name}
+          alt=""
           className="w-full aspect-square object-cover"
           loading="lazy"
         />
@@ -485,7 +547,7 @@ function MarketplaceCard({
         <div className="text-stone-200 truncate" title={item.name}>
           {item.name}
         </div>
-        <div className="flex items-center justify-between text-[11px] text-stone-500">
+        <div className="flex items-center justify-between text-[11px] text-stone-400">
           <span>{item.creatorHandle ? `@${item.creatorHandle}` : "Anonym"}</span>
           <span className="tabular-nums">{item.applyCount}×</span>
         </div>

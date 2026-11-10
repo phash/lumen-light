@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 import { useAuth } from "react-oidc-context";
 
+import { usePageMeta } from "../hooks/usePageMeta";
 import { CONTENT, type Locale } from "../i18n/content";
 
 interface LandingProps {
@@ -10,6 +11,7 @@ interface LandingProps {
 export default function Landing({ lang = "de" }: LandingProps) {
   const auth = useAuth();
   const c = CONTENT[lang];
+  usePageMeta(c.meta.title, lang);
   const startHref = auth.isAuthenticated ? "/editor" : "/login";
 
   return (

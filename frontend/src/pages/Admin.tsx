@@ -11,6 +11,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useApi } from "../api/use-api";
+import AutoFocusButton from "../components/AutoFocusButton";
+import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
+import { useFocusRequest } from "../hooks/useFocusRequest";
 import type {
   AdminFeedback,
   AdminFeedbackStatus,
@@ -21,7 +24,14 @@ import type {
 
 type Tab = "users" | "feedback" | "reports";
 
+const TABS: ReadonlyArray<{ id: Tab; label: string }> = [
+  { id: "users", label: "Nutzer" },
+  { id: "feedback", label: "Feedback" },
+  { id: "reports", label: "Meldungen" },
+];
+
 export default function Admin() {
+  usePageMeta(`Admin${TITLE_SUFFIX}`);
   const api = useApi();
   const [tab, setTab] = useState<Tab>("users");
   const [stats, setStats] = useState<AdminStats | null>(null);
@@ -46,7 +56,7 @@ export default function Admin() {
       className="px-8 py-8 max-w-5xl mx-auto text-stone-200"
     >
       <h1 className="text-3xl">Admin</h1>
-      <p className="mt-2 text-sm text-stone-500">
+      <p className="mt-2 text-sm text-stone-400">
         Nutzerverwaltung, Feedback-Inbox und Moderation. Änderungen wirken sofort.
       </p>
 
@@ -58,47 +68,58 @@ export default function Admin() {
           <Stat label="Nutzer" value={stats.userCount} />
           <Stat label="Gesperrt" value={stats.userDisabledCount} />
           <Stat label="Presets" value={stats.presetCount} />
-          <Stat label="Public" value={stats.presetPublishedCount} />
+          <Stat label="Öffentlich" value={stats.presetPublishedCount} />
           <Stat label="Bilder" value={stats.imageCount} />
           <Stat label="Feedback offen" value={stats.feedbackOpenCount} />
-          <Stat label="Reports offen" value={stats.reportOpenCount} />
+          <Stat label="Meldungen offen" value={stats.reportOpenCount} />
         </div>
       )}
 
       {error && (
         <div
           data-testid="admin-error"
+          role="alert"
           className="mt-4 px-3 py-2 bg-red-900/40 border border-red-800 text-red-200 text-sm"
         >
           {error}
         </div>
       )}
 
-      <nav className="mt-6 flex gap-1 border-b border-stone-800">
-        <TabButton
-          active={tab === "users"}
-          onClick={() => setTab("users")}
-          testId="admin-tab-users"
-        >
-          Nutzer
-        </TabButton>
-        <TabButton
-          active={tab === "feedback"}
-          onClick={() => setTab("feedback")}
-          testId="admin-tab-feedback"
-        >
-          Feedback
-        </TabButton>
-        <TabButton
-          active={tab === "reports"}
-          onClick={() => setTab("reports")}
-          testId="admin-tab-reports"
-        >
-          Meldungen
-        </TabButton>
-      </nav>
+      <div
+        role="tablist"
+        aria-label="Admin-Bereiche"
+        className="mt-6 flex gap-1 border-b border-stone-800"
+        onKeyDown={(e) => {
+          // Pfeiltasten wechseln den Tab (WAI-ARIA Tabs-Pattern).
+          if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+          e.preventDefault();
+          const idx = TABS.findIndex((t) => t.id === tab);
+          const delta = e.key === "ArrowRight" ? 1 : -1;
+          const next = TABS[(idx + delta + TABS.length) % TABS.length];
+          if (!next) return;
+          setTab(next.id);
+          document.getElementById(`admin-tab-${next.id}`)?.focus();
+        }}
+      >
+        {TABS.map((t) => (
+          <TabButton
+            key={t.id}
+            id={`admin-tab-${t.id}`}
+            active={tab === t.id}
+            onClick={() => setTab(t.id)}
+            testId={`admin-tab-${t.id}`}
+          >
+            {t.label}
+          </TabButton>
+        ))}
+      </div>
 
-      <div className="mt-6">
+      <div
+        className="mt-6"
+        role="tabpanel"
+        id="admin-tabpanel"
+        aria-labelledby={`admin-tab-${tab}`}
+      >
         {tab === "users" && <UsersTab onChange={reloadStats} />}
         {tab === "feedback" && <FeedbackTab onChange={reloadStats} />}
         {tab === "reports" && <ReportsTab onChange={reloadStats} />}
@@ -110,7 +131,7 @@ export default function Admin() {
 function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div className="bg-stone-900/70 border border-stone-800 px-3 py-2">
-      <div className="text-stone-500 uppercase tracking-[0.2em] text-[10px]">
+      <div className="text-stone-400 uppercase tracking-[0.2em] text-[10px]">
         {label}
       </div>
       <div className="text-stone-100 tabular-nums text-lg">{value}</div>
@@ -119,11 +140,13 @@ function Stat({ label, value }: { label: string; value: number }) {
 }
 
 function TabButton({
+  id,
   active,
   onClick,
   testId,
   children,
 }: {
+  id: string;
   active: boolean;
   onClick: () => void;
   testId: string;
@@ -132,6 +155,11 @@ function TabButton({
   return (
     <button
       type="button"
+      id={id}
+      role="tab"
+      aria-selected={active}
+      aria-controls="admin-tabpanel"
+      tabIndex={active ? 0 : -1}
       onClick={onClick}
       data-testid={testId}
       className={`px-4 py-2 text-xs uppercase tracking-[0.2em] border-b-2 ${
@@ -147,9 +175,13 @@ function TabButton({
 
 function UsersTab({ onChange }: { onChange: () => void }) {
   const api = useApi();
+  const requestFocus = useFocusRequest();
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Sperren ist zweistufig (Fehlklick-Schutz), Entsperren einstufig.
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api
@@ -157,12 +189,14 @@ function UsersTab({ onChange }: { onChange: () => void }) {
       .then(setUsers)
       .catch((e: unknown) =>
         setErr(e instanceof Error ? e.message : "Laden fehlgeschlagen"),
-      );
+      )
+      .finally(() => setLoaded(true));
   }, [api]);
 
   useEffect(load, [load]);
 
   const onToggle = async (u: AdminUser) => {
+    setConfirmId(null);
     setBusy(u.id);
     setErr(null);
     try {
@@ -181,6 +215,7 @@ function UsersTab({ onChange }: { onChange: () => void }) {
       {err && (
         <div
           data-testid="admin-users-error"
+          role="alert"
           className="mb-3 px-3 py-2 bg-red-900/40 border border-red-800 text-red-200 text-sm"
         >
           {err}
@@ -190,10 +225,10 @@ function UsersTab({ onChange }: { onChange: () => void }) {
         <table className="w-full text-sm">
           <thead className="bg-stone-900 text-stone-400 text-[11px] uppercase tracking-[0.15em]">
             <tr>
-              <th className="text-left px-3 py-2">Email</th>
+              <th className="text-left px-3 py-2">E-Mail</th>
               <th className="text-left px-3 py-2">Handle</th>
               <th className="text-right px-3 py-2">Presets</th>
-              <th className="text-right px-3 py-2">Public</th>
+              <th className="text-right px-3 py-2">Öffentlich</th>
               <th className="text-right px-3 py-2">Bilder</th>
               <th className="text-right px-3 py-2">Feedback</th>
               <th className="text-left px-3 py-2">Erstellt</th>
@@ -223,31 +258,70 @@ function UsersTab({ onChange }: { onChange: () => void }) {
                 <td className="px-3 py-2 text-right tabular-nums">
                   {u.feedbackCount}
                 </td>
-                <td className="px-3 py-2 text-stone-500">
+                <td className="px-3 py-2 text-stone-400">
                   {u.createdAt.slice(0, 10)}
                 </td>
                 <td className="px-3 py-2">
-                  <button
-                    type="button"
-                    onClick={() => void onToggle(u)}
-                    disabled={busy === u.id}
-                    data-testid={`admin-user-toggle-${u.id}`}
-                    className={`px-2 py-1 text-[10px] uppercase tracking-[0.2em] border ${
-                      u.isDisabled
-                        ? "border-red-700 text-red-300 hover:bg-red-900/30"
-                        : "border-stone-700 text-stone-400 hover:border-amber-300/50"
-                    } disabled:opacity-50`}
-                  >
-                    {u.isDisabled ? "Gesperrt — Aktivieren" : "Sperren"}
-                  </button>
+                  {confirmId === u.id ? (
+                    <span className="flex items-center gap-2 whitespace-nowrap">
+                      <AutoFocusButton
+                        onClick={() => void onToggle(u)}
+                        disabled={busy === u.id}
+                        data-testid={`admin-user-toggle-confirm-${u.id}`}
+                        className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] border border-red-700 text-red-300 hover:bg-red-900/30 disabled:opacity-50"
+                      >
+                        Wirklich sperren?
+                      </AutoFocusButton>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmId(null);
+                          requestFocus(`admin-user-toggle-${u.id}`);
+                        }}
+                        data-testid={`admin-user-toggle-cancel-${u.id}`}
+                        className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200"
+                      >
+                        Abbrechen
+                      </button>
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (u.isDisabled) void onToggle(u);
+                        else setConfirmId(u.id);
+                      }}
+                      disabled={busy === u.id}
+                      data-testid={`admin-user-toggle-${u.id}`}
+                      className={`px-2 py-1 text-[10px] uppercase tracking-[0.2em] border ${
+                        u.isDisabled
+                          ? "border-red-700 text-red-300 hover:bg-red-900/30"
+                          : "border-stone-700 text-stone-400 hover:border-amber-300/50"
+                      } disabled:opacity-50`}
+                    >
+                      {u.isDisabled ? "Gesperrt — Aktivieren" : "Sperren"}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
-            {users.length === 0 && (
+            {!loaded && (
               <tr>
                 <td
                   colSpan={8}
-                  className="px-3 py-6 text-center text-stone-500"
+                  role="status"
+                  data-testid="admin-users-loading"
+                  className="px-3 py-6 text-center text-stone-400"
+                >
+                  Lädt …
+                </td>
+              </tr>
+            )}
+            {loaded && !err && users.length === 0 && (
+              <tr>
+                <td
+                  colSpan={8}
+                  className="px-3 py-6 text-center text-stone-400"
                 >
                   Keine Nutzer.
                 </td>
@@ -263,6 +337,7 @@ function UsersTab({ onChange }: { onChange: () => void }) {
 function FeedbackTab({ onChange }: { onChange: () => void }) {
   const api = useApi();
   const [items, setItems] = useState<AdminFeedback[]>([]);
+  const [loaded, setLoaded] = useState(false);
   const [filter, setFilter] = useState<AdminFeedbackStatus | "">("");
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -274,7 +349,8 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
       .then(setItems)
       .catch((e: unknown) =>
         setErr(e instanceof Error ? e.message : "Laden fehlgeschlagen"),
-      );
+      )
+      .finally(() => setLoaded(true));
   }, [api, filter]);
 
   useEffect(load, [load]);
@@ -325,7 +401,7 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
   return (
     <div data-testid="admin-feedback">
       <div className="flex items-center gap-2 mb-3 text-xs">
-        <span className="text-stone-500">Filter:</span>
+        <span className="text-stone-400">Filter:</span>
         {filterOptions.map(([value, label]) => (
           <button
             key={value || "all"}
@@ -346,15 +422,26 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
       {err && (
         <div
           data-testid="admin-feedback-error"
+          role="alert"
           className="mb-3 px-3 py-2 bg-red-900/40 border border-red-800 text-red-200 text-sm"
         >
           {err}
         </div>
       )}
-      {items.length === 0 ? (
-        <p className="text-stone-500 text-sm py-6 text-center">
-          Keine Einträge für diesen Filter.
+      {!loaded ? (
+        <p
+          role="status"
+          data-testid="admin-feedback-loading"
+          className="text-stone-400 text-sm py-6 text-center"
+        >
+          Lädt …
         </p>
+      ) : items.length === 0 ? (
+        err ? null : (
+          <p className="text-stone-400 text-sm py-6 text-center">
+            Keine Einträge für diesen Filter.
+          </p>
+        )
       ) : (
         <ul className="space-y-3">
           {items.map((it) => {
@@ -367,7 +454,7 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
                 className="bg-stone-900/70 border border-stone-800 px-4 py-3"
               >
                 <div className="flex items-start justify-between gap-3">
-                  <div className="text-xs text-stone-500">
+                  <div className="text-xs text-stone-400">
                     <span data-testid={`admin-feedback-kind-${it.id}`}>
                       {kindLabel(it.kind)}
                     </span>
@@ -403,6 +490,7 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
                   {showDraft ? (
                     <div className="space-y-2">
                       <textarea
+                        aria-label="Admin-Notiz"
                         value={draft}
                         onChange={(e) =>
                           setEditingNotes((m) => ({ ...m, [it.id]: e.target.value }))
@@ -431,7 +519,7 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
                               return rest;
                             })
                           }
-                          className="px-2 py-1 uppercase tracking-[0.2em] text-stone-500 hover:text-stone-300"
+                          className="px-2 py-1 uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200"
                         >
                           Abbrechen
                         </button>
@@ -447,7 +535,7 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
                           [it.id]: it.adminNotes ?? "",
                         }))
                       }
-                      className="text-stone-500 hover:text-amber-200"
+                      className="text-stone-400 hover:text-amber-200"
                     >
                       {it.adminNotes
                         ? `Notiz: ${it.adminNotes}`
@@ -466,10 +554,13 @@ function FeedbackTab({ onChange }: { onChange: () => void }) {
 
 function ReportsTab({ onChange }: { onChange: () => void }) {
   const api = useApi();
+  const requestFocus = useFocusRequest();
   const [items, setItems] = useState<AdminReportedPreset[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+  // Creator sperren ist zweistufig, entsperren einstufig.
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const load = useCallback(() => {
     api
@@ -501,6 +592,7 @@ function ReportsTab({ onChange }: { onChange: () => void }) {
   };
 
   const toggleOwner = async (p: AdminReportedPreset) => {
+    setConfirmId(null);
     setBusy(p.id);
     setErr(null);
     try {
@@ -523,15 +615,24 @@ function ReportsTab({ onChange }: { onChange: () => void }) {
       {err && (
         <div
           data-testid="admin-reports-error"
+          role="alert"
           className="mb-3 px-3 py-2 bg-red-900/40 border border-red-800 text-red-200 text-sm"
         >
           {err}
         </div>
       )}
-      {loaded && items.length === 0 ? (
+      {!loaded && !err ? (
+        <p
+          role="status"
+          data-testid="admin-reports-loading"
+          className="text-stone-400 text-sm py-6 text-center"
+        >
+          Lädt …
+        </p>
+      ) : loaded && items.length === 0 ? (
         <p
           data-testid="admin-reports-empty"
-          className="text-stone-500 text-sm py-6 text-center"
+          className="text-stone-400 text-sm py-6 text-center"
         >
           Keine gemeldeten Presets.
         </p>
@@ -546,7 +647,7 @@ function ReportsTab({ onChange }: { onChange: () => void }) {
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
                   <div className="text-stone-100">{p.name}</div>
-                  <div className="mt-1 text-xs text-stone-500">
+                  <div className="mt-1 text-xs text-stone-400">
                     {p.ownerEmail}
                     {p.ownerIsDisabled ? " (gesperrt)" : ""}
                     {" · "}
@@ -568,19 +669,46 @@ function ReportsTab({ onChange }: { onChange: () => void }) {
                   >
                     Meldungen verwerfen
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => void toggleOwner(p)}
-                    disabled={busy === p.id}
-                    data-testid={`admin-report-owner-toggle-${p.id}`}
-                    className={`px-2 py-1 text-[10px] uppercase tracking-[0.2em] border ${
-                      p.ownerIsDisabled
-                        ? "border-red-700 text-red-300 hover:bg-red-900/30"
-                        : "border-stone-700 text-stone-400 hover:border-red-700"
-                    } disabled:opacity-40`}
-                  >
-                    {p.ownerIsDisabled ? "Creator entsperren" : "Creator sperren"}
-                  </button>
+                  {confirmId === p.id ? (
+                    <>
+                      <AutoFocusButton
+                        onClick={() => void toggleOwner(p)}
+                        disabled={busy === p.id}
+                        data-testid={`admin-report-owner-confirm-${p.id}`}
+                        className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] border border-red-700 text-red-300 hover:bg-red-900/30 disabled:opacity-40"
+                      >
+                        Creator wirklich sperren?
+                      </AutoFocusButton>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setConfirmId(null);
+                          requestFocus(`admin-report-owner-toggle-${p.id}`);
+                        }}
+                        data-testid={`admin-report-owner-cancel-${p.id}`}
+                        className="px-2 py-1 text-[10px] uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200"
+                      >
+                        Abbrechen
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (p.ownerIsDisabled) void toggleOwner(p);
+                        else setConfirmId(p.id);
+                      }}
+                      disabled={busy === p.id}
+                      data-testid={`admin-report-owner-toggle-${p.id}`}
+                      className={`px-2 py-1 text-[10px] uppercase tracking-[0.2em] border ${
+                        p.ownerIsDisabled
+                          ? "border-red-700 text-red-300 hover:bg-red-900/30"
+                          : "border-stone-700 text-stone-400 hover:border-red-700"
+                      } disabled:opacity-40`}
+                    >
+                      {p.ownerIsDisabled ? "Creator entsperren" : "Creator sperren"}
+                    </button>
+                  )}
                 </div>
               </div>
               {p.description && (
@@ -591,7 +719,7 @@ function ReportsTab({ onChange }: { onChange: () => void }) {
               <ul className="mt-2 space-y-1 text-xs text-stone-400">
                 {p.reports.map((r, i) => (
                   <li key={`${r.createdAt}-${i}`}>
-                    <span className="text-stone-600">
+                    <span className="text-stone-400">
                       {r.createdAt.slice(0, 16).replace("T", " ")}
                     </span>{" "}
                     {r.reason}

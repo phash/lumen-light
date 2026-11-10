@@ -176,7 +176,7 @@ describe("Marketplace", () => {
     await waitFor(() =>
       expect(api.forkMarketplacePreset).toHaveBeenCalledWith("p-x"),
     );
-    expect(await screen.findByText(/In deine Bibliothek kopiert/)).toBeInTheDocument();
+    expect(await screen.findByText(/Zu deinen Presets hinzugef/)).toBeInTheDocument();
   });
 
   it("Report sendet reason an API", async () => {

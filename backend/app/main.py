@@ -1,4 +1,5 @@
 """FastAPI-Anwendung — Einstiegspunkt."""
+import logging
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
@@ -14,8 +15,28 @@ from app.rate_limit import limiter
 from app.routers import admin, auth, feedback, images, marketplace, presets
 
 
+logger = logging.getLogger("lumen.startup")
+
+
+def warn_on_insecure_config() -> None:
+    """Laute Warnung beim Start, wenn in Production der Keycloak-Service-
+    Account fehlt: DELETE /me loescht dann zwar alle App-Daten, der
+    Keycloak-Account (Email, Login) bleibt aber stehen (DSGVO Art. 17).
+    Bewusst KEIN Startabbruch — bestehende Deployments ohne Service-Account
+    sollen nicht beim naechsten Update ausfallen."""
+    if settings.env.lower() != "production":
+        return
+    if not (settings.keycloak_admin_client_id and settings.keycloak_admin_client_secret):
+        logger.warning(
+            "!!! KEYCLOAK_ADMIN_CLIENT_ID/KEYCLOAK_ADMIN_CLIENT_SECRET nicht gesetzt: "
+            "DELETE /me entfernt den Keycloak-Account NICHT (DSGVO Art. 17). "
+            "Service-Account mit manage-users-Rolle konfigurieren. !!!"
+        )
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    warn_on_insecure_config()
     yield
     await engine.dispose()
 
@@ -55,6 +76,8 @@ app.add_middleware(
     # (z.B. CONNECT) ungewollt erlaubt sind.
     allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type"],
+    # Pagination-Gesamtzahl fuer GET /images und GET /presets.
+    expose_headers=["X-Total-Count"],
 )
 
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])

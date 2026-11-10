@@ -12,7 +12,7 @@ export default function Datenschutz() {
   return (
     <section data-testid="page-datenschutz" className="px-8 py-12 max-w-3xl mx-auto text-stone-300">
       <h1 className="text-3xl text-stone-100">Datenschutz</h1>
-      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-06-13</p>
+      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-11-10</p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">1. Verantwortlicher</h2>
       <p className="mt-3">
@@ -169,7 +169,9 @@ export default function Datenschutz() {
         berücksichtigt, sofern dein Browser ihn noch sendet (viele moderne
         Browser haben DNT inzwischen entfernt — verlasse dich daher nicht
         allein darauf). Die IP-Adresse wird serverseitig anonymisiert (letzte
-        Oktette entfernt). Erfasst werden nur aggregierte, nicht auf dich
+        Oktette entfernt). Die Erkennung von Browser-Merkmalen (z.&nbsp;B.
+        Plugins, Bildschirmauflösung) ist deaktiviert, damit kein
+        Geräte-Fingerabdruck entsteht. Erfasst werden nur aggregierte, nicht auf dich
         rückführbare Besuchsdaten (aufgerufene Seiten, ungefähre Region,
         Browser-/Geräte-Typ), gespeichert für maximal 24 Monate. Die Daten
         bleiben auf dem deutschen IONOS-VPS; keine Weitergabe an Dritte.
@@ -196,11 +198,22 @@ export default function Datenschutz() {
         Server-Logs werden durch die Rotation automatisch nach wenigen
         Wochen überschrieben.
       </p>
-      <p className="mt-3 text-sm text-stone-400">
-        Hinweis: Der separate Keycloak-Account (Login-Daten) wird nicht
-        automatisch mit-gelöscht. Du kannst ihn über das Keycloak-
-        Self-Service-UI deines Realms separat schließen, oder den
-        Selfhost-Betreiber bitten, ihn zu entfernen.
+      <p className="mt-3">
+        Mit der Account-Löschung wird auch dein Keycloak-Account
+        (Login-Daten) automatisch gelöscht. Sollte das im Einzelfall
+        technisch fehlschlagen (z.&nbsp;B. bei einer kurzen Störung), bleibt
+        nur der Login-Account bestehen — du kannst ihn dann über das
+        Keycloak-Self-Service-UI selbst schließen oder uns bitten, ihn zu
+        entfernen.
+      </p>
+      <p className="mt-3">
+        <span className="text-stone-200">Sicherungskopien:</span> Datenbank
+        und Bilder werden täglich verschlüsselt (AES-256) gesichert. Die
+        Sicherungen werden auf dem VPS nach 14 Tagen und auf dem externen
+        Backup-Speicher nach 30 Tagen automatisch gelöscht. Gelöschte Daten
+        können daher noch bis zu 30 Tage in diesen Sicherungen enthalten
+        sein; sie werden nur zur Wiederherstellung nach einem Ausfall
+        verwendet.
       </p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">6. Deine Rechte</h2>

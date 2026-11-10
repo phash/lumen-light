@@ -109,9 +109,16 @@ async def list_users(
 async def patch_user(
     user_id: UUID,
     payload: AdminUserPatchIn,
-    _admin: User = Depends(current_admin),
+    admin: User = Depends(current_admin),
     db: AsyncSession = Depends(get_db),
 ) -> AdminUserOut:
+    # Selbst-Sperre verhindern: sonst sperrt sich der (ggf. einzige) Admin
+    # versehentlich aus und braucht DB-Zugriff zum Entsperren.
+    if user_id == admin.id and payload.is_disabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Du kannst dich nicht selbst sperren.",
+        )
     user = (
         await db.execute(select(User).where(User.id == user_id))
     ).scalar_one_or_none()

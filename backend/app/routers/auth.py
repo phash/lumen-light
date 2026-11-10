@@ -4,7 +4,7 @@ Login/Logout/Refresh/Register laufen ueber den externen Keycloak-Realm.
 DELETE/Export sind DSGVO Art. 17 + 20.
 """
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -15,6 +15,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user, current_user_allow_disabled, hash_sub
+from app.config import settings
 from app.database import get_db
 from app.keycloak_admin import delete_user as kc_delete_user
 from app.models import (
@@ -103,46 +104,64 @@ async def delete_me(
 ) -> None:
     """Loescht alle Daten des aktuellen Users:
 
-    1. ALLE S3-Objekte unter dem User-Prefix <user_id>/ (list_objects_v2 +
-       Batch-Delete) — nicht nur die in der DB bekannten Keys, damit auch
-       Staging-Reste und verwaiste Objekte verschwinden. Schlaegt der Purge
-       fehl, wird der Prefix in storage_purges vorgemerkt und der Janitor
-       wiederholt ihn (retry_storage_purges), statt den Fehler zu schlucken.
-    2. DB-Cascade entfernt presets+images; ein Grabstein (SHA-256(sub) +
-       deleted_at) verhindert, dass ein noch gueltiger Access-Token den
-       Account per JIT-Provisioning wiederbelebt.
+    1. DB zuerst, in EINER Transaktion: User (Cascade presets/images/
+       image_edits; feedback/preset_reports werden per SET NULL
+       anonymisiert), Grabstein (SHA-256(sub) + deleted_at, verhindert JIT-
+       Wiederbelebung durch noch gueltige Tokens) und eine Purge-Vormerkung
+       fuer den S3-Prefix <user_id>/ (storage_purges, not_before = jetzt +
+       Upload-Policy-Gueltigkeit + Puffer). Scheitert der Commit, ist in S3
+       noch nichts geloescht -> kein User ohne Objekte.
+    2. Sofort-Purge aller Objekte unter <user_id>/ (best effort). Die
+       Vormerkung bleibt trotzdem stehen: eine noch gueltige Upload-Policy
+       kann nach der Loeschung ein Staging-Objekt nachschieben; der Janitor
+       purgt den Prefix nach Ablauf von not_before erneut und loescht die
+       Vormerkung erst dann.
     3. Keycloak-Account via Admin-API loeschen (Service-Account, falls
        konfiguriert). Best-effort: ein KC-Ausfall schluckt den /me-DELETE
        NICHT — App-Daten gehen trotzdem weg, KC-Account bleibt nur als
-       Reststand stehen (Logger-WARNING). Wenn Service-Account nicht
-       konfiguriert ist, wird der KC-Schritt uebersprungen.
+       Reststand stehen (Logger-WARNING).
     """
     prefix = f"{user.id}/"
-    purge_error: str | None = None
-    try:
-        # boto3 ist synchron/blockierend -> Threadpool.
-        await run_in_threadpool(storage.delete_prefix, prefix)
-    except Exception as exc:  # noqa: BLE001 — wird unten persistiert
-        purge_error = str(exc)[:500]
-        logger.warning("delete_me: S3-Purge fuer %s fehlgeschlagen: %s", prefix, exc)
-
     keycloak_sub = user.keycloak_sub
     # Admin-Sperre ueberlebt die Loeschung (sonst Ban-Umgehung: gesperrter
     # User loescht sich und provisioniert per Re-Login frisch).
     banned = user.is_disabled
+    now = datetime.now(timezone.utc)
     await db.delete(user)
     # Grabstein in derselben Transaktion wie die Loeschung. merge statt add:
     # erneutes Loeschen nach Re-Provisionierung aktualisiert deleted_at.
     await db.merge(
         AccountTombstone(
             sub_hash=hash_sub(keycloak_sub),
-            deleted_at=datetime.now(timezone.utc),
+            deleted_at=now,
             banned=banned,
         )
     )
-    if purge_error is not None:
-        await db.merge(StoragePurge(prefix=prefix, attempts=1, last_error=purge_error))
+    purge = await db.merge(
+        StoragePurge(
+            prefix=prefix,
+            attempts=0,
+            last_error=None,
+            not_before=now
+            + timedelta(
+                seconds=settings.presigned_url_expires_in
+                + settings.janitor_grace_seconds
+            ),
+        )
+    )
     await db.commit()
+
+    try:
+        # boto3 ist synchron/blockierend -> Threadpool.
+        await run_in_threadpool(storage.delete_prefix, prefix)
+    except Exception as exc:  # noqa: BLE001 — Vormerkung existiert bereits
+        logger.warning("delete_me: S3-Purge fuer %s fehlgeschlagen: %s", prefix, exc)
+        try:
+            purge.attempts = 1
+            purge.last_error = str(exc)[:500]
+            await db.commit()
+        except Exception:  # noqa: BLE001 — Diagnose-Info, nicht kritisch
+            await db.rollback()
 
     # Erst nach erfolgreichem App-Cleanup den KC-Account abraeumen.
     # kc_delete_user macht bis zu zwei blockierende httpx-Roundtrips (Token
@@ -264,7 +283,7 @@ async def export_me(
 
     images: list[ImageExport] = []
     for img in image_rows:
-        url, expires = storage.presign_get(img.bucket_key)
+        url, expires = storage.presign_get(img.bucket_key, attachment=True)
         images.append(ImageExport(
             id=img.id,
             original_filename=img.original_filename,

@@ -1,6 +1,7 @@
 # Lumen · light — Deployment auf MRD Production Cluster
 
-**Stand:** 2026-10-26 — self-contained Stack, Garage statt MinIO, Netztrennung.
+**Stand:** 2026-11-10 — self-contained Stack, Garage statt MinIO, Netztrennung,
+Least-Privilege-DB-Rollen, `lumen-web` unprivilegiert auf Port 8080.
 
 > **Wichtig (Topologie-Korrektur):** Der Cluster hat KEIN shared Keycloak und
 > KEIN shared Garage — jedes Projekt bringt seine eigenen mit. Lumen läuft
@@ -80,6 +81,9 @@ Werte ergänzen:
 POSTGRES_USER=lumen
 POSTGRES_PASSWORD=<openssl rand -hex 24>
 POSTGRES_DB=lumen
+# Least-Privilege-Rollen; leer lassen = deploy.sh generiert + traegt ein
+LUMEN_DB_APP_PASSWORD=
+KEYCLOAK_DB_PASSWORD=
 KEYCLOAK_ISSUER=https://auth.mr-development.de/realms/lumen
 KEYCLOAK_AUDIENCE=lumen-api
 GARAGE_S3_ENDPOINT=http://garage:3900
@@ -194,8 +198,10 @@ Ueberspringen). Bootstrap-Admin heisst jetzt `KC_BOOTSTRAP_ADMIN_*` (greift
 nur bei leerer KC-DB).
 
 **Keycloak-Admin-Konsole ist nicht mehr oeffentlich** (Caddy liefert 404 fuer
-`/auth/admin/*/console`, `/auth/admin/master/*`, `/auth/realms/master/*`).
-Zugriff per SSH-Tunnel:
+`/auth/admin` + `/auth/admin/*` komplett inkl. Admin-REST-API aller Realms,
+sowie `/auth/realms/master/*`; nginx spiegelt das). Die API ruft die
+Admin-REST-API fuer `DELETE /me` intern ueber `KEYCLOAK_INTERNAL_URL`
+(`http://lumen-keycloak:8080/auth`) auf. Zugriff per SSH-Tunnel:
 
 ```bash
 # auf dem VPS: Container-IP im lumen-internal-Netz ermitteln
@@ -244,14 +250,60 @@ Betrieb: `docker volume rm lumen_lumen-minio-data` und `MINIO_*` aus `.env`.
 Caddy laesst auf `/lumen-images/*` nur GET/HEAD/POST durch (405 sonst) und
 setzt eine Sandbox-CSP auf S3-Antworten.
 
+## Least Privilege + KC-Account-Loeschung (Stand 2026-11)
+
+**DB-Rollen:** API und Keycloak laufen nicht mehr als Postgres-Superuser.
+`lumen_app` ist Owner der App-DB (API + Alembic), `keycloak` Owner der DB
+`keycloak`; `POSTGRES_USER` bleibt nur fuer Init/Admin/Backup. CONNECT fuer
+PUBLIC ist auf beiden DBs entzogen. Ein Script fuer beide Wege:
+`deployment/initdb/02-app-roles.sh` (Erst-Init per initdb, Bestand per
+`deploy.sh` -> `ensure_db_roles`, laeuft VOR dem Start von API/KC).
+Idempotent; Passwort-Rotation = Wert in `.env` aendern + `deploy.sh`.
+Manuell (ohne deploy.sh):
+
+```bash
+set -a; . deployment/.env; set +a
+docker exec -i -e LUMEN_DB_APP_PASSWORD -e KEYCLOAK_DB_PASSWORD lumen-db \
+  bash -euo pipefail -s < deployment/initdb/02-app-roles.sh
+```
+
+**Service-Account `lumen-admin`:** confidential Client nur mit
+`client_credentials` und der Rolle `realm-management/manage-users`.
+`deploy.sh` (Schritt 6a) legt ihn idempotent an, liest das von Keycloak
+generierte Secret und schreibt `KEYCLOAK_ADMIN_CLIENT_ID/SECRET` in `.env`
+(danach `lumen-api` neu erzeugt). Damit loescht `DELETE /me` auch den
+Keycloak-Account. Secret rotieren: in KC neu generieren
+(`kcadm.sh create clients/<id>/client-secret -r lumen`) + `deploy.sh`.
+
+**Realm-Haertung:** `deploy.sh` uebertraegt aus `lumen-realm.prod.json`
+zusaetzlich `verifyEmail`, `sslRequired`, Brute-Force-Parameter und fuer
+`lumen-frontend` `directAccessGrantsEnabled=false`, Redirect-URIs,
+Web-Origins und Attribute (Merge, nichts anderes wird geloescht).
+
+**lumen-web:** `nginxinc/nginx-unprivileged` (uid 101, Port **8080**, keine
+Capabilities). Caddy routet auf `lumen-web:8080`. `lumen-db`/`lumen-redis`
+laufen mit `cap_drop: ALL` + minimalem `cap_add` und `no-new-privileges`.
+
 ## Backup
 
 `deployment/backup.sh` (Cron auf dem VPS) sichert beide Postgres-DBs und den
 Bucket (`scripts.s3_archive export`, Objekt-Ebene als tar), verschluesselt
 alles per `gpg --symmetric` (AES256) und kopiert es optional per rsync weg.
 Ohne lesbare Passphrase-Datei bricht es ab. rsync laeuft ohne `--delete`
-(lokales Loeschen raeumt die Offsite-Kopie nicht ab) — Retention am Ziel
-separat einrichten.
+(lokales Loeschen raeumt die Offsite-Kopie nicht ab).
+
+**Aufbewahrung (fest, so in der Datenschutzerklaerung genannt):** lokal
+`RETENTION_DAYS` (Default 14 Tage, raeumt `backup.sh`), offsite **30 Tage**,
+ausgefuehrt **am Ziel** per Cron des Backup-Users:
+
+```bash
+# crontab -e auf dem Offsite-Host (Pfad = BACKUP_REMOTE-Ziel)
+15 4 * * *  find /srv/lumen -maxdepth 1 -type f -name '*.gpg' -mtime +30 -delete
+```
+
+`backup.sh` endet mit Exit != 0, wenn ein Teil fehlschlaegt (auch der
+Bucket-Export; die bereits verschluesselten DB-Dumps bleiben und gehen
+offsite). Abgebrochene Laeufe hinterlassen keine Klartext-Teildateien.
 
 ```bash
 # Einmalig: Passphrase anlegen (zusaetzlich offline/im Passwortmanager ablegen!)
@@ -270,6 +322,11 @@ gpg --batch --passphrase-file $P -d lumen-db-<TS>.sql.gz.gpg | gunzip \
 gpg --batch --passphrase-file $P -d bucket-<TS>.tar.gz.gpg | gunzip \
   | docker exec -i lumen-api python -m scripts.s3_archive import
 ```
+
+Restore laeuft als Superuser; die Dumps enthalten `OWNER TO lumen_app` bzw.
+`keycloak`, die Rollen muessen also existieren. Danach (oder bei einem
+Dump von vor 2026-11) `02-app-roles.sh` wie oben erneut ausfuehren — es
+stellt alle Owner wieder auf die Least-Privilege-Rollen.
 
 ## Rollback
 
@@ -291,7 +348,8 @@ docker compose -f deployment/docker-compose.prod.yml exec lumen-api \
 
 | Symptom | Ursache | Fix |
 |---|---|---|
-| 502 von Caddy | Container-Alias fehlt | `docker network connect --alias lumen-{api,web} caddy-proxy ...` |
+| 502 von Caddy | Caddy-Block zeigt noch auf `lumen-web:80` (seit 2026-11: `:8080`) bzw. `lumen-web` nicht im `caddy-proxy`-Netz | `deploy.sh` erneut (tauscht den Block), `docker network inspect caddy-proxy` |
+| API/KC: `password authentication failed for user "lumen_app"/"keycloak"` | Rollen-Umstellung nicht gelaufen oder Passwort in `.env` geaendert | `02-app-roles.sh` (siehe „Least Privilege") ausfuehren |
 | Login redirected, aber `/auth/me` ist 401 | Issuer-Mismatch zwischen `KEYCLOAK_ISSUER` und Token-`iss`-Claim | `.env`-Wert auf den exakt selben URL setzen, der im Token steht |
 | Pre-Signed-URL 403 beim Browser-PUT | CORS auf dem Garage-Bucket fehlt | `garage bucket cors-set lumen-images <CORS-Konfig>` |
 | Image-Confirm gibt 409 | Object liegt nicht im Bucket | Upload-PUT prüfen — Browser-Console öffnen |

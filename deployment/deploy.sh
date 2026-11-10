@@ -60,6 +60,43 @@ PY
 }
 
 
+# deployment/.env idempotent pflegen: NAME=WERT setzen und in die laufende
+# Shell exportieren (compose-Interpolation: Shell-Env schlaegt --env-file,
+# ein leer exportierter Altwert wuerde sonst gewinnen). Modus "if-empty"
+# schreibt nur, wenn der Wert fehlt/leer ist; "force" ueberschreibt.
+# Werte per Env an python (nicht in argv/ps), Datei-Inode + Modus bleiben.
+env_set() {
+  local mode="$1" name="$2" value="$3"
+  if [ "$mode" = "if-empty" ] && [ -n "${!name:-}" ]; then return 0; fi
+  ENV_NAME="$name" ENV_VALUE="$value" python3 - deployment/.env <<'PY'
+import os, re, sys
+path, name, value = sys.argv[1], os.environ["ENV_NAME"], os.environ["ENV_VALUE"]
+lines = open(path).read().splitlines(keepends=True)
+pat = re.compile(rf"^{re.escape(name)}=")
+for i, line in enumerate(lines):
+    if pat.match(line):
+        lines[i] = f"{name}={value}\n"
+        break
+else:
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+    lines.append(f"{name}={value}\n")
+with open(path, "w") as f:
+    f.write("".join(lines))
+PY
+  export "$name=$value"
+}
+
+# Least-Privilege-DB-Rollen (lumen_app / keycloak) idempotent anlegen bzw.
+# bestehende Prod-DBs umstellen (Owner + alle Objekte). Muss laufen, BEVOR
+# lumen-api / lumen-keycloak mit den neuen Credentials starten. Gleiches
+# Script wie beim initdb-Erst-Init (eine Quelle).
+ensure_db_roles() {
+  "${COMPOSE[@]}" up -d --wait --wait-timeout 180 lumen-db
+  docker exec -i -e LUMEN_DB_APP_PASSWORD -e KEYCLOAK_DB_PASSWORD lumen-db \
+    bash -euo pipefail -s < deployment/initdb/02-app-roles.sh
+}
+
 echo "==> [1/8] Code aktualisieren (git pull)"
 # Fehlgeschlagener Pull darf NICHT stillschweigend alten Code deployen.
 # Bewusster Deploy des lokalen Stands: SKIP_PULL=1 bash deployment/deploy.sh
@@ -71,6 +108,12 @@ echo "==> [2/8] Konfiguration pruefen"
 test -f deployment/.env            || { echo "FEHLER: deployment/.env fehlt (aus .env.example)"; exit 1; }
 test -f deployment/config.prod.js  || { echo "FEHLER: deployment/config.prod.js fehlt"; exit 1; }
 set -a; . deployment/.env; set +a
+# DB-Rollen-Passwoerter (Review M1): fehlen sie, hier generieren und in .env
+# eintragen (hex -> URL-sicher in DATABASE_URL). Bestehende Werte bleiben.
+env_set if-empty LUMEN_DB_APP_PASSWORD "$(python3 -c 'import secrets;print(secrets.token_hex(24))')"
+env_set if-empty KEYCLOAK_DB_PASSWORD "$(python3 -c 'import secrets;print(secrets.token_hex(24))')"
+[[ "$LUMEN_DB_APP_PASSWORD" =~ ^[A-Za-z0-9._~-]+$ ]] \
+  || { echo "FEHLER: LUMEN_DB_APP_PASSWORD nur [A-Za-z0-9._~-] (steht in der DATABASE_URL)"; exit 1; }
 
 echo "==> [3/8] caddy-proxy-Netz sicherstellen"
 docker network inspect caddy-proxy >/dev/null 2>&1 || docker network create caddy-proxy
@@ -89,6 +132,9 @@ python3 -c "import re,os,sys;k=os.environ.get('GARAGE_S3_ACCESS_KEY_ID','');s=os
 # bleiben Security-Patches der Floating-Tags (python/node) aus.
 "${COMPOSE[@]}" pull --ignore-buildable
 "${COMPOSE[@]}" build --pull --no-cache
+# Erst die DB (inkl. Rollen-Umstellung), dann den Rest mit den neuen
+# Least-Privilege-Credentials.
+ensure_db_roles
 "${COMPOSE[@]}" up -d
 
 echo "==> [5/8] Caddy-Block sofort umstellen"
@@ -152,6 +198,13 @@ if docker ps --format '{{.Names}}' | grep -qx lumen-minio; then
   echo "   Migration fertig, lumen-minio entfernt (Volume bleibt)."
 fi
 
+echo "==> [5c/8] Marketplace-Vorschauen backfillen (Migration 011, idempotent)"
+# Oeffentliche Presets von vor Migration 011 haben noch keinen preview_key
+# (previewUrl null). Das Skript erzeugt fehlende Vorschauen; bereits
+# vorhandene werden uebersprungen. Fehler blockieren den Deploy nicht.
+docker exec lumen-api python -m scripts.backfill_previews \
+  || echo "   WARN: backfill_previews fehlgeschlagen — spaeter manuell nachholen."
+
 echo "==> [6/8] Keycloak-SMTP + Realm-Haertung im Realm 'lumen' setzen"
 # Passwort per Env (KC_CLI_PASSWORD) statt --password: nicht in der Prozessliste.
 KCADM=(docker exec -i lumen-keycloak /opt/keycloak/bin/kcadm.sh)
@@ -166,17 +219,40 @@ python3 -c "import json,os;print(json.dumps({'smtpServer':{'host':os.environ['SM
 echo "   SMTP gesetzt (from=$SMTP_FROM via $SMTP_HOST:$SMTP_PORT)"
 # Realm-Import greift nur beim allerersten Start -> Haertung aus
 # lumen-realm.prod.json hier idempotent auf den laufenden Realm uebertragen.
+# Werte kommen AUSSCHLIESSLICH aus der Prod-Realm-JSON (kein Drift).
+# Achtung verifyEmail: Bestands-User mit emailVerified=false muessen beim
+# naechsten Login ihre Adresse bestaetigen (SMTP ist oben gesetzt).
 python3 - <<'PY' | "${KCADM[@]}" update realms/lumen -f -
 import json
 r = json.load(open("infra/keycloak/lumen-realm.prod.json"))
 keys = ["passwordPolicy", "eventsEnabled", "eventsExpiration",
-        "adminEventsEnabled", "adminEventsDetailsEnabled"]
+        "adminEventsEnabled", "adminEventsDetailsEnabled",
+        "verifyEmail", "sslRequired",
+        "bruteForceProtected", "permanentLockout", "failureFactor",
+        "maxFailureWaitSeconds", "minimumQuickLoginWaitSeconds",
+        "waitIncrementSeconds", "quickLoginCheckMilliSeconds",
+        "maxDeltaTimeSeconds"]
 print(json.dumps({k: r[k] for k in keys}))
 PY
-CID="$("${KCADM[@]}" get clients -r lumen -q clientId=lumen-frontend --fields id --format csv --noquotes | tr -d '\r')"
-"${KCADM[@]}" update "clients/$CID" -r lumen \
-  -s "redirectUris=[\"https://${DOMAIN}/callback\"]" \
-  -s "attributes.\"post.logout.redirect.uris\"=https://${DOMAIN}"
+# Client-Felder aus der Realm-JSON; die Prod-Domain darin wird auf $DOMAIN
+# abgebildet (Default identisch).
+realm_client_json() {
+  python3 - "$1" "$DOMAIN" "${@:2}" <<'PY'
+import json, sys
+client_id, domain, keys = sys.argv[1], sys.argv[2], sys.argv[3:]
+r = json.load(open("infra/keycloak/lumen-realm.prod.json"))
+c = next(c for c in r["clients"] if c["clientId"] == client_id)
+out = json.dumps({k: c[k] for k in keys if k in c})
+print(out.replace("https://lumen.mr-development.de", "https://" + domain))
+PY
+}
+CID="$("${KCADM[@]}" get clients -r lumen -q clientId=lumen-frontend --fields id --format csv --noquotes </dev/null | tr -d '\r')"
+[ -n "$CID" ] || { echo "FEHLER: Client lumen-frontend nicht gefunden"; exit 1; }
+# Public SPA-Client: kein ROPC (directAccessGrants), exakte Redirect-URIs +
+# Web-Origins, PKCE S256, Post-Logout-Redirect.
+realm_client_json lumen-frontend publicClient standardFlowEnabled implicitFlowEnabled \
+    directAccessGrantsEnabled serviceAccountsEnabled redirectUris webOrigins attributes \
+  | "${KCADM[@]}" update "clients/$CID" -r lumen --merge -f -
 # Audience-Mapper: KC >= 26.x setzt "included.client.audience" nur noch fuer
 # EXISTIERENDE Clients — einen Client "lumen-api" gibt es nicht, ohne
 # Umstellung fehlt aud=lumen-api im Token und jeder API-Call wird 401.
@@ -193,7 +269,45 @@ print(json.dumps(m))" | "${KCADM[@]}" update "clients/$CID/protocol-mappers/mode
 fi
 # Public-SPA-Client soll keine Offline-Tokens (nie ablaufende Refresh-Tokens) bekommen.
 "${KCADM[@]}" remove-roles -r lumen --rname default-roles-lumen --rolename offline_access 2>/dev/null || true
-echo "   Realm-Haertung gesetzt (Password-Policy, Events, Redirect-URIs, kein offline_access)"
+echo "   Realm-Haertung gesetzt (Password-Policy, Events, Brute-Force, verifyEmail, sslRequired, Frontend-Client, kein offline_access)"
+
+echo "==> [6a/8] Service-Account 'lumen-admin' fuer DELETE /me (KC-Account-Loeschung)"
+# Confidential Client nur mit client_credentials und GENAU der Rolle
+# realm-management/manage-users (reicht fuer DELETE /admin/realms/lumen/
+# users/{id}). Secret generiert Keycloak; es landet nur in deployment/.env.
+ACID="$("${KCADM[@]}" get clients -r lumen -q clientId=lumen-admin --fields id --format csv --noquotes </dev/null | tr -d '\r')"
+ADMIN_KEYS=(clientId name description enabled publicClient clientAuthenticatorType
+            standardFlowEnabled implicitFlowEnabled directAccessGrantsEnabled
+            serviceAccountsEnabled frontchannelLogout protocol redirectUris webOrigins attributes)
+if [ -z "$ACID" ]; then
+  ACID="$(realm_client_json lumen-admin "${ADMIN_KEYS[@]}" \
+    | "${KCADM[@]}" create clients -r lumen -f - -i | tr -d '\r')"
+  echo "   Client lumen-admin angelegt"
+else
+  realm_client_json lumen-admin "${ADMIN_KEYS[@]}" \
+    | "${KCADM[@]}" update "clients/$ACID" -r lumen --merge -f -
+fi
+[ -n "$ACID" ] || { echo "FEHLER: Client lumen-admin nicht anlegbar"; exit 1; }
+"${KCADM[@]}" add-roles -r lumen --uusername service-account-lumen-admin \
+  --cclientid realm-management --rolename manage-users </dev/null
+ASECRET="$("${KCADM[@]}" get "clients/$ACID/client-secret" -r lumen </dev/null \
+  | python3 -c "import json,sys;print(json.load(sys.stdin)['value'])")"
+[ -n "$ASECRET" ] || { echo "FEHLER: lumen-admin-Secret nicht lesbar"; exit 1; }
+# Eigener Client in .env (leer oder lumen-admin): Secret aus KC synchron
+# halten (auch nach Rotation in KC). Fremder Client-Name: unangetastet.
+if [ -z "${KEYCLOAK_ADMIN_CLIENT_ID:-}" ] || [ "$KEYCLOAK_ADMIN_CLIENT_ID" = "lumen-admin" ]; then
+  OLD_SECRET="${KEYCLOAK_ADMIN_CLIENT_SECRET:-}"
+  env_set force KEYCLOAK_ADMIN_CLIENT_ID lumen-admin
+  env_set force KEYCLOAK_ADMIN_CLIENT_SECRET "$ASECRET"
+  if [ "$OLD_SECRET" != "$ASECRET" ]; then
+    # API mit den neuen Werten neu erzeugen (Env wird nur beim Create gelesen).
+    "${COMPOSE[@]}" up -d --no-deps lumen-api
+    echo "   KEYCLOAK_ADMIN_CLIENT_ID/SECRET in .env geschrieben, lumen-api neu erzeugt"
+  fi
+else
+  echo "   WARN: KEYCLOAK_ADMIN_CLIENT_ID=$KEYCLOAK_ADMIN_CLIENT_ID (nicht lumen-admin) — unveraendert"
+fi
+unset ASECRET OLD_SECRET
 
 echo "==> [7/8] Smoke-Test"
 sleep 3
@@ -201,4 +315,10 @@ curl -fsS "https://${DOMAIN}/api/v1/health" && echo "  <- /api/v1/health OK"
 curl -fsS "https://${DOMAIN}/auth/realms/lumen/.well-known/openid-configuration" \
   | grep -o '"issuer":"[^"]*"' && echo "  <- Keycloak-Issuer OK"
 curl -fsS "https://${DOMAIN}/config.js" >/dev/null && echo "  <- config.js OK"
+# Keycloak-Admin-REST-API/-Konsole darf von aussen NICHT erreichbar sein.
+for path in /auth/admin/ /auth/admin/realms/lumen/users /auth/realms/master/; do
+  code="$(curl -s -o /dev/null -w '%{http_code}' "https://${DOMAIN}${path}")"
+  [ "$code" = "404" ] || { echo "FEHLER: ${path} liefert ${code} statt 404"; exit 1; }
+done
+echo "  <- /auth/admin + Master-Realm gesperrt (404)"
 echo "==> Deploy abgeschlossen: https://${DOMAIN}"

@@ -6,6 +6,9 @@
 (function () {
   var _paq = (window._paq = window._paq || []);
   _paq.push(["disableCookies"]); // keine Cookies -> kein Consent erforderlich
+  // Keine Browser-Feature-Erkennung (Plugins, Bildschirmaufloesung, ...):
+  // diese Merkmale dienen sonst dem Config-Hash/Fingerprinting (Review L10).
+  _paq.push(["disableBrowserFeatureDetection"]);
   _paq.push(["setDoNotTrack", true]); // DNT-Header respektieren
   _paq.push(["enableLinkTracking"]);
   // Auf der OIDC-Callback-Route NICHT tracken: die URL traegt ?code/&state

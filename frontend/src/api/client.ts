@@ -306,8 +306,14 @@ export interface ApiClient {
   deleteImage(id: string): Promise<void>;
   /** Gespeicherten Bearbeitungsstand laden; null wenn keiner existiert (404). */
   getImageEdit(id: string): Promise<ImageEditState | null>;
-  /** Bearbeitungsstand speichern (Upsert) — debounced Autosave aus dem Editor. */
-  putImageEdit(id: string, state: ImageEditState): Promise<void>;
+  /** Bearbeitungsstand speichern (Upsert) — debounced Autosave aus dem Editor.
+   *  `keepalive` laesst den Request das Entladen der Seite ueberleben
+   *  (Flush bei pagehide/Unmount). */
+  putImageEdit(
+    id: string,
+    state: ImageEditState,
+    options?: { keepalive?: boolean },
+  ): Promise<void>;
 
   listMarketplacePresets(query?: MarketplaceListQuery): Promise<MarketplaceList>;
   getMarketplacePreset(id: string): Promise<MarketplaceDetail>;
@@ -409,6 +415,9 @@ export interface ApiClientOptions {
   fetch?: typeof fetch;
 }
 
+/** Seitengroesse fuer GET /images (= Backend-Maximum). */
+const IMAGE_PAGE_LIMIT = 500;
+
 export function createApiClient(options: ApiClientOptions): ApiClient {
   const fetchImpl = options.fetch ?? fetch;
   const base = options.baseUrl.replace(/\/$/, "");
@@ -423,16 +432,27 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
       headers.set("Content-Type", "application/json");
     }
 
-    const res = await fetchImpl(`${base}${path}`, { ...init, headers });
+    let res: Response;
+    try {
+      res = await fetchImpl(`${base}${path}`, { ...init, headers });
+    } catch (err) {
+      // Abbruch durch den Aufrufer unveraendert weiterreichen.
+      if (err instanceof DOMException && err.name === "AbortError") throw err;
+      // Netzwerkfehler (offline, DNS, CORS) -> einheitlicher ApiError mit
+      // Status 0, damit Aufrufer nicht auf „Failed to fetch" angewiesen sind.
+      throw new ApiError(0, "Netzwerkfehler – Server nicht erreichbar.", "NETWORK_ERROR");
+    }
 
     if (!res.ok) {
-      const body = (await res.json().catch(() => ({
-        detail: res.statusText,
-      }))) as { detail?: unknown; code?: string };
+      // HTTP/2 liefert oft keinen statusText -> Status-Code als Fallback.
+      const fallback = res.statusText || `Serverfehler (HTTP ${res.status})`;
+      const raw: unknown = await res.json().catch(() => null);
+      const body =
+        raw && typeof raw === "object" ? (raw as { detail?: unknown; code?: unknown }) : {};
       throw new ApiError(
         res.status,
-        formatErrorDetail(body.detail) ?? res.statusText,
-        body.code,
+        formatErrorDetail(body.detail) ?? fallback,
+        typeof body.code === "string" ? body.code : undefined,
       );
     }
     if (res.status === 204) {
@@ -464,8 +484,17 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         body: JSON.stringify(payload),
       }),
 
-    listImages: (state = "ready") =>
-      request<Image[]>(`/images?state=${encodeURIComponent(state)}`),
+    listImages: async (state = "ready") => {
+      // Backend paginiert (max 500 pro Seite) -> alle Seiten einsammeln.
+      const all: Image[] = [];
+      for (let offset = 0; ; offset += IMAGE_PAGE_LIMIT) {
+        const page = await request<Image[]>(
+          `/images?state=${encodeURIComponent(state)}&limit=${IMAGE_PAGE_LIMIT}&offset=${offset}`,
+        );
+        all.push(...page);
+        if (page.length < IMAGE_PAGE_LIMIT) return all;
+      }
+    },
     initUpload: (filename, contentType, sizeBytes) =>
       request<ImageInit>("/images", {
         method: "POST",
@@ -485,10 +514,11 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         throw err;
       }
     },
-    putImageEdit: (id, state) =>
+    putImageEdit: (id, state, opts) =>
       request<void>(`/images/${encodeURIComponent(id)}/edit`, {
         method: "PUT",
         body: JSON.stringify(state),
+        ...(opts?.keepalive ? { keepalive: true } : {}),
       }),
 
     listMarketplacePresets: (query = {}) => {

@@ -32,16 +32,18 @@ ENV VITE_KEYCLOAK_AUTHORITY=$VITE_KEYCLOAK_AUTHORITY \
 
 RUN pnpm build
 
-# Run-Stage
-FROM nginx:1.30.6-alpine
+# Run-Stage: nginx-unprivileged (Review L8) — Master + Worker laufen als
+# uid 101, Listen-Port 8080 (kein Port < 1024 -> keine Capabilities noetig,
+# compose: cap_drop ALL ohne cap_add). Caddy routet auf lumen-web:8080.
+FROM nginxinc/nginx-unprivileged:1.30.6-alpine
 
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+EXPOSE 8080
 # 127.0.0.1 statt localhost: nginx bindet IPv4; localhost loest in alpine teils
 # auf ::1 (IPv6) auf -> falsches "unhealthy" trotz funktionierendem Server.
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-    CMD wget -q -O - http://127.0.0.1/ > /dev/null || exit 1
+    CMD wget -q -O - http://127.0.0.1:8080/ > /dev/null || exit 1
 
 CMD ["nginx", "-g", "daemon off;"]

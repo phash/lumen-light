@@ -9,10 +9,14 @@ import {
   type User,
 } from "../api/client";
 import { clearOfflineCaches } from "../auth/clearCaches";
+import AutoFocusButton from "../components/AutoFocusButton";
 import {
   isFaceDetectionConsented,
   setFaceDetectionConsent,
 } from "../editor/consent";
+import { genreLabel } from "../editor/genreLabel";
+import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
+import { useFocusRequest } from "../hooks/useFocusRequest";
 import OnboardingTour from "../onboarding/OnboardingTour";
 import {
   getOnboardingState,
@@ -20,8 +24,21 @@ import {
   type OnboardingState,
 } from "../onboarding/state";
 
+// Backend-Regel fuer Handles (siehe schemas.py): 3–40 Zeichen, a-z 0-9 -.
+const HANDLE_RE = /^[a-z0-9-]{3,40}$/;
+
+/** Liefert eine Fehlermeldung fuer den Handle oder null, wenn gueltig/leer. */
+export function validateHandle(handle: string): string | null {
+  const h = handle.trim();
+  if (h === "") return null;
+  if (!HANDLE_RE.test(h)) return "Handle: 3–40 Zeichen, nur a–z, 0–9 und Bindestrich.";
+  return null;
+}
+
 export default function Account() {
+  usePageMeta(`Account${TITLE_SUFFIX}`);
   const api = useApi();
+  const requestFocus = useFocusRequest();
   const auth = useAuth();
   const [me, setMe] = useState<User | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +48,9 @@ export default function Account() {
     { handle: "", bio: "" },
   );
   const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
+  const [handleError, setHandleError] = useState<string | null>(null);
   const [published, setPublished] = useState<Preset[]>([]);
+  const [publishedLoaded, setPublishedLoaded] = useState(false);
   // Nicht-blockierender Lade-Hinweis fuer Profil/veroeffentlichte Presets —
   // sonst sieht der User bei einem Backend-Ausfall leere Felder/Listen, ohne
   // zu wissen, dass das Laden fehlschlug.
@@ -81,6 +100,9 @@ export default function Account() {
       })
       .catch(() => {
         if (!cancelled) setLoadNotice("Einige Kontodaten konnten nicht geladen werden.");
+      })
+      .finally(() => {
+        if (!cancelled) setPublishedLoaded(true);
       });
     return () => {
       cancelled = true;
@@ -89,6 +111,9 @@ export default function Account() {
 
   const onProfileSave = async () => {
     setProfileFeedback(null);
+    const invalid = validateHandle(profileDraft.handle);
+    setHandleError(invalid);
+    if (invalid) return;
     try {
       await api.updateProfile({
         handle: profileDraft.handle.trim() || null,
@@ -99,7 +124,7 @@ export default function Account() {
       if (err instanceof ApiError && err.status === 409) {
         setProfileFeedback("Dieser Handle ist bereits vergeben.");
       } else if (err instanceof ApiError && err.status === 422) {
-        setProfileFeedback("Handle: 3–40 Zeichen, nur a-z 0-9 -.");
+        setProfileFeedback("Handle: 3–40 Zeichen, nur a–z, 0–9 und Bindestrich.");
       } else {
         setProfileFeedback(err instanceof Error ? err.message : "Speichern fehlgeschlagen");
       }
@@ -174,7 +199,7 @@ export default function Account() {
       )}
 
       {error && (
-        <p data-testid="account-error" className="mt-4 text-red-400 text-sm">
+        <p data-testid="account-error" role="alert" className="mt-4 text-red-400 text-sm">
           {error}
         </p>
       )}
@@ -182,15 +207,15 @@ export default function Account() {
       <div className="mt-8 space-y-8">
         <section data-testid="account-smart-suggestion">
           <h2 className="text-stone-300 italic">Smart-Preset-Vorschlag</h2>
-          <p className="mt-1 text-sm text-stone-500">
+          <p className="mt-1 text-sm text-stone-400">
             Beim Laden eines Bildes versucht Lumen, ein passendes Preset-
-            Genre vorzuschlagen (Portrait, Landschaft, Sport…). Für die
+            Genre vorzuschlagen (Portrait, Landschaft, Sport …). Für die
             Portrait-Erkennung wird einmalig pro Browser-Profil ein
             Modell von Google&apos;s TensorFlow-CDN geladen — dabei werden
             deine IP-Adresse und User-Agent an Google in den USA
             übermittelt. Die eigentliche Erkennung läuft danach lokal
             in deinem Browser; Bilder verlassen deinen Rechner nicht.
-            <span className="block mt-2 text-stone-400">
+            <span className="block mt-2 text-stone-300">
               Default ist deaktiviert. Mit dem Toggle gibst du
               ausdrückliche Einwilligung im Sinne von Art. 49 Abs. 1
               lit. a DSGVO.
@@ -212,7 +237,7 @@ export default function Account() {
 
         <section data-testid="account-tour">
           <h2 className="text-stone-300 italic">Tour</h2>
-          <p className="mt-1 text-sm text-stone-500">
+          <p className="mt-1 text-sm text-stone-400">
             {onboardingState === "completed"
               ? "Du hast die Tour abgeschlossen. Du kannst sie jederzeit erneut starten."
               : onboardingState === "dismissed"
@@ -235,9 +260,9 @@ export default function Account() {
 
         <section data-testid="account-profile">
           <h2 className="text-stone-300 italic">Profil</h2>
-          <p className="mt-1 text-sm text-stone-500">
+          <p className="mt-1 text-sm text-stone-400">
             Handle und Bio werden im Marketplace bei deinen Presets angezeigt.
-            Email bleibt privat.
+            E-Mail bleibt privat.
           </p>
           <div className="mt-3 space-y-2 max-w-md">
             <label className="block text-xs text-stone-400">
@@ -245,15 +270,29 @@ export default function Account() {
               <input
                 type="text"
                 value={profileDraft.handle}
-                onChange={(e) =>
-                  setProfileDraft((s) => ({ ...s, handle: e.target.value }))
-                }
-                placeholder="anonyme_anna"
+                onChange={(e) => {
+                  setProfileDraft((s) => ({ ...s, handle: e.target.value }));
+                  // Fehler erst beim Blur zeigen, beim Tippen aber wieder entfernen.
+                  if (handleError) setHandleError(null);
+                }}
+                onBlur={() => setHandleError(validateHandle(profileDraft.handle))}
+                aria-invalid={handleError ? true : undefined}
+                aria-describedby={handleError ? "account-handle-error" : undefined}
+                placeholder="anonyme-anna"
                 maxLength={40}
                 data-testid="account-handle"
-                className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
+                className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm aria-[invalid=true]:border-red-500"
               />
             </label>
+            {handleError && (
+              <p
+                id="account-handle-error"
+                data-testid="account-handle-error"
+                className="text-xs text-red-400"
+              >
+                {handleError}
+              </p>
+            )}
             <label className="block text-xs text-stone-400">
               Bio (optional, max 280)
               <textarea
@@ -267,14 +306,16 @@ export default function Account() {
                 className="mt-1 w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
               />
             </label>
-            {profileFeedback && (
-              <p
-                className="text-xs text-amber-200"
-                data-testid="account-profile-feedback"
-              >
-                {profileFeedback}
-              </p>
-            )}
+            <div role="status">
+              {profileFeedback && (
+                <p
+                  className="text-xs text-amber-200"
+                  data-testid="account-profile-feedback"
+                >
+                  {profileFeedback}
+                </p>
+              )}
+            </div>
             <button
               type="button"
               onClick={() => void onProfileSave()}
@@ -289,14 +330,20 @@ export default function Account() {
         <section data-testid="account-published">
           <h2 className="text-stone-300 italic">Meine veröffentlichten Presets</h2>
           {loadNotice && (
-            <p data-testid="account-load-notice" className="mt-2 text-sm text-amber-200/80">
+            <p data-testid="account-load-notice" role="status" className="mt-2 text-sm text-amber-200/80">
               {loadNotice}
             </p>
           )}
-          {published.length === 0 ? (
-            <p className="mt-2 text-sm text-stone-500">
-              Du hast aktuell keine Presets im Marketplace.
+          {!publishedLoaded ? (
+            <p data-testid="account-published-loading" role="status" className="mt-2 text-sm text-stone-400">
+              Lädt …
             </p>
+          ) : published.length === 0 ? (
+            loadNotice ? null : (
+              <p className="mt-2 text-sm text-stone-400">
+                Du hast aktuell keine Presets im Marketplace.
+              </p>
+            )
           ) : (
             <ul className="mt-3 divide-y divide-stone-800 text-sm">
               {published.map((p) => (
@@ -307,15 +354,16 @@ export default function Account() {
                 >
                   <div className="min-w-0">
                     <div className="text-stone-200 truncate">{p.name}</div>
-                    <div className="text-[10px] uppercase tracking-wider text-stone-500">
-                      {p.genre ?? "–"} · {p.applyCount} Anwendungen
+                    <div className="text-[10px] uppercase tracking-wider text-stone-400">
+                      {p.genre ? genreLabel(p.genre) : "–"} · {p.applyCount} Anwendungen
                     </div>
                   </div>
                   <button
                     type="button"
                     onClick={() => void onUnpublish(p.id, p.name)}
                     data-testid={`account-unpublish-${p.id}`}
-                    className="text-xs uppercase tracking-[0.2em] text-stone-500 hover:text-red-400"
+                    aria-label={`„${p.name}“ aus dem Marketplace zurückziehen`}
+                    className="text-xs uppercase tracking-[0.2em] text-stone-400 hover:text-red-400"
                   >
                     Zurückziehen
                   </button>
@@ -327,9 +375,9 @@ export default function Account() {
 
         <section>
           <h2 className="text-stone-300 italic">Daten exportieren</h2>
-          <p className="mt-1 text-sm text-stone-500">
+          <p className="mt-1 text-sm text-stone-400">
             Eine JSON-Datei mit allen deinen Presets, Bildmetadaten und
-            Pre-Signed-Download-URLs. Erfuellt DSGVO Art. 15 + 20.
+            Pre-Signed-Download-URLs. Erfüllt DSGVO Art. 15 + 20.
           </p>
           <button
             type="button"
@@ -344,10 +392,9 @@ export default function Account() {
 
         <section>
           <h2 className="text-stone-300 italic">Account löschen</h2>
-          <p className="mt-1 text-sm text-stone-500">
+          <p className="mt-1 text-sm text-stone-400">
             Entfernt alle deine Presets, Bilder und Metadaten dauerhaft.
-            Der Keycloak-Account selbst bleibt — kannst du im
-            Account-Self-Service-UI separat schließen.
+            Dein Login-Account wird dabei ebenfalls gelöscht.
           </p>
           {!confirmDelete ? (
             <button
@@ -364,19 +411,22 @@ export default function Account() {
                 Wirklich alle Daten löschen? Das lässt sich nicht rückgängig machen.
               </p>
               <div className="flex gap-2">
-                <button
-                  type="button"
+                <AutoFocusButton
                   data-testid="account-delete-confirm"
                   onClick={() => void onDelete()}
                   disabled={busy}
                   className="px-4 py-2 text-xs uppercase tracking-[0.2em] bg-red-500/20 border border-red-500 text-red-300 hover:bg-red-500/30 disabled:opacity-40"
                 >
-                  {busy ? "Lösche…" : "Ja, alles löschen"}
-                </button>
+                  {busy ? "Lösche …" : "Ja, alles löschen"}
+                </AutoFocusButton>
                 <button
                   type="button"
-                  onClick={() => setConfirmDelete(false)}
-                  className="px-4 py-2 text-xs uppercase tracking-[0.2em] text-stone-400"
+                  data-testid="account-delete-cancel"
+                  onClick={() => {
+                    setConfirmDelete(false);
+                    requestFocus("account-delete-trigger");
+                  }}
+                  className="px-4 py-2 text-xs uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200"
                 >
                   Abbrechen
                 </button>

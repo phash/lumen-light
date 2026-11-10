@@ -36,13 +36,18 @@ const SHORTCUTS: ReadonlyArray<{
     items: [
       { keys: "R", desc: "Beschneiden ein/aus" },
       { keys: "P", desc: "Preset-Dialog ein/aus" },
+      { keys: "Esc", desc: "Beschneiden / WB-Picker verlassen" },
     ],
   },
   {
     group: "Slider",
     items: [
       { keys: "Doppelklick", desc: "Slider auf Default zurücksetzen" },
+      { keys: "← / →", desc: "Fokussierten Slider in kleinen Schritten ändern" },
+      { keys: "Shift + ← / →", desc: "Fokussierten Slider in großen Schritten ändern" },
+      { keys: "Pos1 / Ende", desc: "Slider auf Minimum / Maximum" },
       { keys: "Mausrad über Bild", desc: "Zoom" },
+      { keys: "+ / −", desc: "Hinein- / Herauszoomen" },
       { keys: "Drag im Bild", desc: "Pan" },
     ],
   },
@@ -61,8 +66,8 @@ export default function ShortcutCheatsheet({ open, onClose }: Props) {
       onClose={onClose}
       testId="shortcut-cheatsheet"
       labelledBy="shortcut-cheatsheet-title"
-      backdropClassName="absolute inset-0 z-30 flex items-center justify-center bg-black/60"
-      cardClassName="w-[420px] max-h-[80vh] overflow-y-auto bg-stone-900 border border-stone-700 text-sm"
+      backdropClassName="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4"
+      cardClassName="w-full max-w-[420px] max-h-[80vh] overflow-y-auto bg-stone-900 border border-stone-700 text-sm"
     >
       <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
         <h2 id="shortcut-cheatsheet-title" className="text-stone-200">Tastenkürzel</h2>
@@ -70,7 +75,7 @@ export default function ShortcutCheatsheet({ open, onClose }: Props) {
           type="button"
           data-testid="shortcut-close"
           onClick={onClose}
-          className="text-stone-500 hover:text-stone-200"
+          className="text-stone-400 hover:text-stone-200"
           aria-label="Schließen"
         >
           ✕
@@ -79,7 +84,7 @@ export default function ShortcutCheatsheet({ open, onClose }: Props) {
       <div className="px-4 py-3 space-y-4">
         {SHORTCUTS.map((group) => (
           <section key={group.group}>
-            <h3 className="text-[10px] uppercase tracking-[0.2em] text-stone-500 mb-2">
+            <h3 className="text-[10px] uppercase tracking-[0.2em] text-stone-400 mb-2">
               {group.group}
             </h3>
             <ul className="space-y-1">

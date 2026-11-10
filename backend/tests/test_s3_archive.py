@@ -12,7 +12,7 @@ from scripts.s3_archive import export_bucket, import_bucket, manifest
 def test_export_import_roundtrip_mit_content_type():
     storage = get_storage()
     prefix = f"{uuid4()}/"
-    objs = {prefix + "originals/a": b"\xff\xd8\xffjpeg", prefix + "staging/b": b"png"}
+    objs = {prefix + "originals/a": b"\xff\xd8\xffjpeg", prefix + "previews/b.jpg": b"png"}
     for key, data in objs.items():
         storage._client.put_object(
             Bucket=storage.bucket, Key=key, Body=data, ContentType="image/jpeg"
@@ -21,7 +21,7 @@ def test_export_import_roundtrip_mit_content_type():
     before = [l for l in manifest(storage) if l.startswith(prefix)]
     assert before == sorted(f"{k}\t{len(v)}" for k, v in objs.items())
     buf = io.BytesIO()
-    assert export_bucket(storage, buf) >= len(objs)
+    assert export_bucket(storage, buf).exported >= len(objs)
     storage.delete_prefix(prefix)
     assert storage.list_objects(prefix) == []
 
@@ -32,6 +32,48 @@ def test_export_import_roundtrip_mit_content_type():
         assert got["Body"].read() == data
         assert got["ContentType"] == "image/jpeg"
     assert [l for l in manifest(storage) if l.startswith(prefix)] == before
+    storage.delete_prefix(prefix)
+
+
+def test_export_ueberspringt_staging_objekte():
+    storage = get_storage()
+    prefix = f"{uuid4()}/"
+    storage._client.put_object(Bucket=storage.bucket, Key=prefix + "staging/x", Body=b"s")
+    storage._client.put_object(Bucket=storage.bucket, Key=prefix + "originals/y", Body=b"o")
+    buf = io.BytesIO()
+    result = export_bucket(storage, buf)
+    buf.seek(0)
+    with tarfile.open(fileobj=buf, mode="r") as tar:
+        names = tar.getnames()
+    assert prefix + "originals/y" in names
+    assert prefix + "staging/x" not in names
+    assert result.skipped_staging >= 1
+    storage.delete_prefix(prefix)
+
+
+def test_export_zaehlt_verschwundene_objekte_statt_abzubrechen(monkeypatch):
+    """Ein Objekt verschwindet zwischen Listing und GET (Janitor/DELETE) ->
+    uebersprungen und gezaehlt, der Export laeuft weiter."""
+    storage = get_storage()
+    prefix = f"{uuid4()}/"
+    for k in ("originals/weg", "originals/da"):
+        storage._client.put_object(Bucket=storage.bucket, Key=prefix + k, Body=b"x")
+    real_list = storage.list_objects
+
+    def _list(p: str):
+        objs = real_list(p)
+        storage.delete(prefix + "originals/weg")
+        return objs
+
+    monkeypatch.setattr(storage, "list_objects", _list)
+    buf = io.BytesIO()
+    result = export_bucket(storage, buf)
+    assert result.vanished >= 1
+    buf.seek(0)
+    with tarfile.open(fileobj=buf, mode="r") as tar:
+        names = tar.getnames()
+    assert prefix + "originals/da" in names
+    assert prefix + "originals/weg" not in names
     storage.delete_prefix(prefix)
 
 

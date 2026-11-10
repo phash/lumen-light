@@ -129,7 +129,7 @@ test.describe("Marketplace", () => {
 
       await page.getByTestId("marketplace-fork").click();
       await expect(page.getByTestId("marketplace-detail-modal")).toContainText(
-        /Bibliothek/i,
+        /Presets hinzugef/i,
       );
     } finally {
       if (consumer) await cleanupUser(consumer);

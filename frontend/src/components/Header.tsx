@@ -4,29 +4,76 @@ import { NavLink, useLocation } from "react-router-dom";
 
 import { clearOfflineCaches } from "../auth/clearCaches";
 import { useIsAdmin } from "../auth/useIsAdmin";
+import { CONTENT, type HeaderContent } from "../i18n/content";
 import FeedbackDialog from "./FeedbackDialog";
 
-const baseLinks: ReadonlyArray<{ to: string; label: string }> = [
-  { to: "/", label: "Start" },
-  { to: "/editor", label: "Editor" },
-  { to: "/library", label: "Bibliothek" },
-  { to: "/marketplace", label: "Marketplace" },
-  { to: "/account", label: "Account" },
-];
+function navLinks(
+  h: HeaderContent,
+  isEn: boolean,
+  isAdmin: boolean,
+): ReadonlyArray<{ to: string; label: string }> {
+  const base = [
+    // Start fuehrt auf die Landing der aktiven Sprache.
+    { to: isEn ? "/en" : "/", label: h.nav.start },
+    { to: "/editor", label: h.nav.editor },
+    { to: "/library", label: h.nav.library },
+    { to: "/marketplace", label: h.nav.marketplace },
+    { to: "/account", label: h.nav.account },
+  ];
+  return isAdmin ? [...base, { to: "/admin", label: h.nav.admin }] : base;
+}
+
+/** DE/EN-Umschalter — Landing DE auf /, EN auf /en. */
+function LangSwitch({
+  isEn,
+  h,
+  testId,
+  className,
+}: {
+  readonly isEn: boolean;
+  readonly h: HeaderContent;
+  readonly testId: string;
+  readonly className: string;
+}) {
+  return (
+    <span className={className} data-testid={testId} role="group" aria-label={h.langSwitchLabel}>
+      <a
+        href="/"
+        className={isEn ? "text-stone-400 hover:text-amber-200" : "text-amber-200 font-medium"}
+        hrefLang="de"
+        lang="de"
+        aria-label={h.langNameDe}
+        aria-current={isEn ? undefined : "true"}
+      >
+        DE
+      </a>
+      <span className="text-stone-500" aria-hidden="true">/</span>
+      <a
+        href="/en"
+        className={isEn ? "text-amber-200 font-medium" : "text-stone-400 hover:text-amber-200"}
+        hrefLang="en"
+        lang="en"
+        aria-label={h.langNameEn}
+        aria-current={isEn ? "true" : undefined}
+      >
+        EN
+      </a>
+    </span>
+  );
+}
 
 export default function Header() {
   const auth = useAuth();
   const isAdmin = useIsAdmin();
   // Aktive Landing-Locale fuer den Sprachumschalter (EN-Landing liegt auf /en).
   const isEnActive = useLocation().pathname.startsWith("/en");
+  const h = CONTENT[isEnActive ? "en" : "de"].header;
   const [mobileOpen, setMobileOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
   // Wird bei jedem Open inkrementiert — gibt dem Dialog einen neuen Key,
   // sodass interner State (Nachricht, Honeypot, Kind) frisch ist.
   const [feedbackOpenCount, setFeedbackOpenCount] = useState(0);
-  const links = isAdmin
-    ? [...baseLinks, { to: "/admin", label: "Admin" }]
-    : baseLinks;
+  const links = navLinks(h, isEnActive, isAdmin);
 
   const onLogin = () => {
     void auth.signinRedirect();
@@ -39,7 +86,7 @@ export default function Header() {
   return (
     <header className="border-b border-stone-800 px-4 py-3 sm:px-6">
       <nav
-        aria-label="Hauptnavigation"
+        aria-label={h.mainNavLabel}
         className="flex items-center justify-between gap-4"
       >
         {/* Desktop-Links */}
@@ -48,7 +95,7 @@ export default function Header() {
             <NavLink
               key={to}
               to={to}
-              end={to === "/"}
+              end={to === "/" || to === "/en"}
               className={({ isActive }) =>
                 isActive
                   ? "text-amber-200"
@@ -63,7 +110,7 @@ export default function Header() {
         {/* Mobile-Burger */}
         <button
           type="button"
-          aria-label="Menü öffnen"
+          aria-label={mobileOpen ? h.menuClose : h.menuOpen}
           aria-expanded={mobileOpen}
           aria-controls="mobile-nav"
           onClick={() => setMobileOpen((v) => !v)}
@@ -88,35 +135,12 @@ export default function Header() {
 
         <div className="flex items-center gap-3 text-sm">
           {/* Sprachumschalter — Landing DE auf /, EN auf /en */}
-          <span className="hidden sm:flex items-center gap-1 text-xs" data-testid="lang-switch">
-            <a
-              href="/"
-              className={
-                isEnActive
-                  ? "text-stone-400 hover:text-amber-200"
-                  : "text-amber-200 font-medium"
-              }
-              hrefLang="de"
-              aria-label="Deutsch"
-              aria-current={isEnActive ? undefined : "true"}
-            >
-              DE
-            </a>
-            <span className="text-stone-600">/</span>
-            <a
-              href="/en"
-              className={
-                isEnActive
-                  ? "text-amber-200 font-medium"
-                  : "text-stone-400 hover:text-amber-200"
-              }
-              hrefLang="en"
-              aria-label="English"
-              aria-current={isEnActive ? "true" : undefined}
-            >
-              EN
-            </a>
-          </span>
+          <LangSwitch
+            isEn={isEnActive}
+            h={h}
+            testId="lang-switch"
+            className="hidden sm:flex items-center gap-1 text-xs"
+          />
           {auth.isAuthenticated ? (
             <>
               <span
@@ -133,16 +157,16 @@ export default function Header() {
                 }}
                 data-testid="header-feedback"
                 className="text-stone-400 hover:text-amber-200"
-                aria-label="Feedback senden"
+                aria-label={h.feedbackLabel}
               >
-                Feedback
+                {h.feedback}
               </button>
               <button
                 type="button"
                 onClick={onLogout}
                 className="text-stone-400 hover:text-amber-200"
               >
-                Logout
+                {h.logout}
               </button>
             </>
           ) : (
@@ -152,7 +176,7 @@ export default function Header() {
               data-testid="auth-login-button"
               className="text-stone-400 hover:text-amber-200"
             >
-              Login
+              {h.login}
             </button>
           )}
         </div>
@@ -175,7 +199,7 @@ export default function Header() {
             <NavLink
               key={to}
               to={to}
-              end={to === "/"}
+              end={to === "/" || to === "/en"}
               onClick={() => setMobileOpen(false)}
               className={({ isActive }) =>
                 `py-1.5 ${
@@ -188,10 +212,17 @@ export default function Header() {
               {label}
             </NavLink>
           ))}
+          <div className="border-t border-stone-800 my-1" />
+          <LangSwitch
+            isEn={isEnActive}
+            h={h}
+            testId="header-mobile-lang-switch"
+            className="flex items-center gap-2 py-1.5 text-sm"
+          />
           {auth.isAuthenticated && (
             <>
               <div className="border-t border-stone-800 my-1" />
-              <span className="py-1 text-xs text-stone-500">
+              <span className="py-1 text-xs text-stone-400">
                 {auth.user?.profile.email ?? auth.user?.profile.preferred_username}
               </span>
               <button
@@ -204,7 +235,7 @@ export default function Header() {
                 data-testid="header-mobile-feedback"
                 className="text-left py-1.5 text-stone-400 hover:text-amber-200"
               >
-                Feedback
+                {h.feedback}
               </button>
               <button
                 type="button"
@@ -215,7 +246,7 @@ export default function Header() {
                 data-testid="header-mobile-logout"
                 className="text-left py-1.5 text-stone-400 hover:text-amber-200"
               >
-                Logout
+                {h.logout}
               </button>
             </>
           )}

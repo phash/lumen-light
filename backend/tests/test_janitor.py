@@ -61,8 +61,9 @@ async def test_prune_removes_old_pending_rows(db_session, client, user_a):
     user = await _user_record(db_session, client, user_a["headers"])
     storage = get_storage()
 
-    # 1 alter pending (>15min), 1 frischer pending, 1 alter ready
-    old_pending = await _make_pending(db_session, user, age=timedelta(minutes=20))
+    # 1 alter pending (> Policy-Gueltigkeit + Puffer), 1 frischer pending,
+    # 1 alter ready
+    old_pending = await _make_pending(db_session, user, age=timedelta(minutes=40))
     fresh_pending = await _make_pending(db_session, user, age=timedelta(minutes=5))
 
     ready = Image(
@@ -75,7 +76,7 @@ async def test_prune_removes_old_pending_rows(db_session, client, user_a):
     )
     db_session.add(ready)
     await db_session.flush()
-    ready.created_at = datetime.now(timezone.utc) - timedelta(minutes=20)
+    ready.created_at = datetime.now(timezone.utc) - timedelta(minutes=40)
     await db_session.flush()
     storage._client.put_object(
         Bucket=storage.bucket, Key=ready.bucket_key, Body=b"x" * 64
@@ -112,7 +113,7 @@ async def test_prune_is_idempotent(db_session, client, user_a):
     user = await _user_record(db_session, client, user_a["headers"])
     storage = get_storage()
 
-    await _make_pending(db_session, user, age=timedelta(minutes=20))
+    await _make_pending(db_session, user, age=timedelta(minutes=40))
 
     first = await prune_pending_uploads(db_session, storage)
     assert first.db_deleted == 1
@@ -129,7 +130,7 @@ async def test_prune_storage_error_keeps_db_row(db_session, client, user_a):
     es wieder versuchen kann."""
     user = await _user_record(db_session, client, user_a["headers"])
     storage = get_storage()
-    pending = await _make_pending(db_session, user, age=timedelta(minutes=20))
+    pending = await _make_pending(db_session, user, age=timedelta(minutes=40))
 
     class BoomStorage:
         bucket = storage.bucket
@@ -154,17 +155,42 @@ async def test_prune_respects_custom_ttl(db_session, client, user_a):
     user = await _user_record(db_session, client, user_a["headers"])
     storage = get_storage()
 
-    # Nur 8 Minuten alt — bei TTL=5min schon faellig
-    img = await _make_pending(db_session, user, age=timedelta(minutes=8))
+    young = await _make_pending(db_session, user, age=timedelta(minutes=45))
+    old = await _make_pending(db_session, user, age=timedelta(minutes=70))
+
+    result = await prune_pending_uploads(
+        db_session, storage, ttl=timedelta(minutes=60)
+    )
+
+    assert result.db_deleted == 1
+    assert (
+        await db_session.execute(select(Image).where(Image.id == old.id))
+    ).scalar_one_or_none() is None
+    assert (
+        await db_session.execute(select(Image).where(Image.id == young.id))
+    ).scalar_one_or_none() is not None
+
+
+@pytest.mark.asyncio
+async def test_prune_ttl_wird_auf_policy_gueltigkeit_plus_puffer_angehoben(
+    db_session, client, user_a
+):
+    """M9: eine TTL unter Policy-Gueltigkeit + Puffer wuerde Uploads
+    wegraeumen, deren Pre-Signed POST noch gueltig ist -> wird angehoben."""
+    user = await _user_record(db_session, client, user_a["headers"])
+    storage = get_storage()
+
+    # 20 min alt: Policy (15 min) abgelaufen, Puffer (15 min) aber nicht.
+    img = await _make_pending(db_session, user, age=timedelta(minutes=20))
 
     result = await prune_pending_uploads(
         db_session, storage, ttl=timedelta(minutes=5)
     )
 
-    assert result.db_deleted == 1
+    assert result.db_deleted == 0
     assert (
         await db_session.execute(select(Image).where(Image.id == img.id))
-    ).scalar_one_or_none() is None
+    ).scalar_one_or_none() is not None
 
 
 # ---------- Staging-Sweep + Purge-Retry (Security-Review 2026-10) ----------

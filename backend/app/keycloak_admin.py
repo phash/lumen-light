@@ -40,12 +40,16 @@ def _is_configured() -> bool:
 
 
 def _admin_base() -> str:
-    """Server-Root-URL, abgeleitet aus dem Issuer.
+    """Server-Root-URL fuer Backend->Keycloak-Calls.
 
-    `keycloak_issuer` zeigt auf `<server>/realms/<realm>`. Fuer Admin-Calls
-    brauchen wir den Server-Root, deswegen schneiden wir das `/realms/...`
-    ab.
+    Mit KEYCLOAK_INTERNAL_URL (z.B. http://lumen-keycloak:8080/auth) laufen
+    Token-, Admin- und JWKS-Calls intern im Container-Netz — der oeffentliche
+    /auth/admin-Pfad kann dann am Proxy gesperrt werden. Sonst wird der Root
+    aus dem Issuer (`<server>/realms/<realm>`) abgeleitet.
     """
+    internal = settings.keycloak_internal_url.strip().rstrip("/")
+    if internal:
+        return internal
     issuer = settings.keycloak_issuer.rstrip("/")
     marker = "/realms/"
     idx = issuer.rfind(marker)
@@ -62,6 +66,14 @@ def _realm_name() -> str:
     if idx == -1:
         return ""
     return issuer[idx + len(marker):]
+
+
+def realm_base_url() -> str:
+    """<server-root>/realms/<realm> — intern, falls KEYCLOAK_INTERNAL_URL
+    gesetzt ist, sonst identisch mit dem Issuer."""
+    if not settings.keycloak_internal_url.strip():
+        return settings.keycloak_issuer.rstrip("/")
+    return f"{_admin_base()}/realms/{_realm_name()}"
 
 
 def _fetch_admin_token() -> str:
