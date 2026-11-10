@@ -111,13 +111,49 @@ class StorageService:
         fields = {k: str(v) for k, v in post["fields"].items()}
         return post["url"], fields, self._settings.presigned_url_expires_in
 
-    def presign_get(self, key: str) -> tuple[str, int]:
+    def make_preview_key(self, user_id: UUID, preset_id: UUID) -> str:
+        """<user_id>/previews/<preset_id>.jpg — serverseitig erzeugte,
+        metadatenfreie Marketplace-Vorschau. Gleicher User-Prefix, damit der
+        Prefix-Purge aus DELETE /me sie mit erfasst."""
+        return f"{user_id}/previews/{preset_id}.jpg"
+
+    def presign_get(self, key: str, *, attachment: bool = False) -> tuple[str, int]:
+        """Pre-Signed GET. attachment=True setzt response-content-disposition
+        (Originale): selbst wenn ein Objekt doch aktiven Inhalt enthielte,
+        rendert der Browser es bei direkter Navigation nicht same-origin.
+        fetch()/<img> ignorieren die Disposition, der Editor laedt weiter."""
+        params: dict[str, str] = {"Bucket": self.bucket, "Key": key}
+        if attachment:
+            params["ResponseContentDisposition"] = "attachment"
         url = self._presign_client.generate_presigned_url(
             "get_object",
-            Params={"Bucket": self.bucket, "Key": key},
+            Params=params,
             ExpiresIn=self._settings.presigned_url_expires_in,
         )
         return url, self._settings.presigned_url_expires_in
+
+    def get_bytes(self, key: str, max_bytes: int) -> bytes:
+        """Liest ein ganzes Objekt (bis max_bytes) in den Speicher. Wirft
+        ObjectNotFound, wenn es fehlt, ValueError, wenn es zu gross ist."""
+        try:
+            response = self._client.get_object(Bucket=self.bucket, Key=key)
+        except ClientError as exc:
+            code = exc.response.get("Error", {}).get("Code")
+            if code in {"404", "NoSuchKey", "NotFound"}:
+                raise ObjectNotFound(key) from exc
+            raise
+        if int(response.get("ContentLength", 0)) > max_bytes:
+            response["Body"].close()
+            raise ValueError(f"Objekt {key!r} groesser als {max_bytes} Bytes.")
+        data = response["Body"].read(max_bytes + 1)
+        if len(data) > max_bytes:
+            raise ValueError(f"Objekt {key!r} groesser als {max_bytes} Bytes.")
+        return data
+
+    def put_bytes(self, key: str, data: bytes, content_type: str) -> None:
+        self._client.put_object(
+            Bucket=self.bucket, Key=key, Body=data, ContentType=content_type
+        )
 
     def head(self, key: str) -> int:
         """Gibt size_bytes zurueck. Wirft ObjectNotFound wenn nicht da."""

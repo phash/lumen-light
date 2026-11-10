@@ -24,7 +24,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import current_user
 from app.config import settings
 from app.database import get_db
-from app.models import Image, Preset, PresetReport, User
+from app.models import Preset, PresetApply, PresetReport, User
 from app.rate_limit import limiter
 from app.schemas import (
     Adjustments,
@@ -82,17 +82,14 @@ def _fork_name(src_name: str, n: int) -> str:
     return src_name[: PRESET_NAME_MAX - len(suffix)] + suffix
 
 
-def _preview_url(
-    storage: StorageService,
-    db_session: AsyncSession,  # noqa: ARG001 — Hook fuer spaetere Caches
-    image: Image | None,
-) -> str | None:
-    # Nur bestaetigte Uploads als Vorschau ausliefern. Ein pending/failed
-    # Object koennte (vor confirm) beliebige, nicht magic-byte-gepruefte Bytes
-    # enthalten — die werden im Marketplace same-origin im <img> gerendert.
-    if image is None or image.upload_state != "ready":
+def _preview_url(storage: StorageService, preset: Preset) -> str | None:
+    """Signiert AUSSCHLIESSLICH die serverseitig erzeugte Vorschau
+    (presets.preview_key, siehe app/previews.py) — nie das Original des
+    Creators. Ohne Vorschau (Bild pending/failed/geloescht, Bestandspreset
+    vor dem Backfill) -> None."""
+    if not preset.preview_key:
         return None
-    url, _ = storage.presign_get(image.bucket_key)
+    url, _ = storage.presign_get(preset.preview_key)
     return url
 
 
@@ -130,20 +127,8 @@ async def list_marketplace_presets(
     has_more = len(rows) > limit
     rows = rows[:limit]
 
-    # Preview-Bilder bulk laden (eine Query).
-    image_ids = [p.preview_image_id for p, _ in rows if p.preview_image_id]
-    images_by_id: dict[UUID, Image] = {}
-    if image_ids:
-        img_rows = await db.execute(select(Image).where(Image.id.in_(image_ids)))
-        images_by_id = {img.id: img for img in img_rows.scalars().all()}
-
     items: list[MarketplaceListItem] = []
     for preset, creator in rows:
-        img = (
-            images_by_id.get(preset.preview_image_id)
-            if preset.preview_image_id
-            else None
-        )
         items.append(
             MarketplaceListItem(
                 id=preset.id,
@@ -153,7 +138,7 @@ async def list_marketplace_presets(
                 creator_handle=creator.handle,
                 apply_count=preset.apply_count,
                 published_at=preset.published_at,
-                preview_url=_preview_url(storage, db, img),
+                preview_url=_preview_url(storage, preset),
             )
         )
     return MarketplaceListOut(
@@ -190,11 +175,6 @@ async def get_marketplace_preset(
     storage: StorageService = Depends(get_storage),
 ) -> MarketplaceDetailOut:
     preset, creator = await _load_public_preset(db, preset_id)
-    img: Image | None = None
-    if preset.preview_image_id:
-        img = (
-            await db.execute(select(Image).where(Image.id == preset.preview_image_id))
-        ).scalar_one_or_none()
     return MarketplaceDetailOut(
         id=preset.id,
         name=preset.name,
@@ -204,7 +184,7 @@ async def get_marketplace_preset(
         creator_bio=creator.bio,
         apply_count=preset.apply_count,
         published_at=preset.published_at,
-        preview_url=_preview_url(storage, db, img),
+        preview_url=_preview_url(storage, preset),
     )
 
 
@@ -213,18 +193,28 @@ async def get_marketplace_preset(
 async def apply_marketplace_preset(
     request: Request,
     preset_id: UUID,
-    _user: User = Depends(current_user),
+    user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> MarketplaceApplyOut:
     preset, _creator = await _load_public_preset(db, preset_id)
-    # Atomic-Increment statt Read-Modify-Write — bei parallelem Apply
-    # geht sonst ein Increment verloren. Counter ist Cache, aber lieber
-    # genau als drift-faellig.
-    await db.execute(
-        update(Preset)
-        .where(Preset.id == preset.id)
-        .values(apply_count=Preset.apply_count + 1)
-    )
+    # Dedupe: pro (User, Preset, Tag) zaehlt nur der erste Apply — sonst
+    # pusht ein einzelner Account per Wiederholung sein Preset in "popular".
+    # INSERT ... ON CONFLICT DO NOTHING ist race-frei; nur bei neu
+    # angelegter Zeile atomar inkrementieren.
+    inserted = (
+        await db.execute(
+            pg_insert(PresetApply)
+            .values(user_id=user.id, preset_id=preset.id, day=func.current_date())
+            .on_conflict_do_nothing()
+            .returning(PresetApply.preset_id)
+        )
+    ).scalar_one_or_none()
+    if inserted is not None:
+        await db.execute(
+            update(Preset)
+            .where(Preset.id == preset.id)
+            .values(apply_count=Preset.apply_count + 1)
+        )
     await db.commit()
     return MarketplaceApplyOut(
         adjustments=Adjustments.model_validate(preset.adjustments),
@@ -245,6 +235,10 @@ async def fork_marketplace_preset(
     db: AsyncSession = Depends(get_db),
 ) -> PresetOut:
     src, _ = await _load_public_preset(db, preset_id)
+    # Lazy-Import: presets importiert dieses Modul (REPORT_AUTOHIDE_THRESHOLD).
+    from app.routers.presets import ensure_preset_quota
+
+    await ensure_preset_quota(db, user)
     # INSERT ... ON CONFLICT DO NOTHING auf uq_presets_user_name statt
     # "SELECT pruefen, dann INSERT": parallele Forks desselben Presets
     # kollidieren sonst zwischen Check und Commit (IntegrityError -> 500).

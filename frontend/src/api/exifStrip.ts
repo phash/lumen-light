@@ -12,8 +12,14 @@
  *   FFD9  (EOI)
  *
  * EXIF lebt im APP1-Segment (FFE1), GPS dort als IFD. Wir entfernen
- * APP1 und APP2 (XMP/ICC) komplett. APP0 (JFIF, FFE0) bleibt — das ist
- * keine PII, wird aber von vielen Decodern erwartet.
+ * APP1 bis APP13 und APP15 (EXIF, XMP/ICC, Herstellerdaten, IPTC mit
+ * Autor/Ort) sowie Kommentare (COM, FFFE) komplett. APP0 (JFIF, FFE0)
+ * und APP14 (Adobe, FFEE — Farbtransformation fuer CMYK/YCCK) bleiben —
+ * keine PII, aber fuer korrektes Decoding noetig.
+ *
+ * Das ist nur Client-seitige Datenminimierung: das Backend erzeugt fuer
+ * oeffentliche Marketplace-Vorschauen ohnehin ein eigenes, neu
+ * kodiertes JPEG ohne Metadaten.
  *
  * Andere Formate: PNG/RAW unveraendert zurueckgegeben. PNG kann EXIF
  * in eXIf-Chunks haben, ist aber selten. RAW-EXIF zu strippen ist
@@ -30,8 +36,15 @@ function isJpeg(bytes: Uint8Array): boolean {
   );
 }
 
+/** APP1..APP13, APP15 und COM tragen potentiell personenbezogene Daten. */
+function isMetadataMarker(marker: number): boolean {
+  if (marker === 0xfe) return true;
+  return marker >= 0xe1 && marker <= 0xef && marker !== 0xee;
+}
+
 /**
- * Entfernt APP1 (EXIF) und APP2 (ICC/XMP) aus einer JPEG-Byte-Sequenz.
+ * Entfernt Metadaten-Segmente (siehe isMetadataMarker) aus einer
+ * JPEG-Byte-Sequenz.
  * Liefert die gestripte Sequenz; bei Nicht-JPEG oder ungueltiger
  * Struktur unveraendert.
  */
@@ -86,8 +99,8 @@ export function stripJpegExifBytes(input: Uint8Array): Uint8Array {
       for (let k = i; k < n; k++) out.push(input[k]!);
       break;
     }
-    if (marker === 0xe1 || marker === 0xe2) {
-      // APP1 (EXIF) / APP2 (ICC/XMP) inkl. evtl. Fill davor ueberspringen.
+    if (isMetadataMarker(marker)) {
+      // Metadaten-Segment inkl. evtl. Fill davor ueberspringen.
       i = segEnd;
       continue;
     }

@@ -1,16 +1,18 @@
 """Presets-CRUD-Endpoints."""
 from datetime import datetime, timezone
-from uuid import UUID
+from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from pydantic import ValidationError as PydanticValidationError
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
+from app.config import settings
 from app.database import get_db
 from app.models import Image, ImageEdit, Preset, User
+from app.previews import delete_preview_object, sync_preset_preview
 from app.profile_groups import merge_edit_state
 from app.rate_limit import limiter
 from app.routers.marketplace import REPORT_AUTOHIDE_THRESHOLD
@@ -22,6 +24,56 @@ from app.schemas import (
     PresetIn,
     PresetOut,
 )
+from app.storage import StorageService, get_storage
+
+
+# Pagination GET /presets: Default deckt das Preset-Kontingent ab, damit
+# bestehende Clients ohne limit weiterhin alle Presets bekommen.
+LIST_LIMIT_DEFAULT = 500
+LIST_LIMIT_MAX = 500
+
+
+async def ensure_preset_quota(db: AsyncSession, user: User) -> None:
+    """Kontingent: max. settings.max_user_presets Presets pro User (409).
+    Genutzt von POST /presets und dem Marketplace-Fork."""
+    count = (
+        await db.execute(
+            select(func.count()).select_from(Preset).where(Preset.user_id == user.id)
+        )
+    ).scalar_one()
+    if count >= settings.max_user_presets:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=(
+                f"Maximale Anzahl Presets ({settings.max_user_presets}) erreicht — "
+                "bitte lösche nicht mehr benötigte Presets."
+            ),
+        )
+
+
+async def _ensure_may_publish(db: AsyncSession, user: User) -> None:
+    """Solange eines der eigenen Presets wegen Meldungen zurueckgezogen ist
+    (Auto-Hide), darf der User keine weiteren Presets veroeffentlichen —
+    sonst wuerde die Moderation per neuem Preset umgangen."""
+    hidden = (
+        await db.execute(
+            select(Preset.id)
+            .where(
+                Preset.user_id == user.id,
+                Preset.visibility == "private",
+                Preset.report_count >= REPORT_AUTOHIDE_THRESHOLD,
+            )
+            .limit(1)
+        )
+    ).scalar_one_or_none()
+    if hidden is not None:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "Eines deiner Presets wurde wegen Meldungen zurückgezogen — "
+                "bis zur Klärung kannst du keine Presets veröffentlichen."
+            ),
+        )
 
 
 async def _validate_preview_image(
@@ -43,7 +95,7 @@ async def _validate_preview_image(
     if img is None:
         raise HTTPException(
             status_code=400,
-            detail="preview_image_id muss zu einem eigenen Bild gehoeren.",
+            detail="Vorschaubild muss zu einem eigenen Bild gehören.",
         )
     # Oeffentliche Vorschaubilder werden an alle eingeloggten User
     # ausgeliefert (marketplace previewUrl). Nur JPEG wird beim Upload
@@ -54,8 +106,7 @@ async def _validate_preview_image(
         raise HTTPException(
             status_code=400,
             detail=(
-                "Vorschaubild fuer oeffentliche Presets muss ein JPEG sein "
-                "(Metadaten werden beim Upload entfernt, browser-darstellbar)."
+                "Vorschaubild für öffentliche Presets muss ein JPEG sein."
             ),
         )
 
@@ -73,19 +124,35 @@ SORT_FIELDS = {
 
 @router.get("", response_model=list[PresetOut])
 async def list_presets(
+    response: Response,
     q: str | None = Query(
         default=None, max_length=80, description="Substring-Suche im Namen"
     ),
     sort: str = Query(default="name"),
+    limit: int = Query(default=LIST_LIMIT_DEFAULT, ge=1, le=LIST_LIMIT_MAX),
+    offset: int = Query(default=0, ge=0),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[PresetOut]:
+    """Eigene Presets. Additive Pagination: ?limit&offset, Gesamtzahl im
+    Header X-Total-Count (Response bleibt eine Liste)."""
     if sort not in SORT_FIELDS:
         raise HTTPException(status_code=422, detail=f"sort muss einer von {list(SORT_FIELDS)} sein.")
-    stmt = select(Preset).where(Preset.user_id == user.id)
+    cond = [Preset.user_id == user.id]
     if q:
-        stmt = stmt.where(Preset.name.ilike(f"%{q}%"))
-    stmt = stmt.order_by(SORT_FIELDS[sort])
+        cond.append(Preset.name.ilike(f"%{q}%"))
+    total = (
+        await db.execute(select(func.count()).select_from(Preset).where(*cond))
+    ).scalar_one()
+    response.headers["X-Total-Count"] = str(total)
+    # Preset.id als Tiebreaker: stabile Reihenfolge ueber Seiten hinweg.
+    stmt = (
+        select(Preset)
+        .where(*cond)
+        .order_by(SORT_FIELDS[sort], Preset.id)
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     return [PresetOut.model_validate(p) for p in result.scalars().all()]
 
@@ -97,14 +164,21 @@ async def create_preset(
     payload: PresetIn,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
 ) -> PresetOut:
+    await ensure_preset_quota(db, user)
     await _validate_preview_image(
         db, user, payload.preview_image_id, public=payload.visibility == "public"
     )
+    if payload.visibility == "public":
+        await _ensure_may_publish(db, user)
     published_at: datetime | None = (
         datetime.now(timezone.utc) if payload.visibility == "public" else None
     )
     p = Preset(
+        # ID vorab vergeben: der Vorschau-Key (<uid>/previews/<id>.jpg)
+        # braucht sie schon vor dem INSERT.
+        id=uuid4(),
         user_id=user.id,
         name=payload.name,
         adjustments=payload.adjustments.model_dump(),
@@ -116,11 +190,14 @@ async def create_preset(
         preview_image_id=payload.preview_image_id,
         published_at=published_at,
     )
+    await sync_preset_preview(db, storage, p, force=True)
     db.add(p)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
+        # Vorschau wurde schon hochgeladen -> wieder wegraeumen.
+        await delete_preview_object(storage, p.preview_key)
         raise HTTPException(status_code=409, detail="Preset-Name bereits vergeben.")
     await db.refresh(p)
     return PresetOut.model_validate(p)
@@ -134,6 +211,7 @@ async def update_preset(
     payload: PresetIn,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
 ) -> PresetOut:
     result = await db.execute(
         select(Preset).where(Preset.id == preset_id, Preset.user_id == user.id)
@@ -168,6 +246,11 @@ async def update_preset(
                 " Selfhost-Betreiber kontaktieren."
             ),
         )
+    if payload.visibility == "public" and not was_public:
+        await _ensure_may_publish(db, user)
+    # Vorschau neu erzeugen, wenn erstmals veroeffentlicht oder das
+    # Vorschaubild gewechselt wurde.
+    regenerate = (not was_public) or p.preview_image_id != payload.preview_image_id
     p.visibility = payload.visibility
     p.genre = payload.genre
     p.description = payload.description
@@ -177,11 +260,14 @@ async def update_preset(
             p.published_at = datetime.now(timezone.utc)
     else:
         p.published_at = None
+    stale_key = await sync_preset_preview(db, storage, p, force=regenerate)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
         raise HTTPException(status_code=409, detail="Preset-Name bereits vergeben.")
+    # Erst nach erfolgreichem Commit: zurueckgezogene Vorschau loeschen.
+    await delete_preview_object(storage, stale_key)
     await db.refresh(p)
     return PresetOut.model_validate(p)
 
@@ -193,6 +279,7 @@ async def delete_preset(
     preset_id: UUID,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
 ) -> None:
     result = await db.execute(
         select(Preset).where(Preset.id == preset_id, Preset.user_id == user.id)
@@ -200,8 +287,10 @@ async def delete_preset(
     p = result.scalar_one_or_none()
     if p is None:
         raise HTTPException(status_code=404, detail="Preset nicht gefunden.")
+    preview_key = p.preview_key
     await db.delete(p)
     await db.commit()
+    await delete_preview_object(storage, preview_key)
 
 
 @router.post("/{preset_id}/apply", response_model=BatchApplyOut)

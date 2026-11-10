@@ -23,7 +23,7 @@ Konkrete Verteilung von Lumen · light auf den **MRD Production Cluster** (IONOS
                   │  lumen-api   │ │ lumen-  │ │ keycloak │
                   │  FastAPI     │ │ web     │ │ :8080    │
                   │  :4100       │ │ nginx   │ │          │
-                  │              │ │ :80     │ │          │
+                  │              │ │ :8080   │ │          │
                   └──────┬───────┘ └─────────┘ └────┬─────┘
                          │                          │
                          │ asyncpg                  │ JDBC
@@ -54,7 +54,7 @@ lumen.mr-development.de {
         reverse_proxy lumen-api:4100
     }
     handle {
-        reverse_proxy lumen-web:80
+        reverse_proxy lumen-web:8080
     }
 }
 ```

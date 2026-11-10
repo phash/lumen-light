@@ -64,6 +64,25 @@
           }
         }
       ]
+    },
+    {
+      "clientId": "lumen-admin",
+      "name": "Lumen API Service-Account (DSGVO-Loeschung)",
+      "description": "Nur client_credentials; realm-management/manage-users fuer DELETE /me. Secret generiert Keycloak beim Import, deploy.sh liest es aus.",
+      "enabled": true,
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "standardFlowEnabled": false,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": true,
+      "frontchannelLogout": false,
+      "protocol": "openid-connect",
+      "redirectUris": [],
+      "webOrigins": [],
+      "attributes": {
+        "access.token.lifespan": "60"
+      }
     }
   ],
   "roles": {
@@ -85,5 +104,17 @@
   "eventsEnabled": true,
   "eventsExpiration": 604800,
   "adminEventsEnabled": true,
-  "adminEventsDetailsEnabled": false
+  "adminEventsDetailsEnabled": false,
+  "users": [
+    {
+      "username": "service-account-lumen-admin",
+      "enabled": true,
+      "serviceAccountClientId": "lumen-admin",
+      "clientRoles": {
+        "realm-management": [
+          "manage-users"
+        ]
+      }
+    }
+  ]
 }

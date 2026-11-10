@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import OnboardingTour from "../onboarding/OnboardingTour";
 import { getOnboardingState } from "../onboarding/state";
 
+import type { ApiClient, ImageEditState } from "../api/client";
 import { useApi } from "../api/use-api";
-import { type CanvasHandle } from "../editor/Canvas";
+import { type CanvasHandle, type FullResExport } from "../editor/Canvas";
 import EditorBanners from "../editor/EditorBanners";
 import EditorOverlayCanvas from "../editor/EditorOverlayCanvas";
 import EditorSidebar from "../editor/EditorSidebar";
@@ -37,6 +38,7 @@ import { type Genre, suggestGenre } from "../editor/suggestPreset";
 import { selectedMask, useEditorStore } from "../editor/store";
 import { type AspectRatio, defaultCropRect } from "../editor/transform";
 import { useKeyboardShortcuts } from "../editor/useKeyboardShortcuts";
+import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
 
 function countByType(
   masks: ReadonlyArray<MaskInstance>,
@@ -50,7 +52,145 @@ function countByType(
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+export type AutosaveStatus = "idle" | "saving" | "saved" | "error";
+
+/** Debounce des Autosaves: ein Slider-Drag erzeugt genau einen PUT. */
+export const AUTOSAVE_DEBOUNCE_MS = 1200;
+/** Backoff fuer fehlgeschlagene Saves; letzter Wert wird wiederholt. */
+const AUTOSAVE_RETRY_MS = [2000, 5000, 10000, 30000] as const;
+
+interface PendingSave {
+  readonly id: string;
+  readonly state: ImageEditState;
+}
+
+/**
+ * C1: debounced Autosave des Bearbeitungsstands. Haelt den letzten
+ * ungespeicherten Stand in einem Ref, damit er beim Unmount, bei pagehide
+ * und bei visibilitychange=hidden per fetch-keepalive noch rausgeht.
+ * Fehlgeschlagene Saves werden mit Backoff wiederholt; der Status ist fuer
+ * einen Hinweis in der UI gedacht.
+ *
+ * imageId/state = null -> nichts speichern (ausstehender Stand wird
+ * verworfen; Aufrufer flusht vorher, wenn er ihn behalten will).
+ */
+export function useEditAutosave(
+  api: Pick<ApiClient, "putImageEdit">,
+  imageId: string | null,
+  state: ImageEditState | null,
+): { status: AutosaveStatus; flush: () => void } {
+  const [status, setStatus] = useState<AutosaveStatus>("idle");
+  const apiRef = useRef(api);
+  useLayoutEffect(() => {
+    apiRef.current = api;
+  });
+  const pendingRef = useRef<PendingSave | null>(null);
+  const timerRef = useRef<number | null>(null);
+  const attemptRef = useRef(0);
+  const mountedRef = useRef(false);
+  // Selbstreferenz fuer den Retry (send plant sich selbst erneut ein).
+  const sendRef = useRef<(entry: PendingSave) => void>(() => undefined);
+
+  const clearTimer = useCallback(() => {
+    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+    timerRef.current = null;
+  }, []);
+
+  const send = useCallback(
+    (entry: PendingSave): void => {
+      clearTimer();
+      if (mountedRef.current) setStatus("saving");
+      apiRef.current
+        .putImageEdit(entry.id, entry.state)
+        .then(() => {
+          attemptRef.current = 0;
+          if (pendingRef.current === entry) pendingRef.current = null;
+          if (mountedRef.current && pendingRef.current === null) setStatus("saved");
+        })
+        .catch(() => {
+          if (!mountedRef.current) return;
+          setStatus("error");
+          // Neuerer Stand wartet bereits mit eigenem Debounce -> kein Retry.
+          if (pendingRef.current !== entry) return;
+          const idx = Math.min(attemptRef.current, AUTOSAVE_RETRY_MS.length - 1);
+          attemptRef.current += 1;
+          clearTimer();
+          timerRef.current = window.setTimeout(
+            () => sendRef.current(entry),
+            AUTOSAVE_RETRY_MS[idx],
+          );
+        });
+    },
+    [clearTimer],
+  );
+  useLayoutEffect(() => {
+    sendRef.current = send;
+  }, [send]);
+
+  const flush = useCallback(() => {
+    const entry = pendingRef.current;
+    if (!entry) return;
+    clearTimer();
+    pendingRef.current = null;
+    // keepalive: Request ueberlebt das Entladen der Seite.
+    void apiRef.current
+      .putImageEdit(entry.id, entry.state, { keepalive: true })
+      .catch(() => undefined);
+  }, [clearTimer]);
+
+  useEffect(() => {
+    if (!imageId || !state) {
+      pendingRef.current = null;
+      clearTimer();
+      return;
+    }
+    const entry: PendingSave = { id: imageId, state };
+    pendingRef.current = entry;
+    attemptRef.current = 0;
+    clearTimer();
+    timerRef.current = window.setTimeout(() => send(entry), AUTOSAVE_DEBOUNCE_MS);
+  }, [imageId, state, send, clearTimer]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    const onPageHide = () => flush();
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+      mountedRef.current = false;
+      flush();
+    };
+  }, [flush]);
+
+  return { status, flush };
+}
+
+/** Dezenter Hinweis, wenn der Autosave fehlschlaegt. Live-Region bleibt
+ *  gemountet, damit Screenreader die Text-Aenderung ansagen. */
+export function AutosaveIndicator({ status }: { readonly status: AutosaveStatus }) {
+  const failed = status === "error";
+  return (
+    <div
+      role="status"
+      data-testid="autosave-status"
+      className={
+        failed
+          ? "absolute top-3 right-3 z-20 px-3 py-1.5 text-xs bg-red-950/90 border border-red-700 text-red-100 pointer-events-none"
+          : "sr-only"
+      }
+    >
+      {failed ? "Nicht gespeichert – erneuter Versuch …" : ""}
+    </div>
+  );
+}
+
 export default function Editor() {
+  usePageMeta(`Editor${TITLE_SUFFIX}`);
   const canvasHandleRef = useRef<CanvasHandle>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [canvasElement, setCanvasElement] = useState<HTMLCanvasElement | null>(null);
@@ -105,13 +245,22 @@ export default function Editor() {
   const viewportRef = useRef<HTMLDivElement>(null);
   const [wbPickerActive, setWbPickerActive] = useState(false);
   // C1: aus der Bibliothek geoeffnetes Bild (?image=<id>) -> Autosave-Ziel.
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   // Nur UUIDs akzeptieren: der Wert landet in API-Pfaden (Path-Steering).
   const rawImageParam = searchParams.get("image");
   const storedImageIdParam =
     rawImageParam && UUID_RE.test(rawImageParam) ? rawImageParam : null;
   const [storedImageId, setStoredImageId] = useState<string | null>(null);
+  // Laedt gerade ein Bild aus der Bibliothek (?image=) -> Ladeanzeige statt Dropzone.
+  const [libraryLoading, setLibraryLoading] = useState(false);
   const loadedImageRef = useRef<string | null>(null);
+  // M6: Lade-Generation — jeder neue Ladevorgang erhoeht sie; aeltere,
+  // spaeter fertige Loads erkennen sich daran als veraltet.
+  const loadGenRef = useRef(0);
+  // L14: Canvas als Ref, damit async Callbacks nie einen veralteten
+  // (null-)State aus einer frueheren Render-Closure sehen.
+  const canvasElementRef = useRef<HTMLCanvasElement | null>(null);
+  const suggestionTimerRef = useRef<number | null>(null);
 
   const adjustments = useEditorStore((s) => s.adjustments);
   const setAdjustment = useEditorStore((s) => s.setAdjustment);
@@ -162,14 +311,14 @@ export default function Editor() {
 
   const onTick = useCallback(() => setTick((t) => t + 1), []);
   const onCanvasError = useCallback((msg: string) => setError(msg), []);
-  const onCanvasMount = useCallback(
-    (c: HTMLCanvasElement) => setCanvasElement(c),
-    [],
-  );
+  const onCanvasMount = useCallback((c: HTMLCanvasElement) => {
+    canvasElementRef.current = c;
+    setCanvasElement(c);
+  }, []);
 
-  const runSuggestion = useCallback(async (focal: number | null): Promise<void> => {
-    const c = canvasElement;
-    if (!c) return;
+  const runSuggestion = useCallback(async (focal: number | null, gen: number): Promise<void> => {
+    const c = canvasElementRef.current;
+    if (!c || gen !== loadGenRef.current) return;
     const stats = analyze(c);
     if (!stats) return;
     // Face-Detection laeuft async und langsamer (lazy-load + Inference)
@@ -177,6 +326,8 @@ export default function Editor() {
     // Heuristik kombinieren. Bei jedem Fehler liefert detectFacesSafe
     // eine leere Liste, sodass die Suggestion nicht blockiert.
     const faces = await detectFacesSafe(c);
+    // Inzwischen anderes Bild geladen -> Vorschlag waere fuers falsche Bild.
+    if (gen !== loadGenRef.current) return;
     const genre = suggestGenre({
       focalLen: focal,
       meanR: stats.meanR,
@@ -186,71 +337,172 @@ export default function Editor() {
       faceCount: faces.length,
     });
     if (genre) setSuggestedGenre(genre);
-  }, [canvasElement]);
+  }, []);
 
-  const onFile = useCallback(async (file: File) => {
-    setError(null);
-    setOriginalFilename(file.name);
-    setCameraInfo(null);
-    setImageDims(null);
-    resetGeometry();
-    setZoom(1);
-    setPan({ x: 0, y: 0 });
-    setWbPickerActive(false);
-    setSuggestedGenre(null);
-    setSuggestionDismissed(false);
-    setCompareSnapshot(null);
-    try {
-      const isRaw = await isRawFile(file);
-      if (isRaw) {
-        setDecoding(true);
-        const decoded = await decodeRaw(file);
-        const bitmap = await rgbToImageBitmap(decoded.rgb, decoded.width, decoded.height);
-        canvasHandleRef.current?.loadBitmap(bitmap, decoded.width, decoded.height);
-        setImageDims({ width: decoded.width, height: decoded.height });
-        if (decoded.cameraMake || decoded.cameraModel) {
-          setCameraInfo(
-            [decoded.cameraMake, decoded.cameraModel].filter(Boolean).join(" "),
-          );
-        }
-
-        // Lens-Profil-Auto-Detection: matches setzen die Slider und
-        // markieren das Profil als 'auto'.
-        const lookup = findLensProfile(
-          decoded.cameraMake,
-          decoded.cameraModel,
-          decoded.focalLen,
-        );
-        if (lookup.profile) {
-          setLensCorrection(profileToCorrection(lookup.profile), "auto");
-          setLensProfile(lookup.profile.id);
-        }
-
-        // Smart-Preset-Suggestion fuer RAW-Bilder: nutzt EXIF-Brennweite
-        // + Histogramm-Mittelwerte. Im Mainthread leichtgewichtig (40k Pixel
-        // Analyse) — wird einen Render-Tick spaeter ausgeloest.
-        const focal = decoded.focalLen;
-        setTimeout(() => {
-          void runSuggestion(focal);
-        }, 100);
-      } else {
-        // loadFile liefert die Dimensionen direkt zurueck — kein Auslesen des
-        // (beim Auto-Load evtl. noch nicht gemounteten) canvasElement-State (L4).
-        const dims = await canvasHandleRef.current?.loadFile(file);
-        if (dims) setImageDims(dims);
-        // JPEG/PNG-Pfad: keine EXIF-Brennweite, aber Face-Detection kann
-        // Portraits trotzdem erkennen. Gleicher Render-Tick-Delay.
-        setTimeout(() => {
-          void runSuggestion(null);
-        }, 100);
-      }
-      setHasImage(true);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Bild konnte nicht geladen werden");
-    } finally {
-      setDecoding(false);
+  const clearSuggestionTimer = useCallback(() => {
+    if (suggestionTimerRef.current !== null) {
+      window.clearTimeout(suggestionTimerRef.current);
+      suggestionTimerRef.current = null;
     }
-  }, [resetGeometry, setLensCorrection, setLensProfile, runSuggestion]);
+  }, []);
+
+  // Smart-Preset-Suggestion einen Render-Tick nach dem Laden (Canvas muss
+  // das neue Bild zeigen). Timer wird bei Bildwechsel/Unmount gecancelt.
+  const scheduleSuggestion = useCallback(
+    (focal: number | null, gen: number) => {
+      clearSuggestionTimer();
+      suggestionTimerRef.current = window.setTimeout(() => {
+        suggestionTimerRef.current = null;
+        void runSuggestion(focal, gen);
+      }, 100);
+    },
+    [clearSuggestionTimer, runSuggestion],
+  );
+
+  // C1: Autosave-Ziel + Stand. editState ist memoisiert, damit der
+  // Debounce nur bei echten Aenderungen neu startet.
+  const editState = useMemo<ImageEditState | null>(
+    () =>
+      hasImage
+        ? {
+            adjustments,
+            masks: masksToWire(masks),
+            crop: cropRect,
+            straightenAngle,
+            lensCorrection,
+            lensProfileId,
+            manualLensOverride,
+          }
+        : null,
+    [
+      hasImage,
+      adjustments,
+      masks,
+      cropRect,
+      straightenAngle,
+      lensCorrection,
+      lensProfileId,
+      manualLensOverride,
+    ],
+  );
+  const autosave = useEditAutosave(api, storedImageId, editState);
+  const flushAutosave = autosave.flush;
+
+  /** Startet einen neuen Ladevorgang: neue Generation, ausstehenden
+   *  Autosave des alten Bildes sichern, Autosave-Ziel loesen, Store und
+   *  UI-Zustand komplett zuruecksetzen (H3: Bild B erbt nichts von A). */
+  const beginLoad = useCallback(
+    (filename: string): number => {
+      const gen = ++loadGenRef.current;
+      flushAutosave();
+      setStoredImageId(null);
+      clearSuggestionTimer();
+      useEditorStore.getState().resetForNewImage();
+      setError(null);
+      setOriginalFilename(filename);
+      setCameraInfo(null);
+      setImageDims(null);
+      setZoom(1);
+      setPan({ x: 0, y: 0 });
+      setWbPickerActive(false);
+      setCropMode(false);
+      setLoadedPresetId(null);
+      setSuggestedGenre(null);
+      setSuggestionDismissed(false);
+      setCompareSnapshot(null);
+      return gen;
+    },
+    [flushAutosave, clearSuggestionTimer],
+  );
+
+  /** Dekodiert die Datei und laedt sie ins Canvas. Liefert true, wenn das
+   *  Bild geladen wurde UND dieser Load noch der aktuelle ist. */
+  const loadIntoCanvas = useCallback(
+    async (file: File, gen: number): Promise<boolean> => {
+      const isCurrent = () => gen === loadGenRef.current;
+      try {
+        const isRaw = await isRawFile(file);
+        if (!isCurrent()) return false;
+        if (isRaw) {
+          setDecoding(true);
+          const decoded = await decodeRaw(file);
+          if (!isCurrent()) return false;
+          const bitmap = await rgbToImageBitmap(decoded.rgb, decoded.width, decoded.height);
+          if (!isCurrent()) {
+            bitmap.close();
+            return false;
+          }
+          const handle = canvasHandleRef.current;
+          if (!handle) {
+            bitmap.close();
+            throw new Error("Renderer nicht initialisiert");
+          }
+          handle.loadBitmap(bitmap, decoded.width, decoded.height);
+          setImageDims({ width: decoded.width, height: decoded.height });
+          if (decoded.cameraMake || decoded.cameraModel) {
+            setCameraInfo(
+              [decoded.cameraMake, decoded.cameraModel].filter(Boolean).join(" "),
+            );
+          }
+
+          // Lens-Profil-Auto-Detection: matches setzen die Slider und
+          // markieren das Profil als 'auto'.
+          const lookup = findLensProfile(
+            decoded.cameraMake,
+            decoded.cameraModel,
+            decoded.focalLen,
+          );
+          if (lookup.profile) {
+            setLensCorrection(profileToCorrection(lookup.profile), "auto");
+            setLensProfile(lookup.profile.id);
+          }
+
+          // Smart-Preset-Suggestion fuer RAW-Bilder: nutzt EXIF-Brennweite
+          // + Histogramm-Mittelwerte.
+          scheduleSuggestion(decoded.focalLen, gen);
+        } else {
+          // loadFile liefert die Dimensionen direkt zurueck — kein Auslesen des
+          // (beim Auto-Load evtl. noch nicht gemounteten) canvasElement-State (L4).
+          const dims = await canvasHandleRef.current?.loadFile(file, isCurrent);
+          if (!isCurrent()) return false;
+          if (dims) setImageDims(dims);
+          // JPEG/PNG-Pfad: keine EXIF-Brennweite, aber Face-Detection kann
+          // Portraits trotzdem erkennen.
+          scheduleSuggestion(null, gen);
+        }
+        setHasImage(true);
+        return true;
+      } catch (err) {
+        if (isCurrent()) {
+          setError(err instanceof Error ? err.message : "Bild konnte nicht geladen werden");
+        }
+        return false;
+      } finally {
+        if (isCurrent()) setDecoding(false);
+      }
+    },
+    [setLensCorrection, setLensProfile, scheduleSuggestion],
+  );
+
+  /** Lokale Datei oeffnen (Picker, Drop, Beispielbild). H2: loest das
+   *  Autosave-Ziel und entfernt ?image, sonst wuerde der Stand der lokalen
+   *  Datei den gespeicherten Stand des Bibliotheksbildes ueberschreiben. */
+  const onFile = useCallback(
+    async (file: File): Promise<void> => {
+      const gen = beginLoad(file.name);
+      setSearchParams(
+        (prev) => {
+          if (!prev.has("image")) return prev;
+          const next = new URLSearchParams(prev);
+          next.delete("image");
+          return next;
+        },
+        { replace: true },
+      );
+      await loadIntoCanvas(file, gen);
+    },
+    [beginLoad, loadIntoCanvas, setSearchParams],
+  );
 
   const onPick = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -273,14 +525,26 @@ export default function Editor() {
   }, [hasImage]);
 
   const doExport = async () => {
-    // C2: Voll-Aufloesungs-Export — das Original wird offscreen durch die
-    // Pipeline gerendert (Live-Vorschau bleibt gedeckelt). Fallback auf die
-    // Live-Canvas, falls kein WebGL-Export-Context verfuegbar ist (jsdom/Tests).
-    const full = canvasHandleRef.current?.exportFullResCanvas?.() ?? null;
-    const source = full?.canvas ?? canvasElement;
-    if (!source) return;
     setExporting(true);
+    let full: FullResExport | null = null;
     try {
+      // C2: Voll-Aufloesungs-Export — das Original wird offscreen durch die
+      // Pipeline gerendert (Live-Vorschau bleibt gedeckelt). Fallback auf die
+      // Live-Canvas, falls kein WebGL-Export-Context verfuegbar ist (jsdom/Tests).
+      // Im try: ein Render-Fehler landet als Meldung statt als unhandled rejection.
+      full = canvasHandleRef.current?.exportFullResCanvas?.() ?? null;
+      const source = full?.canvas ?? canvasElement;
+      if (!source) return;
+      // M10: Quelle ueberschreitet die GPU-Grenzen -> verkleinert exportiert.
+      // Nur melden, wenn der User mehr Pixel wollte, als jetzt herauskommen.
+      if (
+        full?.downscaledFrom &&
+        (exportWidth === "native" || exportWidth > full.canvas.width)
+      ) {
+        setError(
+          `Export auf ${full.canvas.width} × ${full.canvas.height} px verkleinert – die Grafikkarte dieses Geräts unterstützt keine größere Ausgabe.`,
+        );
+      }
       const blob = await exportCanvas(source, {
         format: exportFormat,
         quality: exportQuality,
@@ -365,7 +629,11 @@ export default function Editor() {
     if (!result) return;
     // Confidence-Schwelle vermeidet Noise-Snaps bei abstrakten Bildern.
     if (result.confidence < 0.15) return;
-    setStraightenAngle(result.angleRad);
+    // Analysiert wird die bereits gedrehte Vorschau -> Ergebnis ist die
+    // Rest-Neigung und wird zum aktuellen Winkel addiert (sonst toggelt
+    // wiederholtes Klicken zwischen zwei Werten).
+    const current = useEditorStore.getState().straightenAngle;
+    setStraightenAngle(current + result.angleRad);
   }, [canvasElement, setStraightenAngle]);
 
   const resetView = useCallback(() => {
@@ -550,6 +818,19 @@ export default function Editor() {
     [wbPickerActive, canvasElement],
   );
 
+  const zoomBy = useCallback(
+    (factor: number) => {
+      if (!hasImage) return;
+      const next = Math.max(0.1, Math.min(10, zoom * factor));
+      const ratio = next / zoom;
+      // Zoom um die Viewport-Mitte: Pan proportional mitskalieren.
+      setPan((p) => ({ x: p.x * ratio, y: p.y * ratio }));
+      setZoom(next);
+    },
+    [hasImage, zoom],
+  );
+
+  // Hook haelt die Callbacks per Ref -> neues Objekt-Literal pro Render ist ok.
   useKeyboardShortcuts({
     onResetAll: resetAll,
     onExport: triggerExport,
@@ -560,29 +841,70 @@ export default function Editor() {
     onUndo: undo,
     onRedo: redo,
     setBypass,
+    onEscape: () => {
+      if (wbPickerActive) setWbPickerActive(false);
+      else if (cropMode) setCropMode(false);
+    },
+    onZoomIn: () => zoomBy(1.25),
+    onZoomOut: () => zoomBy(1 / 1.25),
   });
 
-  // C1: Bild + gespeicherten Bearbeitungsstand laden, wenn der Editor mit
-  // ?image=<id> geoeffnet wird. Ref-Guard laedt jedes Bild nur einmal;
-  // alle setState-Calls passieren async (kein set-state-in-effect).
+  // L14/M6: beim Unmount laufende Loads entwerten + Suggestion-Timer stoppen.
+  // loadedImageRef zuruecksetzen, damit ein StrictMode-Remount neu laedt.
+  useEffect(
+    () => () => {
+      loadGenRef.current += 1;
+      loadedImageRef.current = null;
+      clearSuggestionTimer();
+    },
+    [clearSuggestionTimer],
+  );
+
+  // UI-15: lokal geoeffnetes (nicht gespeichertes) Bild vor versehentlichem
+  // Schliessen/Neuladen schuetzen. Die App nutzt BrowserRouter (kein Data
+  // Router) -> useBlocker fuer In-App-Navigation ist nicht verfuegbar.
   useEffect(() => {
-    const id = storedImageIdParam;
-    if (!id || loadedImageRef.current === id) return;
-    loadedImageRef.current = id;
-    void (async () => {
+    if (!hasImage || storedImageId) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      // Legacy-Browser brauchen returnValue fuer den Bestaetigungsdialog.
+      e.returnValue = "";
+    };
+    window.addEventListener("beforeunload", onBeforeUnload);
+    return () => window.removeEventListener("beforeunload", onBeforeUnload);
+  }, [hasImage, storedImageId]);
+
+  // C1: Bild aus der Bibliothek laden und gespeicherten Stand anwenden.
+  // Jeder Schritt prueft die Lade-Generation (M6) — ein inzwischen
+  // gestarteter anderer Load gewinnt.
+  const loadFromLibrary = useCallback(
+    async (id: string): Promise<void> => {
+      // Erst nach einem Tick: alle setState-Calls laufen async (kein
+      // set-state-in-effect im aufrufenden Effect).
+      await Promise.resolve();
+      const gen = beginLoad("lumen-export");
+      const isCurrent = () => gen === loadGenRef.current;
+      setLibraryLoading(true);
       try {
         const meta = (await api.listImages("all")).find((i) => i.id === id);
+        if (!isCurrent()) return;
         if (!meta) throw new Error("Bild nicht gefunden");
+        setOriginalFilename(meta.originalFilename);
         const { url } = await api.getImageUrl(id);
+        if (!isCurrent()) return;
         const resp = await fetch(url);
         if (!resp.ok) throw new Error("Bild konnte nicht geladen werden");
         const blob = await resp.blob();
+        if (!isCurrent()) return;
         const file = new File([blob], meta.originalFilename, {
           type: meta.contentType || blob.type,
         });
-        await onFile(file);
+        const loaded = await loadIntoCanvas(file, gen);
+        if (!loaded || !isCurrent()) return;
         // Gespeicherten Stand wiederherstellen (Multi-Device-Resume); 404 -> null.
+        // null = frischer Start: Store ist seit beginLoad bereits zurueckgesetzt.
         const edit = await api.getImageEdit(id);
+        if (!isCurrent()) return;
         if (edit) {
           useEditorStore.getState().applyEditState({
             adjustments: edit.adjustments,
@@ -596,44 +918,29 @@ export default function Editor() {
         }
         setStoredImageId(id);
       } catch (err) {
+        if (!isCurrent()) return;
         setError(
           err instanceof Error ? err.message : "Bild konnte nicht geladen werden",
         );
+      } finally {
+        if (isCurrent()) setLibraryLoading(false);
       }
-    })();
-  }, [storedImageIdParam, api, onFile]);
+    },
+    [api, beginLoad, loadIntoCanvas],
+  );
 
-  // C1: debounced Autosave des Bearbeitungsstands, solange ein gespeichertes
-  // Bild offen ist. PUT ist fire-and-forget (kein setState -> kein
-  // set-state-in-effect). Cleanup canceled den Timer bei jeder Aenderung.
+  // Ref-Guard laedt jedes Bild nur einmal. Ohne ?image wird der Guard
+  // geloest, damit ein spaeteres Wieder-Oeffnen desselben Bildes laedt.
   useEffect(() => {
-    if (!storedImageId || !hasImage) return;
-    const handle = window.setTimeout(() => {
-      void api
-        .putImageEdit(storedImageId, {
-          adjustments,
-          masks: masksToWire(masks),
-          crop: cropRect,
-          straightenAngle,
-          lensCorrection,
-          lensProfileId,
-          manualLensOverride,
-        })
-        .catch(() => undefined);
-    }, 1200);
-    return () => window.clearTimeout(handle);
-  }, [
-    storedImageId,
-    hasImage,
-    api,
-    adjustments,
-    masks,
-    cropRect,
-    straightenAngle,
-    lensCorrection,
-    lensProfileId,
-    manualLensOverride,
-  ]);
+    const id = storedImageIdParam;
+    if (!id) {
+      loadedImageRef.current = null;
+      return;
+    }
+    if (loadedImageRef.current === id) return;
+    loadedImageRef.current = id;
+    void loadFromLibrary(id);
+  }, [storedImageIdParam, loadFromLibrary]);
 
   const selectedLinear: LinearMaskInstance | null =
     selected && selected.type === "linear" ? selected : null;
@@ -700,7 +1007,17 @@ export default function Editor() {
           onChange={onPick}
         />
 
-        {!hasImage && !error && (
+        {!hasImage && !error && libraryLoading && (
+          <div
+            role="status"
+            data-testid="editor-library-loading"
+            className="absolute inset-8 flex items-center justify-center text-stone-400 text-lg"
+          >
+            Bild wird geladen …
+          </div>
+        )}
+
+        {!hasImage && !error && !libraryLoading && (
           <div className="absolute inset-8 flex flex-col items-center justify-center text-stone-500 pointer-events-none gap-4 border-2 border-dashed border-stone-800 rounded-lg">
             <svg
               className="w-12 h-12 text-stone-700"
@@ -748,6 +1065,8 @@ export default function Editor() {
             </div>
           </div>
         )}
+
+        {storedImageId && <AutosaveIndicator status={autosave.status} />}
 
         <EditorBanners
           error={error}

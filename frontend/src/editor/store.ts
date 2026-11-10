@@ -120,6 +120,10 @@ export interface EditorState {
     profile: ImageEditState,
     enabled: ReadonlySet<string>,
   ) => void;
+  /** Kompletter Reset beim Laden eines neuen Bildes: Adjustments, Masken,
+   *  Geometrie, Lens, Bypass und History (inkl. ausstehendem Debounce).
+   *  Verhindert, dass Bild B den Stand/Undo-Verlauf von Bild A erbt. */
+  resetForNewImage: () => void;
   past: ReadonlyArray<HistorySnapshot>;
   future: ReadonlyArray<HistorySnapshot>;
   undo: () => void;
@@ -158,6 +162,15 @@ function _snapshotBefore(state: EditorState): void {
       }));
     },
   });
+}
+
+/** Verwirft einen laufenden History-Burst, ohne ihn nach past zu schieben —
+ *  noetig, wenn der Stand komplett ersetzt wird (sonst landet ein Snapshot
+ *  des alten Bildes nach dem Restore in past). */
+function _cancelPendingHistory(): void {
+  if (_historyDebounce.timer !== null) clearTimeout(_historyDebounce.timer);
+  _historyDebounce.timer = null;
+  _historyDebounce.pendingBefore = null;
 }
 
 export const useEditorStore = create<EditorState>((set, get) => ({
@@ -470,6 +483,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     });
   },
   applyEditState: (s) => {
+    _cancelPendingHistory();
     set({
       adjustments: { ...defaultAdjustments(), ...s.adjustments },
       masks: s.masks,
@@ -482,6 +496,22 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       lensCorrection: clampLens(s.lensCorrection),
       lensProfileId: s.lensProfileId,
       manualLensOverride: s.manualLensOverride,
+      past: [],
+      future: [],
+    });
+  },
+  resetForNewImage: () => {
+    _cancelPendingHistory();
+    set({
+      adjustments: defaultAdjustments(),
+      bypass: false,
+      cropRect: defaultCropRect(),
+      straightenAngle: 0,
+      lensCorrection: defaultLensCorrection(),
+      lensProfileId: null,
+      manualLensOverride: false,
+      masks: [],
+      selectedMaskId: null,
       past: [],
       future: [],
     });

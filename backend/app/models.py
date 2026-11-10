@@ -1,11 +1,12 @@
 """SQLAlchemy ORM-Modelle."""
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     Index,
@@ -82,6 +83,9 @@ class Preset(Base):
         ForeignKey("images.id", ondelete="SET NULL"),
         nullable=True,
     )
+    # Serverseitig erzeugtes, metadatenfreies Vorschau-JPEG (Migration 011).
+    # Nur dieser Key wird im Marketplace ausgeliefert, nie das Original.
+    preview_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
@@ -256,6 +260,12 @@ class StoragePurge(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), nullable=False
     )
+    # Frueheste Ausfuehrung (Migration 011): DELETE /me merkt den Prefix
+    # immer vor, ausgefuehrt erst nach Ablauf der Pre-Signed-POST-Gueltigkeit,
+    # damit auch spaete Staging-Uploads mit weggeraeumt werden.
+    not_before: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), nullable=False
+    )
 
 
 class AccountTombstone(Base):
@@ -273,3 +283,22 @@ class AccountTombstone(Base):
     banned: Mapped[bool] = mapped_column(
         Boolean, nullable=False, server_default=text("false"), default=False
     )
+
+
+class PresetApply(Base):
+    """Dedupe fuer den Marketplace-Apply-Zaehler (Migration 011): ein
+    Eintrag pro (user, preset, Tag). apply_count steigt nur, wenn der
+    Eintrag neu angelegt wurde."""
+    __tablename__ = "preset_applies"
+
+    user_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("users.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    preset_id: Mapped[UUID] = mapped_column(
+        PG_UUID(as_uuid=True),
+        ForeignKey("presets.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    day: Mapped[date] = mapped_column(Date, primary_key=True)

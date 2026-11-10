@@ -6,6 +6,15 @@ Versionierung an [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased] — Pre-Beta
 
+### Review-Fixes (2026-11-10)
+
+- **Marketplace-Vorschau serverseitig**: oeffentliche Presets zeigen ein neu kodiertes JPEG ohne Metadaten (max 1600 px), nie mehr das Original (Migration 011, `scripts/backfill_previews`).
+- **Kontingente** pro User (Speicher, Bilder, Presets) und Paginierung von `GET /images`/`GET /presets`; Apply-Zaehler dedupliziert pro User/Tag.
+- **Prod-Haertung**: eigene DB-Rollen `lumen_app`/`keycloak` statt Superuser, Keycloak-Admin-REST nur intern (`KEYCLOAK_INTERNAL_URL`), Service-Account `lumen-admin` loescht den KC-Account bei `DELETE /me`, Realm-Haertung vollstaendig per `deploy.sh`, nginx unprivilegiert auf 8080.
+- **Editor**: Autosave flusht beim Verlassen, keine Uebernahme von Edit-State zwischen Bildern, RAW-Worker-Leak behoben, Rotation aspektkorrekt, GPU-Texturlimits beachtet, Speicherfehler sichtbar mit Retry.
+- **Barrierefreiheit**: Tonkurve, Crop-/Masken-Handles und Slider per Tastatur, Fokus-Management in Dialogen, Live-Regions, Ladezustaende, Bestaetigung vor Loeschen/Sperren, mobiles Editor-Layout, 404-Seite.
+- Janitor robuster (TTL > Presign-Laufzeit, Steps isoliert, Retention fuer Feedback/Meldungen), Backup ohne Klartext-Reste, RAW-Magic-Bytes, EXIF-Strip inkl. IPTC/COM.
+
 ### Sicherheit (2026-10-26)
 
 - **S3 auf Garage umgestellt** (Prod, Dev, Tests, CI) — MinIO ist EOL. Einrichtung per Admin-API (`scripts/garage_init.py`), Key ohne owner-Recht; `deploy.sh` migriert den Bucket einmalig aus MinIO (Objektzahl-Abgleich, Archiv bleibt liegen).

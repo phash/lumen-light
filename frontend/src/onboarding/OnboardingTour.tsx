@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   markOnboardingCompleted,
@@ -50,6 +50,9 @@ export default function OnboardingTour({ onClose }: Props) {
   // waitForTestId-Polling). Wir setzen es per Polling-Interval und auf
   // window-resize — das ersetzt einen separaten setState-in-effect-Pfad.
   const [tick, setTick] = useState(0);
+  // Karte des aktuellen Schritts (Modal oder Tooltip) — bekommt bei
+  // jedem Schrittwechsel den Fokus, damit Screenreader den neuen Text lesen.
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   const step: OnboardingStep | undefined = ONBOARDING_STEPS[stepIdx];
 
@@ -106,6 +109,22 @@ export default function OnboardingTour({ onClose }: Props) {
   const handlePrev = useCallback(() => {
     setStepIdx((i) => Math.max(0, i - 1));
   }, []);
+
+  // Escape = Tour ueberspringen (wie der ✕-/Später-Button).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      handleSkip();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [handleSkip]);
+
+  // Fokus bei Schrittwechsel auf die Karte ziehen.
+  useEffect(() => {
+    cardRef.current?.focus();
+  }, [stepIdx]);
 
   const tooltipPos = useMemo(() => {
     if (!step || step.kind !== "spotlight") return null;
@@ -164,14 +183,16 @@ export default function OnboardingTour({ onClose }: Props) {
       data-testid="onboarding-tour"
       className="fixed inset-0 z-50 pointer-events-none"
       role="dialog"
-      aria-modal="true"
+      aria-modal={step.kind === "modal" ? "true" : undefined}
       aria-labelledby="onboarding-title"
     >
       {step.kind === "modal" ? (
         <div className="absolute inset-0 bg-black/70 flex items-center justify-center p-4 pointer-events-auto">
           <div
+            ref={cardRef}
+            tabIndex={-1}
             data-testid="onboarding-modal"
-            className="w-full max-w-md bg-stone-900 border border-stone-700 p-6 text-stone-200"
+            className="w-full max-w-md bg-stone-900 border border-stone-700 p-6 text-stone-200 outline-none"
           >
             <h2 id="onboarding-title" className="text-xl text-amber-200">
               {step.title}
@@ -186,7 +207,7 @@ export default function OnboardingTour({ onClose }: Props) {
                   type="button"
                   data-testid="onboarding-skip"
                   onClick={handleSkip}
-                  className="px-3 py-1.5 uppercase tracking-[0.2em] text-stone-500 hover:text-stone-300"
+                  className="px-3 py-1.5 uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200"
                 >
                   Später
                 </button>
@@ -219,7 +240,7 @@ export default function OnboardingTour({ onClose }: Props) {
           {rect ? (
             <div
               data-testid="onboarding-spotlight"
-              className="absolute pointer-events-none transition-all duration-150"
+              className="absolute pointer-events-none transition-all duration-150 motion-reduce:transition-none"
               style={{
                 top: rect.top,
                 left: rect.left,
@@ -236,8 +257,10 @@ export default function OnboardingTour({ onClose }: Props) {
 
           {tooltipPos && (
             <div
+              ref={cardRef}
+              tabIndex={-1}
               data-testid="onboarding-tooltip"
-              className="absolute pointer-events-auto w-[320px] bg-stone-900 border border-stone-700 p-4 text-stone-200 shadow-2xl"
+              className="absolute pointer-events-auto outline-none w-[320px] max-w-[calc(100vw-2rem)] bg-stone-900 border border-stone-700 p-4 text-stone-200 shadow-2xl"
               style={{
                 top: tooltipPos.top,
                 left: tooltipPos.left,
@@ -256,7 +279,7 @@ export default function OnboardingTour({ onClose }: Props) {
                   data-testid="onboarding-skip"
                   onClick={handleSkip}
                   aria-label="Tour überspringen"
-                  className="text-stone-500 hover:text-stone-200 -mt-1 -mr-1 px-1"
+                  className="text-stone-400 hover:text-stone-200 -mt-1 -mr-1 px-1"
                 >
                   ✕
                 </button>
@@ -265,7 +288,8 @@ export default function OnboardingTour({ onClose }: Props) {
               {waitingFor && (
                 <p
                   data-testid="onboarding-waiting"
-                  className="mt-2 text-xs text-stone-500 italic"
+                  role="status"
+                  className="mt-2 text-xs text-stone-400 italic"
                 >
                   Warte auf den nächsten Schritt …
                 </p>
@@ -304,14 +328,14 @@ export default function OnboardingTour({ onClose }: Props) {
 
 function ProgressDots({ index }: { index: number }) {
   return (
-    <div
-      data-testid="onboarding-progress"
-      className="flex gap-1.5"
-      aria-label={`Schritt ${index + 1} von ${ONBOARDING_STEPS.length}`}
-    >
+    <div data-testid="onboarding-progress" className="flex gap-1.5">
+      <span className="sr-only">
+        {`Schritt ${index + 1} von ${ONBOARDING_STEPS.length}`}
+      </span>
       {ONBOARDING_STEPS.map((_, i) => (
         <span
           key={i}
+          aria-hidden="true"
           className={`block h-1.5 w-4 rounded-sm ${
             i === index
               ? "bg-amber-300"

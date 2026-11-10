@@ -87,6 +87,9 @@ describe("Admin Meldungen-Tab", () => {
     render(api);
     await userEvent.click(screen.getByTestId("admin-tab-reports"));
     await userEvent.click(await screen.findByTestId("admin-report-owner-toggle-p-1"));
+    // Zweistufig: erst die Rueckfrage bestaetigen.
+    expect(api.adminPatchUser).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("admin-report-owner-confirm-p-1"));
     expect(api.adminPatchUser).toHaveBeenCalledWith("u-9", true);
     await waitFor(() =>
       expect(screen.getByTestId("admin-report-owner-toggle-p-1")).toHaveTextContent(

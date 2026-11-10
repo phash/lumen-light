@@ -38,7 +38,7 @@ test.describe("Bearbeitungs-Profile", () => {
       await page.getByTestId(`image-select-${img1.id}`).check();
       await page.getByTestId(`image-select-${img2.id}`).check();
 
-      // „Profil anwenden (2)"-Button ist jetzt aktiv.
+      // „Preset anwenden (2)"-Button ist jetzt aktiv.
       const openBtn = page.getByTestId("batch-apply-open");
       await expect(openBtn).not.toBeDisabled();
       await openBtn.click();

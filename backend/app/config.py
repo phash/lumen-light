@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     keycloak_issuer: str = "http://localhost:18080/realms/lumen"
     keycloak_audience: str = "lumen-api"
     jwk_cache_seconds: int = 600
+    # Optionale interne Keycloak-Basis-URL (Server-Root inkl. relativem Pfad,
+    # z.B. http://lumen-keycloak:8080/auth). Gesetzt -> JWKS-Fetch, Service-
+    # Account-Token und Admin-REST laufen intern statt ueber den oeffentlichen
+    # Host. Die Issuer-Pruefung bleibt gegen keycloak_issuer (oeffentlich).
+    keycloak_internal_url: str = ""
 
     # Service-Account-Credentials fuer Admin-API-Calls (DSGVO Art. 17:
     # DELETE /me loescht den KC-User mit). Leer = nicht konfiguriert,
@@ -36,6 +41,20 @@ class Settings(BaseSettings):
     # zusammen mit Rate-Limit + Janitor das Anlegen vieler Zombie-Rows/Objekte
     # (DB-/Bucket-DoS gegen den gemeinsamen Bucket).
     max_pending_uploads_per_user: int = 50
+    # Harte Kontingente pro User (Review 2026-11): Speicher ueber alle nicht-
+    # fehlgeschlagenen Bilder (pending zaehlt mit der angekuendigten Groesse),
+    # Anzahl Bilder und Anzahl Presets.
+    max_user_storage_bytes: int = 10 * 1024 * 1024 * 1024  # 10 GiB
+    max_user_images: int = 5000
+    max_user_presets: int = 500
+    # Sicherheitsabstand zwischen Ablauf der Pre-Signed-POST-Policy und dem
+    # Wegraeumen haengender Uploads/Prefixe durch den Janitor.
+    janitor_grace_seconds: int = 15 * 60
+
+    # Retention (Janitor): erledigtes Feedback und Marketplace-Meldungen
+    # werden nach dieser Frist geloescht (DSGVO Speicherbegrenzung).
+    feedback_retention_days: int = 365
+    report_retention_days: int = 365
 
     # App-seitiges Body-Limit fuer alle Requests (JSON-API). Pixel laufen
     # per Pre-Signed PUT direkt nach S3, die groessten legitimen JSON-Bodies

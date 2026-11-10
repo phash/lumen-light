@@ -64,10 +64,16 @@ export function cropOutputSize(
  *
  * angle in Radiant. Positiver Winkel = Bild dreht im Uhrzeigersinn (UV
  * dreht entsprechend gegen den Uhrzeigersinn).
+ *
+ * aspect = Quell-Breite / Quell-Hoehe. Die Rotation passiert im
+ * Pixelraum (D⁻¹ · R · D mit D = diag(aspect, 1)), sonst schert sie bei
+ * nicht-quadratischen Bildern und der Winkel passt nicht zur
+ * Auto-Begradigung (die im Pixelraum misst). Default 1 = altes Verhalten.
  */
 export function uvTransformMatrix(
   crop: CropRect,
   angle: number,
+  aspect = 1,
 ): Float32Array {
   const cw = crop.x1 - crop.x0;
   const ch = crop.y1 - crop.y0;
@@ -75,18 +81,23 @@ export function uvTransformMatrix(
   const cy = (crop.y0 + crop.y1) / 2;
   const c = Math.cos(-angle);
   const s = Math.sin(-angle);
+  const a = Number.isFinite(aspect) && aspect > 0 ? aspect : 1;
 
-  // Lineare Spalten:
-  //   col0 = (c*cw,  s*cw)
-  //   col1 = (-s*ch, c*ch)
+  // Lineare Spalten (D⁻¹ R D S):
+  //   col0 = (c*cw,      s*a*cw)
+  //   col1 = (-s*ch/a,   c*ch)
   // Translation (Spalte 2):
   //   t = (cx, cy) - 0.5 * (col0 + col1)
-  const tx = cx - 0.5 * (c * cw - s * ch);
-  const ty = cy - 0.5 * (s * cw + c * ch);
+  const m0 = c * cw;
+  const m1 = s * a * cw;
+  const m3 = (-s * ch) / a;
+  const m4 = c * ch;
+  const tx = cx - 0.5 * (m0 + m3);
+  const ty = cy - 0.5 * (m1 + m4);
 
   return new Float32Array([
-    c * cw, s * cw, 0,
-    -s * ch, c * ch, 0,
+    m0, m1, 0,
+    m3, m4, 0,
     tx, ty, 1,
   ]);
 }

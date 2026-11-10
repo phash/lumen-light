@@ -26,7 +26,7 @@ export default function StepCheckboxes({ enabled, onToggle }: Props) {
             />
             <span>{g.label}</span>
             {isImageSpecific && (
-              <span className="text-[10px] text-stone-500">(bildspezifisch)</span>
+              <span className="text-[10px] text-stone-400">(bildspezifisch)</span>
             )}
           </label>
         );

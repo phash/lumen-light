@@ -31,7 +31,11 @@ function tangents(points: ReadonlyArray<ToneCurvePoint>): Float64Array {
   // Initiale Tangenten = Mittel der angrenzenden Sekanten
   m[0] = d[0]!;
   m[n - 1] = d[n - 2]!;
-  for (let i = 1; i < n - 1; i++) m[i] = (d[i - 1]! + d[i]!) / 2;
+  for (let i = 1; i < n - 1; i++) {
+    // Vorzeichenwechsel (lokales Extremum) -> waagerechte Tangente, sonst
+    // schiesst die Kurve ueber den Gipfel bzw. unter das Tal hinaus.
+    m[i] = d[i - 1]! * d[i]! <= 0 ? 0 : (d[i - 1]! + d[i]!) / 2;
+  }
 
   // Fritsch-Carlson Korrektur fuer Monotonie
   for (let i = 0; i < n - 1; i++) {

@@ -1,5 +1,6 @@
+import type { ReactNode } from "react";
 import { AuthProvider } from "react-oidc-context";
-import { BrowserRouter, Route, Routes } from "react-router-dom";
+import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
 
 import MatomoRouteTracker from "./analytics/MatomoRouteTracker";
 import { oidcConfig } from "./auth/config";
@@ -16,7 +17,18 @@ import Landing from "./pages/Landing";
 import Library from "./pages/Library";
 import Login from "./pages/Login";
 import Marketplace from "./pages/Marketplace";
+import NotFound from "./pages/NotFound";
 import Register from "./pages/Register";
+
+/**
+ * Inhalts-Wrapper: genau ein <main> pro Seite. Der Editor rendert sein
+ * eigenes <main> (Canvas-Bereich), dort wird der Wrapper zum <div>.
+ */
+function ContentWrapper({ children }: { readonly children: ReactNode }) {
+  const { pathname } = useLocation();
+  if (pathname.startsWith("/editor")) return <div>{children}</div>;
+  return <main>{children}</main>;
+}
 
 export default function App() {
   return (
@@ -24,7 +36,7 @@ export default function App() {
       <BrowserRouter>
         <MatomoRouteTracker />
         <Header />
-        <main>
+        <ContentWrapper>
           <Routes>
             <Route path="/" element={<Landing lang="de" />} />
             <Route path="/en" element={<Landing lang="en" />} />
@@ -69,8 +81,9 @@ export default function App() {
                 </RequireAdmin>
               }
             />
+            <Route path="*" element={<NotFound />} />
           </Routes>
-        </main>
+        </ContentWrapper>
       </BrowserRouter>
     </AuthProvider>
   );

@@ -1,5 +1,7 @@
 import { Link } from "react-router-dom";
 
+import { modKeyLabel } from "./platform";
+
 /**
  * Editor-Toolbar: drei Button-Gruppen am unteren Bildrand.
  *
@@ -71,20 +73,39 @@ export default function EditorToolbar({
   onShowPresets,
   onExport,
 }: Props) {
+  const mod = modKeyLabel();
+  // Bypass per Tastatur: Space/Enter gedrueckt halten zeigt das Original.
+  const onBypassKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key !== " " && e.key !== "Enter") return;
+    e.preventDefault();
+    if (!e.repeat) onBypassDown();
+  };
+  const onBypassKeyUp = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key !== " " && e.key !== "Enter") return;
+    e.preventDefault();
+    onBypassUp();
+  };
+
   return (
-    <div className="absolute bottom-6 left-6 right-6 flex justify-between items-end gap-3 pointer-events-none">
+    <div className="absolute bottom-2 left-2 right-2 sm:bottom-6 sm:left-6 sm:right-6 flex flex-wrap justify-between items-end gap-2 sm:gap-3 pointer-events-none">
       {/* Gruppe 1: View */}
-      <div className="flex gap-1 pointer-events-auto bg-stone-900/80 backdrop-blur border border-stone-700 p-1 rounded">
+      <div className="flex flex-wrap gap-1 pointer-events-auto bg-stone-900/80 backdrop-blur border border-stone-700 p-1 rounded">
         <button
           type="button"
           data-testid="editor-bypass"
           onPointerDown={onBypassDown}
           onPointerUp={onBypassUp}
           onPointerLeave={onBypassUp}
+          onKeyDown={onBypassKeyDown}
+          onKeyUp={onBypassKeyUp}
+          onBlur={() => {
+            if (bypass) onBypassUp();
+          }}
+          aria-pressed={bypass}
           className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
             bypass ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
           }`}
-          title="Drücken & halten zeigt Original (Shortcut: \\)"
+          title={"Drücken & halten zeigt Original (Leertaste halten oder Shortcut: \\)"}
           aria-label="Original anzeigen (halten)"
         >
           <svg className="w-4 h-4 inline-block" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
@@ -96,6 +117,7 @@ export default function EditorToolbar({
           type="button"
           data-testid="editor-crop-toggle"
           onClick={onToggleCrop}
+          aria-pressed={cropMode}
           className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
             cropMode ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
           }`}
@@ -125,6 +147,7 @@ export default function EditorToolbar({
           type="button"
           data-testid="editor-compare-toggle"
           onClick={onToggleCompare}
+          aria-pressed={compareActive}
           className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
             compareActive ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
           }`}
@@ -139,6 +162,7 @@ export default function EditorToolbar({
             e.stopPropagation();
             onToggleWbPicker();
           }}
+          aria-pressed={wbPickerActive}
           className={`px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] ${
             wbPickerActive ? "bg-amber-200/20 text-amber-200" : "text-stone-300 hover:text-amber-200"
           }`}
@@ -162,7 +186,7 @@ export default function EditorToolbar({
           onClick={onUndo}
           disabled={!canUndo}
           className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Rückgängig (Cmd+Z)"
+          title={`Rückgängig (${mod}+Z)`}
           aria-label="Rückgängig"
         >
           ↶
@@ -173,7 +197,7 @@ export default function EditorToolbar({
           onClick={onRedo}
           disabled={!canRedo}
           className="px-2.5 py-1 text-[10px] uppercase tracking-[0.18em] text-stone-300 hover:text-amber-200 disabled:opacity-40 disabled:cursor-not-allowed"
-          title="Wiederherstellen (Cmd+Shift+Z)"
+          title={`Wiederherstellen (${mod}+Shift+Z)`}
           aria-label="Wiederherstellen"
         >
           ↷
@@ -181,7 +205,7 @@ export default function EditorToolbar({
       </div>
 
       {/* Gruppe 2: Masken */}
-      <div className="flex gap-1 pointer-events-auto bg-stone-900/80 backdrop-blur border border-stone-700 p-1 rounded">
+      <div className="flex flex-wrap gap-1 pointer-events-auto bg-stone-900/80 backdrop-blur border border-stone-700 p-1 rounded">
         <button
           type="button"
           data-testid="editor-linear-mask-toggle"
@@ -205,7 +229,7 @@ export default function EditorToolbar({
       </div>
 
       {/* Gruppe 3: Action */}
-      <div className="flex gap-1 pointer-events-auto">
+      <div className="flex flex-wrap gap-1 pointer-events-auto">
         <button
           type="button"
           data-testid="editor-help"
@@ -238,7 +262,7 @@ export default function EditorToolbar({
           data-testid="editor-export"
           onClick={onExport}
           className="px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] bg-amber-200/15 backdrop-blur border border-amber-300/50 hover:border-amber-300 text-amber-200"
-          title="Exportieren (Cmd+E)"
+          title={`Exportieren (${mod}+E)`}
         >
           Exportieren
         </button>

@@ -172,6 +172,62 @@ class LocalAdjBuffers {
 
 const IDENTITY_UV_TRANSFORM = new Float32Array([1, 0, 0, 0, 1, 0, 0, 0, 1]);
 
+/** Natuerliche Pixelgroesse einer Textur-Quelle (Image: naturalWidth,
+ *  sonst width/height). */
+export function texSourceSize(src: TexImageSource): { width: number; height: number } {
+  if (typeof HTMLImageElement !== "undefined" && src instanceof HTMLImageElement) {
+    return { width: src.naturalWidth, height: src.naturalHeight };
+  }
+  if (typeof HTMLVideoElement !== "undefined" && src instanceof HTMLVideoElement) {
+    return { width: src.videoWidth, height: src.videoHeight };
+  }
+  if ("displayWidth" in src) {
+    return { width: src.displayWidth, height: src.displayHeight };
+  }
+  return { width: src.width, height: src.height };
+}
+
+/** Skaliert (w, h) proportional so, dass beide Kanten <= limit sind. */
+export function fitWithin(
+  width: number,
+  height: number,
+  limit: number,
+): { width: number; height: number; scaled: boolean } {
+  const scale = Math.min(1, limit / Math.max(width, height, 1));
+  if (scale >= 1) return { width, height, scaled: false };
+  return {
+    width: Math.max(1, Math.floor(width * scale)),
+    height: Math.max(1, Math.floor(height * scale)),
+    scaled: true,
+  };
+}
+
+/** Zeichnet die Quelle per 2D-Canvas auf die Zielgroesse herunter.
+ *  null, wenn kein 2D-Context verfuegbar ist. */
+function downscaleSource(
+  src: TexImageSource,
+  width: number,
+  height: number,
+): TexImageSource | null {
+  let canvas: HTMLCanvasElement | OffscreenCanvas;
+  if (typeof document !== "undefined") {
+    const c = document.createElement("canvas");
+    c.width = width;
+    c.height = height;
+    canvas = c;
+  } else if (typeof OffscreenCanvas !== "undefined") {
+    canvas = new OffscreenCanvas(width, height);
+  } else {
+    return null;
+  }
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = "high";
+  ctx.drawImage(src as CanvasImageSource, 0, 0, width, height);
+  return canvas;
+}
+
 export class Renderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram;
@@ -181,6 +237,11 @@ export class Renderer {
   private toneCurveLutCache = new Uint8Array(TONE_CURVE_LUT_SIZE);
   private _imageWidth = 0;
   private _imageHeight = 0;
+  private readonly vao: WebGLVertexArrayObject | null;
+  private readonly vbo: WebGLBuffer | null;
+  /** Groesste Kantenlaenge, die Textur, Renderbuffer UND Viewport
+   *  gleichzeitig schaffen. Darueber rendert WebGL still schwarz. */
+  readonly maxDimension: number;
 
   // Pre-allocated typed arrays — vermeiden Allocation pro Frame.
   private readonly linP1 = new Float32Array(MAX_LINEAR_MASKS * 2);
@@ -205,13 +266,21 @@ export class Renderer {
     }
     this.gl = gl;
 
+    const maxTex = Number(gl.getParameter(gl.MAX_TEXTURE_SIZE)) || 4096;
+    const maxRb = Number(gl.getParameter(gl.MAX_RENDERBUFFER_SIZE)) || maxTex;
+    const vp = gl.getParameter(gl.MAX_VIEWPORT_DIMS) as Int32Array | null;
+    const maxVp = vp ? Math.min(vp[0] ?? maxTex, vp[1] ?? maxTex) : maxTex;
+    this.maxDimension = Math.min(maxTex, maxRb, maxVp);
+
     const vs = compileShader(gl, gl.VERTEX_SHADER, VERT_SRC);
     const fs = compileShader(gl, gl.FRAGMENT_SHADER, FRAG_SRC);
     this.program = linkProgram(gl, vs, fs);
 
     const vao = gl.createVertexArray();
+    this.vao = vao;
     gl.bindVertexArray(vao);
     const buf = gl.createBuffer();
+    this.vbo = buf;
     gl.bindBuffer(gl.ARRAY_BUFFER, buf);
     gl.bufferData(
       gl.ARRAY_BUFFER,
@@ -336,8 +405,29 @@ export class Renderer {
     gl.activeTexture(gl.TEXTURE0);
   }
 
+  /** Laedt die Quelle als Textur in der Zielgroesse width × height. Ist die
+   *  Quelle groesser (Full-Res-Bitmap fuer die Vorschau), wird sie vorher
+   *  per 2D-Canvas heruntergerechnet — spart GPU-Speicher und Upload-Zeit.
+   *  Zielgroessen ueber `maxDimension` werden proportional begrenzt
+   *  (sonst bleibt das Bild schwarz). Die effektive Groesse steht danach
+   *  in imageWidth/imageHeight. */
   loadImage(image: TexImageSource, width: number, height: number): void {
     const gl = this.gl;
+    const target = fitWithin(width, height, this.maxDimension);
+    const srcSize = texSourceSize(image);
+    let upload: TexImageSource = image;
+    if (srcSize.width > target.width || srcSize.height > target.height) {
+      const scaled = downscaleSource(image, target.width, target.height);
+      if (scaled) {
+        upload = scaled;
+      } else if (Math.max(srcSize.width, srcSize.height) > this.maxDimension) {
+        throw new WebGLRendererError(
+          `Bild zu groß für die Grafikkarte (max. ${this.maxDimension} px Kantenlänge).`,
+        );
+      }
+    }
+    width = target.width;
+    height = target.height;
     if (this.texture) gl.deleteTexture(this.texture);
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
@@ -346,7 +436,7 @@ export class Renderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, upload);
     this.texture = tex;
     this._imageWidth = width;
     this._imageHeight = height;
@@ -361,7 +451,22 @@ export class Renderer {
   /** Gibt den WebGL-Context frei. Wichtig fuer kurzlebige Export-Renderer —
    *  Browser begrenzen die Zahl gleichzeitiger WebGL-Contexts (~16). */
   dispose(): void {
+    this.release();
     this.gl.getExtension("WEBGL_lose_context")?.loseContext();
+  }
+
+  /** Gibt alle GPU-Ressourcen frei, laesst den Context aber bestehen. Fuer
+   *  den Live-Renderer beim Unmount: React-StrictMode mountet dasselbe
+   *  Canvas erneut, ein verlorener Context waere dann nicht mehr nutzbar. */
+  release(): void {
+    const gl = this.gl;
+    if (gl.isContextLost()) return;
+    if (this.texture) gl.deleteTexture(this.texture);
+    this.texture = null;
+    gl.deleteTexture(this.toneCurveTexture);
+    if (this.vbo) gl.deleteBuffer(this.vbo);
+    if (this.vao) gl.deleteVertexArray(this.vao);
+    gl.deleteProgram(this.program);
   }
 
   /** Original-Pixel-Dimensionen des geladenen Bildes (vor Crop). */

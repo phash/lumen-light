@@ -96,6 +96,21 @@ jobs:
         working-directory: frontend
         run: pnpm install --frozen-lockfile
 
+      - name: RAW-Test-Korpus cachen
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: tests-fixtures/raw-samples
+          key: raw-corpus-${{ hashFiles('tests-fixtures/manifest.json') }}
+
+      - name: RAW-Test-Korpus laden
+        run: bash scripts/fetch-test-images.sh
+
+      - name: RAW-Korpus pruefen (vitest, ohne Skip)
+        working-directory: frontend
+        env:
+          LUMEN_REQUIRE_RAW_CORPUS: "1"
+        run: pnpm exec vitest run tests/raw-corpus.test.ts
+
       - name: Playwright-Browser installieren
         working-directory: frontend
         run: pnpm exec playwright install --with-deps chromium

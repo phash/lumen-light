@@ -32,6 +32,7 @@ export default function EditorBanners({
       {error && (
         <div
           data-testid="editor-error"
+          role="alert"
           className="absolute top-4 left-1/2 -translate-x-1/2 flex items-center gap-3 px-4 py-2 bg-red-950/80 border border-red-500/60 backdrop-blur"
         >
           <span className="text-red-300 text-sm">{error}</span>
@@ -67,8 +68,8 @@ export default function EditorBanners({
             type="button"
             data-testid="preset-suggestion-dismiss"
             onClick={onDismissSuggestion}
-            className="text-stone-500 hover:text-stone-200"
-            aria-label="Vorschlag wegklicken"
+            className="text-stone-400 hover:text-stone-200"
+            aria-label="Vorschlag ausblenden"
           >
             ✕
           </button>
@@ -83,7 +84,7 @@ export default function EditorBanners({
           aria-live="polite"
         >
           <svg
-            className="w-4 h-4 animate-spin"
+            className="w-4 h-4 animate-spin motion-reduce:animate-none"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"

@@ -1,5 +1,7 @@
 import { useRef } from "react";
 
+import { nudgeDelta } from "./overlayKeys";
+
 interface Props {
   readonly snapshotUrl: string;
   readonly splitX: number; // 0..1
@@ -54,6 +56,20 @@ export default function CompareSplitOverlay({
     draggingRef.current = false;
   };
 
+  const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    let next: number | null = null;
+    if (e.key === "Home") next = 0;
+    else if (e.key === "End") next = 1;
+    else if (e.key === "ArrowLeft" || e.key === "ArrowRight") {
+      const d = nudgeDelta(e);
+      if (d) next = splitX + d.dx;
+    }
+    if (next === null) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onSplitChange(Math.max(0, Math.min(1, next)));
+  };
+
   const inset = `inset(0 ${(1 - splitX) * 100}% 0 0)`;
   const barLeft = `${splitX * 100}%`;
 
@@ -89,13 +105,21 @@ export default function CompareSplitOverlay({
       {/* Drag-Bar */}
       <div
         data-testid="compare-bar"
+        role="slider"
+        tabIndex={0}
+        aria-orientation="horizontal"
+        aria-valuemin={0}
+        aria-valuemax={100}
+        aria-valuenow={Math.round(splitX * 100)}
+        aria-valuetext={`${Math.round(splitX * 100)} % Vorher`}
+        onKeyDown={onKeyDown}
         onPointerDown={begin}
         onPointerMove={move}
         onPointerUp={end}
         onPointerCancel={end}
-        className="absolute top-0 bottom-0 w-1 -ml-0.5 bg-amber-200/60 cursor-ew-resize pointer-events-auto"
+        className="absolute top-0 bottom-0 w-1 -ml-0.5 bg-amber-200/60 cursor-ew-resize pointer-events-auto outline-none focus-visible:ring-2 focus-visible:ring-amber-300 before:absolute before:inset-y-0 before:-left-3 before:-right-3 before:content-['']"
         style={{ left: barLeft, touchAction: "none" }}
-        aria-label="Compare-Trennlinie verschieben"
+        aria-label="Vorher-Nachher-Trennlinie verschieben"
       >
         {/* Griff */}
         <div className="absolute top-1/2 -translate-y-1/2 -ml-2 w-5 h-12 bg-amber-200 border-2 border-stone-900 flex items-center justify-center">

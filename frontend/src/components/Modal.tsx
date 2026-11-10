@@ -5,6 +5,9 @@ interface ModalProps {
   readonly onClose: () => void;
   /** data-testid auf dem Backdrop (stabile Test-API, wie bisher). */
   readonly testId?: string;
+  /** data-testid auf der Dialog-Karte (role="dialog"), falls Tests die
+   *  Rolle direkt am Test-Element erwarten. */
+  readonly cardTestId?: string;
   /** id der Ueberschrift fuer aria-labelledby (bevorzugt). */
   readonly labelledBy?: string;
   /** Fallback-Label, wenn keine sichtbare Ueberschrift verlinkt werden kann. */
@@ -32,6 +35,7 @@ const FOCUSABLE =
 export default function Modal({
   onClose,
   testId,
+  cardTestId,
   labelledBy,
   ariaLabel,
   backdropClassName = "fixed inset-0 z-40 flex items-center justify-center bg-black/60 p-4",
@@ -101,6 +105,7 @@ export default function Modal({
     >
       <div
         ref={cardRef}
+        data-testid={cardTestId}
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}

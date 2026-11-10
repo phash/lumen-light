@@ -11,8 +11,11 @@
 // Fehlerseite — das ist akzeptabel im Selfhost-Use-Case.
 
 // v2: purgt v1-Caches, die noch private Bilder (Pre-Signed-URLs) enthielten.
-const CACHE_VERSION = "lumen-v2";
+// v3: purgt v2-Caches mit Navigationen unter voller URL (inkl. Query/Callback).
+const CACHE_VERSION = "lumen-v3";
 const RUNTIME = `${CACHE_VERSION}-runtime`;
+// Normalisierter Cache-Key fuer alle Navigationen (App-Shell, ohne Query).
+const NAV_CACHE_KEY = "/index.html";
 
 self.addEventListener("install", (event) => {
   // Sofort aktivieren, alten SW abloesen.
@@ -58,15 +61,25 @@ self.addEventListener("fetch", (event) => {
   // Navigation (HTML): Network-First mit Cache-Fallback fuer Offline.
   const isNavigation = req.mode === "navigate";
 
+  // OIDC-Callback (?code=&state=) nie anfassen: weder aus dem Cache bedienen
+  // noch die Antwort speichern (Auth-Parameter gehoeren nicht in Caches).
+  if (isNavigation && url.pathname.startsWith("/callback")) return;
+
+  // Navigationen NICHT pro voller URL cachen (Query traegt private IDs wie
+  // ?image=<id>, jede URL waere ein eigener Eintrag): alle App-Routen teilen
+  // sich EINEN normalisierten Eintrag als Offline-Shell. Die SPA routet
+  // clientseitig anhand von location, die Shell passt fuer jede Route.
+  const cacheKey = isNavigation ? NAV_CACHE_KEY : req;
+
   event.respondWith(
     (async () => {
       const cache = await caches.open(RUNTIME);
-      const cached = await cache.match(req);
+      const cached = await cache.match(cacheKey);
       const networkPromise = fetch(req)
         .then((res) => {
           // Nur OK-Antworten in den Cache.
           if (res.ok && res.type === "basic") {
-            cache.put(req, res.clone()).catch(() => {});
+            cache.put(cacheKey, res.clone()).catch(() => {});
           }
           return res;
         })

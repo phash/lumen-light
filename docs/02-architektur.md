@@ -202,7 +202,7 @@ Lumen läuft als Add-On in einem bestehenden Cluster mit geteiltem **`caddy-prox
 Caddy übernimmt:
 - TLS für `lumen.mr-development.de`, ggf. `auth.mr-development.de`
 - `/api/v1/*` → `lumen-api:4100`
-- Rest → `lumen-web:80` (statisches Vite-Build via nginx-Container)
+- Rest → `lumen-web:8080` (statisches Vite-Build via nginx-Container)
 - Optional pro Realm eigene Subdomain für Keycloak (sonst geteilt mit anderen MRD-Apps)
 
 **Container-Aliase** (Pflicht im Cluster):

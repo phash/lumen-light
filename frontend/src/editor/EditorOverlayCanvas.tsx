@@ -94,8 +94,8 @@ export default function EditorOverlayCanvas({
   // Im Crop-Modus zeigt das Canvas das volle Bild — Identity-Transform.
   const effCropForOverlay = cropMode ? IDENTITY_CROP : cropRect;
   const forwardUvTransform = useMemo(
-    () => uvTransformMatrix(effCropForOverlay, straightenAngle),
-    [effCropForOverlay, straightenAngle],
+    () => uvTransformMatrix(effCropForOverlay, straightenAngle, imageAspect),
+    [effCropForOverlay, straightenAngle, imageAspect],
   );
   const inverseUvTransform = useMemo(
     () => invertUvTransform(forwardUvTransform),

@@ -1,3 +1,6 @@
+import { useState } from "react";
+
+
 import {
   ADJUSTMENTS,
   type AdjustmentDefinition,
@@ -107,11 +110,31 @@ export default function EditorSidebar({
   onToneCurveReset,
   onResetAll,
 }: Props) {
+  // Seitentitel der Editor-Route: die Sidebar ist immer gemountet, solange
+  // der Editor offen ist (Editor.tsx gehoert einem anderen Arbeitsstrang).
   const groups = adjustmentsByGroup();
+  // Mobile (< md): Sidebar als Bottom-Sheet, per Button ein-/ausblendbar.
+  // Desktop: immer sichtbar, Breite unveraendert 320px.
+  const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
+    <>
+    <button
+      type="button"
+      data-testid="editor-sidebar-toggle"
+      aria-expanded={mobileOpen}
+      aria-controls="editor-sidebar"
+      onClick={() => setMobileOpen((v) => !v)}
+      className="md:hidden fixed right-3 top-16 z-40 px-3 py-2 text-[10px] uppercase tracking-[0.2em] bg-stone-900/90 border border-stone-700 text-stone-200 hover:border-amber-300/40 hover:text-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+    >
+      {mobileOpen ? "Regler schließen" : "Regler"}
+    </button>
     <aside
-      className="w-[320px] border-l border-stone-800/80 bg-stone-950/60 flex flex-col"
+      id="editor-sidebar"
+      aria-label="Bearbeitungsregler"
+      className={`${
+        mobileOpen ? "flex" : "hidden"
+      } fixed inset-x-0 bottom-0 z-30 max-h-[70vh] border-t border-stone-800/80 bg-stone-950/95 flex-col md:static md:z-auto md:flex md:max-h-none md:w-[320px] md:border-t-0 md:border-l md:bg-stone-950/60`}
       data-testid="editor-sidebar"
     >
       <div className="p-4 border-b border-stone-800/60">
@@ -174,25 +197,26 @@ export default function EditorSidebar({
                   data-testid={`mask-list-item-${i}`}
                   data-mask-type={m.type}
                   data-mask-selected={isSelected ? "true" : "false"}
-                  className={`flex items-center gap-2 px-2 py-1.5 mb-1 cursor-pointer text-xs ${
+                  className={`flex items-center gap-2 mb-1 text-xs ${
                     isSelected
                       ? "bg-amber-200/15 border-l-2 border-amber-300 text-amber-200"
                       : "border-l-2 border-stone-800 text-stone-400 hover:text-stone-200"
                   }`}
-                  onClick={() => onSelectMask(m.id)}
                 >
-                  <span className="flex-1">
+                  <button
+                    type="button"
+                    aria-pressed={isSelected}
+                    onClick={() => onSelectMask(m.id)}
+                    className="flex-1 text-left px-2 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                  >
                     {maskTypeLabel(m.type)} {sameTypeIndex}
-                  </span>
+                  </button>
                   <button
                     type="button"
                     data-testid={`mask-list-delete-${i}`}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onRemoveMask(m.id);
-                    }}
-                    className="text-stone-500 hover:text-red-400 px-1"
-                    aria-label="Maske löschen"
+                    onClick={() => onRemoveMask(m.id)}
+                    className="text-stone-400 hover:text-red-400 px-2 py-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                    aria-label={`${maskTypeLabel(m.type)} ${sameTypeIndex} löschen`}
                   >
                     ✕
                   </button>
@@ -404,5 +428,6 @@ export default function EditorSidebar({
         </button>
       </div>
     </aside>
+    </>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 
 import type { ExportFormat } from "./export";
 
@@ -31,6 +31,21 @@ export default function ExportDialog({
   onConfirm,
   onCancel,
 }: Props) {
+  const formatRef = useRef<HTMLSelectElement | null>(null);
+
+  // Fokus beim Oeffnen auf das Format-Select, beim Schliessen zurueck auf
+  // den Ausloeser (Export-Button), damit Tastatur-Nutzer nicht im Body landen.
+  useEffect(() => {
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    formatRef.current?.focus();
+    return () => {
+      if (previouslyFocused && document.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
+    };
+  }, []);
+
   // Escape schliesst das Popover (A11y/Konsistenz). stopPropagation, damit
   // kein Editor-Shortcut zusaetzlich feuert.
   useEffect(() => {
@@ -49,13 +64,14 @@ export default function ExportDialog({
       data-testid="export-dialog"
       role="dialog"
       aria-labelledby="export-dialog-title"
-      className="absolute bottom-20 left-6 w-72 bg-stone-900/95 backdrop-blur border border-stone-700 p-4 text-sm space-y-3"
+      className="absolute bottom-20 left-2 sm:left-6 w-72 max-w-[calc(100%-1rem)] bg-stone-900/95 backdrop-blur border border-stone-700 p-4 text-sm space-y-3"
     >
       <h2 id="export-dialog-title" className="text-stone-200">Export</h2>
 
       <label className="block">
         <span className="text-stone-400 text-xs">Format</span>
         <select
+          ref={formatRef}
           value={format}
           onChange={(e) => onFormatChange(e.target.value as ExportFormat)}
           data-testid="export-format"
@@ -108,7 +124,7 @@ export default function ExportDialog({
         <button
           type="button"
           onClick={onCancel}
-          className="text-xs uppercase tracking-wider text-stone-500"
+          className="text-xs uppercase tracking-wider text-stone-400 hover:text-stone-200"
         >
           Abbrechen
         </button>
@@ -119,7 +135,7 @@ export default function ExportDialog({
           data-testid="export-confirm"
           className="text-xs uppercase tracking-wider text-amber-200 hover:text-amber-100 disabled:opacity-50"
         >
-          {exporting ? "Exportiere…" : "Speichern"}
+          {exporting ? "Exportiere …" : "Speichern"}
         </button>
       </div>
     </div>

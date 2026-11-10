@@ -238,9 +238,39 @@ describe("PresetDialog", () => {
     await waitFor(() => screen.getByTestId("preset-item-x"));
 
     await userEvent.click(screen.getByTestId("preset-delete-x"));
+    // Zweistufig: erst nach Bestaetigung wird geloescht.
+    expect(api.deletePreset).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByTestId("preset-delete-confirm-x"));
 
     expect(api.deletePreset).toHaveBeenCalledWith("x");
     await waitFor(() => expect(api.listPresets).toHaveBeenCalledTimes(2));
+  });
+
+  it("Loeschen eines oeffentlichen Presets warnt zusaetzlich", async () => {
+    const api = makeFakeApi([makePreset({ id: "pub", visibility: "public" })]);
+    renderDialog(api);
+    await waitFor(() => screen.getByTestId("preset-item-pub"));
+    await userEvent.click(screen.getByTestId("preset-delete-pub"));
+    expect(screen.getByTestId("preset-delete-public-warning-pub")).toBeInTheDocument();
+    expect(screen.getByTestId("preset-delete-confirm-pub")).toHaveFocus();
+    await userEvent.click(screen.getByTestId("preset-delete-cancel-pub"));
+    expect(api.deletePreset).not.toHaveBeenCalled();
+    expect(screen.getByTestId("preset-delete-pub")).toBeInTheDocument();
+  });
+
+  it("Escape im Anwenden-Panel schliesst nur das Panel", async () => {
+    const api = makeFakeApi([makePreset({ id: "a", name: "Neutral" })]);
+    const { onClose } = renderDialog(api);
+    await waitFor(() => screen.getByTestId("preset-item-a"));
+    await userEvent.click(screen.getByTestId("preset-apply-a"));
+    const panel = screen.getByTestId("apply-step-panel");
+    expect(panel.querySelector('[role="dialog"]')).toHaveAttribute(
+      "aria-labelledby",
+      "apply-step-title",
+    );
+    await userEvent.keyboard("{Escape}");
+    expect(screen.queryByTestId("apply-step-panel")).not.toBeInTheDocument();
+    expect(onClose).not.toHaveBeenCalled();
   });
 
   it("Loeschen des aktiven Presets cleart loadedPresetId", async () => {
@@ -251,6 +281,7 @@ describe("PresetDialog", () => {
     await waitFor(() => screen.getByTestId("preset-item-active"));
 
     await userEvent.click(screen.getByTestId("preset-delete-active"));
+    await userEvent.click(screen.getByTestId("preset-delete-confirm-active"));
 
     expect(onLoadedPresetIdChange).toHaveBeenCalledWith(null);
   });

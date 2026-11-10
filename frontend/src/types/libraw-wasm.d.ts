@@ -1,5 +1,5 @@
 /**
- * Minimaler Type-Stub fuer libraw-wasm 1.1.x. Das Paket liefert keine
+ * Minimaler Type-Stub fuer libraw-wasm 1.6.x. Das Paket liefert keine
  * eigenen Typdefinitionen aus.
  */
 declare module "libraw-wasm" {
@@ -30,5 +30,7 @@ declare module "libraw-wasm" {
     open(buffer: Uint8Array, settings?: LibRawSettings): Promise<void>;
     metadata(allMetadata?: boolean): Promise<LibRawMetadata>;
     imageData(): Promise<LibRawImageData | Uint8Array>;
+    /** Beendet den internen Worker und gibt den WASM-Heap frei (>= 1.6). */
+    dispose(): void;
   }
 }

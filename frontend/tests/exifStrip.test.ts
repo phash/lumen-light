@@ -58,6 +58,26 @@ describe("stripJpegExifBytes", () => {
     expect(foundApp2).toBe(false);
   });
 
+  it("entfernt IPTC (APP13) und Kommentare (COM), behaelt APP0 und APP14", () => {
+    const input = jpeg([
+      [0xe0, new Uint8Array([0x4a, 0x46, 0x49, 0x46, 0x00])], // APP0/JFIF
+      [0xed, new Uint8Array(12).fill(0x50)], // APP13/IPTC (Autor, Ort)
+      [0xfe, new Uint8Array([0x68, 0x69])], // COM
+      [0xe5, new Uint8Array(4).fill(0x11)], // APP5 (Hersteller)
+      [0xee, new Uint8Array([0x41, 0x64, 0x6f, 0x62, 0x65])], // APP14/Adobe
+    ]);
+    const out = stripJpegExifBytes(input);
+    const markers: number[] = [];
+    for (let i = 0; i < out.length - 1; i++) {
+      if (out[i] === 0xff && out[i + 1] !== 0x00 && out[i + 1] !== 0xff) markers.push(out[i + 1]!);
+    }
+    expect(markers).not.toContain(0xed);
+    expect(markers).not.toContain(0xfe);
+    expect(markers).not.toContain(0xe5);
+    expect(markers).toContain(0xe0);
+    expect(markers).toContain(0xee);
+  });
+
   it("ohne APPx-Segmente: gleicher Output", () => {
     const input = jpeg([[0xdb, new Uint8Array([0x01, 0x02])]]);
     const out = stripJpegExifBytes(input);

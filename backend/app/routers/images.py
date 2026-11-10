@@ -2,15 +2,17 @@
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user
 from app.config import settings
 from app.database import get_db
-from app.models import Image, ImageEdit, User
+from app.models import Image, ImageEdit, Preset, User
+from app.previews import delete_preview_object
 from app.rate_limit import limiter
 from app.schemas import (
     ALLOWED_IMAGE_CONTENT_TYPES,
@@ -26,22 +28,47 @@ from app.storage import ObjectNotFound, StorageService, get_storage
 router = APIRouter()
 
 
-# Magic-Byte-Signaturen fuer browser-interpretierbare Bildtypen. Der
-# Pre-Signed PUT bindet nur den Content-Type-HEADER, nicht den Payload —
-# ein Client kann also beliebige Bytes unter image/jpeg ablegen. Wir
-# validieren die echten Anfangsbytes gegen die deklarierte Art, damit kein
-# als Bild getarntes HTML/SVG/Script im Bucket landet, das spaeter same-
-# origin ausgeliefert werden koennte.
+# Magic-Byte-Signaturen je deklariertem Content-Type. Der Pre-Signed POST
+# bindet nur den Content-Type-HEADER, nicht den Payload — ein Client kann
+# also beliebige Bytes unter image/jpeg ablegen. Wir validieren die echten
+# Anfangsbytes gegen die deklarierte Art, damit kein als Bild getarntes
+# HTML/SVG/Script im Bucket landet.
 #
-# RAW-Vendor-Formate (cr2/cr3/nef/arw/raf/dng) sind NICHT browser-renderbar
-# (werden nur heruntergeladen) und haben zu viele Vendor-Varianten fuer eine
-# robuste Signaturliste -> bewusst kein Magic-Gate. Worst Case dort: der User
-# legt Muell in seinen EIGENEN Bucket (durch Size-Check + Janitor begrenzt).
+# RAW-Formate (Review 2026-11): die meisten sind TIFF-basiert (CR2, NEF,
+# ARW, DNG -> "II*\0" / "MM\0*"). CR3 ist ISO-BMFF mit Brand "crx ",
+# RAF beginnt mit "FUJIFILMCCD-RAW". Fuer ORF ("IIRO"/"IIRS") und RW2
+# ("IIU\0") gibt es (noch) keine erlaubten Content-Types.
+_TIFF_MAGIC: tuple[bytes, ...] = (b"II*\x00", b"MM\x00*")
 _IMAGE_MAGIC: dict[str, tuple[bytes, ...]] = {
     "image/jpeg": (b"\xff\xd8\xff",),
     "image/png": (b"\x89PNG\r\n\x1a\n",),
-    "image/tiff": (b"II*\x00", b"MM\x00*"),
+    "image/tiff": _TIFF_MAGIC,
+    "image/x-canon-cr2": _TIFF_MAGIC,
+    "image/x-nikon-nef": _TIFF_MAGIC,
+    "image/x-sony-arw": _TIFF_MAGIC,
+    "image/x-adobe-dng": _TIFF_MAGIC,
+    "image/x-fuji-raf": (b"FUJIFILMCCD-RAW",),
 }
+# Anzahl Header-Bytes fuer die Pruefung (CR3-Brand liegt bei Offset 4..12).
+_MAGIC_HEADER_BYTES = 16
+
+
+def magic_matches(content_type: str, header: bytes) -> bool:
+    """True, wenn die Anfangsbytes zum deklarierten Content-Type passen.
+    Unbekannte Typen gelten als nicht passend (fail closed)."""
+    if content_type == "image/x-canon-cr3":
+        return header[4:12] == b"ftypcrx "
+    magics = _IMAGE_MAGIC.get(content_type)
+    if magics is None:
+        return False
+    return any(header.startswith(sig) for sig in magics)
+
+
+# Pagination GET /images: additive, Response bleibt eine Liste. Gesamtzahl
+# steht in X-Total-Count — Clients mit mehr Bildern als limit muessen per
+# offset nachladen.
+LIST_LIMIT_DEFAULT = 200
+LIST_LIMIT_MAX = 500
 
 
 SORT_FIELDS = {
@@ -115,6 +142,33 @@ async def init_upload(
             ),
         )
 
+    # Harte Kontingente: Anzahl Bilder und belegter Speicher ueber alle
+    # nicht-fehlgeschlagenen Bilder. Pending-Rows tragen die angekuendigte
+    # Groesse (Obergrenze dank content-length-range der Upload-Policy).
+    image_count, used_bytes = (
+        await db.execute(
+            select(func.count(), func.coalesce(func.sum(Image.size_bytes), 0))
+            .select_from(Image)
+            .where(Image.user_id == user.id, Image.upload_state != "failed")
+        )
+    ).one()
+    if image_count >= settings.max_user_images:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                f"Maximale Anzahl Bilder ({settings.max_user_images}) erreicht — "
+                "bitte lösche nicht mehr benötigte Bilder."
+            ),
+        )
+    if int(used_bytes) + payload.size_bytes > settings.max_user_storage_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            detail=(
+                "Speicherkontingent erschöpft — bitte lösche nicht mehr "
+                "benötigte Bilder."
+            ),
+        )
+
     image_id = uuid4()
     bucket_key = storage.make_key(user.id, image_id)
 
@@ -124,7 +178,9 @@ async def init_upload(
         bucket_key=bucket_key,
         original_filename=payload.filename,
         content_type=payload.content_type,
-        size_bytes=None,
+        # Angekuendigte Groesse (Obergrenze) fuer die Kontingent-Summe;
+        # confirm ueberschreibt sie mit der echten Objektgroesse.
+        size_bytes=payload.size_bytes,
         upload_state="pending",
     )
     db.add(image)
@@ -217,26 +273,24 @@ async def confirm_upload(
         await _discard_pending(db, storage, image)
         raise _too_large(size)
 
-    # Content-Type-Enforcement: der Pre-Signed PUT bindet nur den Header,
-    # nicht den Payload. Fuer browser-interpretierbare Typen pruefen wir die
-    # echten Magic-Bytes gegen die deklarierte Art (siehe _IMAGE_MAGIC).
-    magics = _IMAGE_MAGIC.get(image.content_type)
-    if magics is not None:
-        try:
-            header = await run_in_threadpool(
-                storage.head_bytes, image.bucket_key, 16
-            )
-        except ObjectNotFound as exc:
-            raise not_found from exc
-        if not any(header.startswith(sig) for sig in magics):
-            await _discard_pending(db, storage, image)
-            raise HTTPException(
-                status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-                detail=(
-                    "Objekt-Inhalt passt nicht zum deklarierten contentType "
-                    f"'{image.content_type}' — Upload abgelehnt."
-                ),
-            )
+    # Content-Type-Enforcement: die Upload-Policy bindet nur den Header,
+    # nicht den Payload. Fuer ALLE erlaubten Typen (inkl. RAW) pruefen wir
+    # die echten Magic-Bytes gegen die deklarierte Art (magic_matches).
+    try:
+        header = await run_in_threadpool(
+            storage.head_bytes, image.bucket_key, _MAGIC_HEADER_BYTES
+        )
+    except ObjectNotFound as exc:
+        raise not_found from exc
+    if not magic_matches(image.content_type, header):
+        await _discard_pending(db, storage, image)
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail=(
+                "Objekt-Inhalt passt nicht zum deklarierten contentType "
+                f"'{image.content_type}' — Upload abgelehnt."
+            ),
+        )
 
     image.size_bytes = size
     image.upload_state = "ready"
@@ -256,8 +310,11 @@ async def confirm_upload(
 
 @router.get("", response_model=list[ImageOut])
 async def list_images(
+    response: Response,
     state: str = Query(default="ready", pattern="^(ready|pending|all)$"),
     sort: str = Query(default="-created_at"),
+    limit: int = Query(default=LIST_LIMIT_DEFAULT, ge=1, le=LIST_LIMIT_MAX),
+    offset: int = Query(default=0, ge=0),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
 ) -> list[ImageOut]:
@@ -266,10 +323,21 @@ async def list_images(
             status_code=422,
             detail=f"sort muss einer von {list(SORT_FIELDS)} sein.",
         )
-    stmt = select(Image).where(Image.user_id == user.id)
+    cond = [Image.user_id == user.id]
     if state != "all":
-        stmt = stmt.where(Image.upload_state == state)
-    stmt = stmt.order_by(SORT_FIELDS[sort])
+        cond.append(Image.upload_state == state)
+    total = (
+        await db.execute(select(func.count()).select_from(Image).where(*cond))
+    ).scalar_one()
+    response.headers["X-Total-Count"] = str(total)
+    # Image.id als Tiebreaker: stabile Reihenfolge ueber Seiten hinweg.
+    stmt = (
+        select(Image)
+        .where(*cond)
+        .order_by(SORT_FIELDS[sort], Image.id)
+        .offset(offset)
+        .limit(limit)
+    )
     result = await db.execute(stmt)
     return [ImageOut.model_validate(i) for i in result.scalars().all()]
 
@@ -289,7 +357,7 @@ async def get_download_url(
         raise HTTPException(status_code=404, detail="Image nicht gefunden.")
     _ensure_owns_key(image, user)
 
-    url, expires_in = storage.presign_get(image.bucket_key)
+    url, expires_in = storage.presign_get(image.bucket_key, attachment=True)
     return ImageUrlOut(url=url, expires_in=expires_in)
 
 
@@ -342,15 +410,16 @@ async def put_image_edit(
     # model_dump() liefert dank serialize_by_alias=True camelCase — direkt
     # so im JSONB ablegen, sodass GET es 1:1 zurueckgeben kann.
     state = payload.model_dump()
-    existing = (
-        await db.execute(
-            select(ImageEdit).where(ImageEdit.image_id == image_id)
+    # Atomarer Upsert: zwei parallele Autosaves (zwei Tabs/Geraete) liefen
+    # beim frueheren SELECT-then-INSERT beide in den INSERT -> PK-Konflikt 500.
+    await db.execute(
+        pg_insert(ImageEdit)
+        .values(image_id=image_id, state=state)
+        .on_conflict_do_update(
+            index_elements=[ImageEdit.image_id],
+            set_={"state": state, "updated_at": func.now()},
         )
-    ).scalar_one_or_none()
-    if existing is None:
-        db.add(ImageEdit(image_id=image_id, state=state))
-    else:
-        existing.state = state
+    )
     await db.commit()
 
 
@@ -391,5 +460,21 @@ async def delete_image(
             detail="Speicher-Backend nicht erreichbar — bitte erneut versuchen.",
         ) from exc
 
+    # Vom Bild abgeleitete Marketplace-Vorschauen mit entfernen — der User
+    # erwartet, dass das Motiv nach dem Loeschen nirgends mehr auftaucht.
+    # (presets.preview_image_id wird per FK ON DELETE SET NULL geleert.)
+    derived = (
+        await db.execute(
+            select(Preset).where(
+                Preset.preview_image_id == image.id, Preset.user_id == user.id
+            )
+        )
+    ).scalars().all()
+    stale_preview_keys = [p.preview_key for p in derived if p.preview_key]
+    for p in derived:
+        p.preview_key = None
+
     await db.delete(image)
     await db.commit()
+    for key in stale_preview_keys:
+        await delete_preview_object(storage, key)

@@ -4,11 +4,14 @@
  * - Click auf leeren Bereich: Punkt hinzufuegen (sortiert)
  * - Drag auf Punkt: Position aendern (Endpunkte: nur y)
  * - Doppelklick auf inneren Punkt: entfernen (mind. 2 bleiben)
+ * - Tastatur: Punkte sind fokussierbare Slider. Pfeiltasten verschieben
+ *   (Shift = 10er-Schritt), Entf/Backspace entfernt innere Punkte,
+ *   Button "Punkt hinzufuegen" setzt einen Punkt in die groesste Luecke.
  *
  * Stateless: Werte/Callbacks vom Editor; LUT wird im Renderer aus dem
  * Curve-Objekt nachgerechnet.
  */
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
   TONE_CURVE_MAX_POINTS,
@@ -21,6 +24,31 @@ const SIZE = 200;
 const POINT_RADIUS = 4.5;
 const HIT_RADIUS = 9;
 const SAMPLES = 50;
+// Tastatur-Schrittweite in Kurven-Koordinaten (1/255 ~ ein Tonwert).
+const KEY_STEP = 1 / 255;
+const KEY_STEP_LARGE = 10 / 255;
+
+function toTonal(v: number): number {
+  return Math.round(v * 255);
+}
+
+/** Sucht die groesste x-Luecke zwischen zwei Punkten und liefert deren Mitte. */
+export function largestGapMidpoint(curve: ToneCurve): number {
+  const pts = curve.points;
+  let bestX = 0.5;
+  let bestGap = -1;
+  for (let i = 0; i < pts.length - 1; i++) {
+    const a = pts[i];
+    const b = pts[i + 1];
+    if (!a || !b) continue;
+    const gap = b.x - a.x;
+    if (gap > bestGap) {
+      bestGap = gap;
+      bestX = (a.x + b.x) / 2;
+    }
+  }
+  return bestX;
+}
 
 interface Props {
   readonly curve: ToneCurve | null;
@@ -53,6 +81,67 @@ export default function ToneCurvePanel({
   const effective: ToneCurve = curve ?? defaultToneCurve();
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // Nach Hinzufuegen/Entfernen per Tastatur den Fokus auf diesen Index setzen.
+  const pendingFocusRef = useRef<number | null>(null);
+  const pointRefs = useRef<Array<SVGCircleElement | null>>([]);
+
+  // Laeuft nach jedem Render: offenen Fokus-Request einloesen.
+  useEffect(() => {
+    const idx = pendingFocusRef.current;
+    if (idx === null) return;
+    pendingFocusRef.current = null;
+    pointRefs.current[idx]?.focus();
+  });
+
+  const full = effective.points.length >= TONE_CURVE_MAX_POINTS;
+
+  const addPointViaButton = () => {
+    if (full) return;
+    const x = largestGapMidpoint(effective);
+    const y = evaluateToneCurve(effective, x);
+    const idx = onAddPoint(x, y);
+    if (idx !== null) pendingFocusRef.current = idx;
+  };
+
+  const onPointKeyDown =
+    (idx: number, inner: boolean) => (e: React.KeyboardEvent<SVGCircleElement>) => {
+      const p = effective.points[idx];
+      if (!p) return;
+      const step = e.shiftKey ? KEY_STEP_LARGE : KEY_STEP;
+      let nx = p.x;
+      let ny = p.y;
+      switch (e.key) {
+        case "ArrowUp":
+          ny = p.y + step;
+          break;
+        case "ArrowDown":
+          ny = p.y - step;
+          break;
+        case "ArrowLeft":
+          if (!inner) return;
+          nx = p.x - step;
+          break;
+        case "ArrowRight":
+          if (!inner) return;
+          nx = p.x + step;
+          break;
+        case "Delete":
+        case "Backspace":
+          e.preventDefault();
+          e.stopPropagation();
+          if (inner) {
+            onRemovePoint(idx);
+            pendingFocusRef.current = Math.max(0, idx - 1);
+          }
+          return;
+        default:
+          return;
+      }
+      e.preventDefault();
+      // Keine globalen Editor-Shortcuts (z.B. Pfeil-Nudges) zusaetzlich ausloesen.
+      e.stopPropagation();
+      onSetPoint(idx, Math.max(0, Math.min(1, nx)), Math.max(0, Math.min(1, ny)));
+    };
 
   // Polyline der Kurve aus 50 Samples — kein LUT-Roundtrip im UI.
   const samples: Array<[number, number]> = [];
@@ -102,10 +191,11 @@ export default function ToneCurvePanel({
 
   return (
     <div data-testid="tone-curve-panel" className="space-y-2">
-      <p className="text-[10px] text-stone-500 leading-tight">
-        Klick auf die Kurve fuegt einen Punkt hinzu, Doppelklick auf
+      <p className="text-[11px] text-stone-400 leading-tight">
+        Klick auf die Kurve fügt einen Punkt hinzu, Doppelklick auf
         einen Punkt entfernt ihn. Endpunkte (links/rechts) lassen sich
-        nur vertikal bewegen.
+        nur vertikal bewegen. Per Tastatur: Pfeiltasten verschieben
+        (Shift = größerer Schritt), Entf entfernt.
       </p>
       <svg
         ref={svgRef}
@@ -148,10 +238,29 @@ export default function ToneCurvePanel({
           return (
             <g key={idx}>
               <circle
+                ref={(el) => {
+                  pointRefs.current[idx] = el;
+                }}
                 cx={cx}
                 cy={cy}
                 r={HIT_RADIUS}
                 fill="transparent"
+                role="slider"
+                tabIndex={0}
+                aria-label={
+                  idx === 0
+                    ? "Kurvenpunkt Schwarzpunkt"
+                    : last
+                      ? "Kurvenpunkt Weißpunkt"
+                      : `Kurvenpunkt ${idx}`
+                }
+                aria-valuemin={0}
+                aria-valuemax={255}
+                aria-valuenow={toTonal(p.y)}
+                aria-valuetext={`Eingang ${toTonal(p.x)}, Ausgang ${toTonal(p.y)}`}
+                aria-orientation="vertical"
+                className="outline-none focus-visible:stroke-amber-300 focus-visible:[stroke-width:2]"
+                onKeyDown={onPointKeyDown(idx, inner)}
                 onPointerDown={onPointerDown(idx)}
                 onDoubleClick={(e) => {
                   e.stopPropagation();
@@ -174,8 +283,17 @@ export default function ToneCurvePanel({
         })}
       </svg>
 
-      <div className="flex items-center justify-between text-[10px] text-stone-500">
+      <div className="flex items-center justify-between gap-2 text-[11px] text-stone-400">
         <span>{effective.points.length} Punkte (max {TONE_CURVE_MAX_POINTS})</span>
+        <button
+          type="button"
+          onClick={addPointViaButton}
+          disabled={full}
+          data-testid="tone-curve-add-point"
+          className="px-2 py-1 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          Punkt hinzufügen
+        </button>
         <button
           type="button"
           onClick={onReset}

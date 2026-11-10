@@ -53,6 +53,9 @@ export function parseProfileYaml(text: string): ProfileFile {
   if (typeof obj.adjustments !== "object" || obj.adjustments === null || Array.isArray(obj.adjustments)) {
     throw new Error("Profil-Datei hat keine Anpassungen.");
   }
+  if (obj.masks !== undefined && obj.masks !== null && !Array.isArray(obj.masks)) {
+    throw new Error("Profil-Datei hat ungültige Masken (Liste erwartet).");
+  }
   return {
     name: obj.name,
     adjustments: obj.adjustments as Adjustments,

@@ -1,4 +1,5 @@
 """Tests fuer Preset-Marketplace (F1)."""
+from tests.images import make_jpeg
 from tests.s3_upload import upload_via_init
 
 
@@ -10,8 +11,9 @@ ZERO_ADJ = {
 
 
 async def _upload_image(client, headers, filename="cover.jpg") -> str:
-    # JPEG-Magic-Bytes vorne — confirm() validiert den Content-Type.
-    payload = b"\xff\xd8\xff\xe0fake-image"
+    # Echtes JPEG: confirm() validiert die Magic-Bytes, und beim
+    # Veroeffentlichen rendert der Server daraus die Marketplace-Vorschau.
+    payload = make_jpeg()
     r = await client.post(
         "/api/v1/images",
         headers=headers,

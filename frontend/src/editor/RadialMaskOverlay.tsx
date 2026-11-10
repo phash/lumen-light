@@ -1,6 +1,7 @@
 import { useRef } from "react";
 
 import type { PointUv, RadialMask } from "./mask";
+import { HANDLE_HIT_CLASS, nudgeDelta } from "./overlayKeys";
 import { applyUv } from "./transform";
 
 interface Props {
@@ -83,6 +84,33 @@ export default function RadialMaskOverlay({
     dragRef.current = null;
   };
 
+  // Tastatur: Zentrum wird im Output-System verschoben und zurueck
+  // transformiert; Radien aendern sich direkt im Source-System.
+  const onHandleKeyDown =
+    (which: DragMode) => (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const d = nudgeDelta(event);
+      if (!d) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (which === "center") {
+        const out = applyUv(inverseUvTransform, mask.center.u, mask.center.v);
+        const src = applyUv(
+          forwardUvTransform,
+          clamp01(out.x + d.dx),
+          clamp01(out.y + d.dy),
+        );
+        onChangeCenter({ u: clamp01(src.x), v: clamp01(src.y) });
+      } else if (which === "rx") {
+        // Rechts/Hoch vergroessert, Links/Runter verkleinert.
+        const delta = d.dx !== 0 ? d.dx : -d.dy;
+        onChangeRadii(Math.max(0.01, mask.rx + delta), mask.ry);
+      } else {
+        // Runter/Rechts vergroessert (Handle sitzt unten).
+        const delta = d.dy !== 0 ? d.dy : d.dx;
+        onChangeRadii(mask.rx, Math.max(0.01, mask.ry + delta));
+      }
+    };
+
   // Source-UV → Output-UV fuer Anzeige.
   const centerOut = applyUv(inverseUvTransform, mask.center.u, mask.center.v);
   const rxEnd = applyUv(
@@ -132,31 +160,49 @@ export default function RadialMaskOverlay({
 
       <div
         data-testid="radial-mask-handle-center"
+        role="button"
+        tabIndex={0}
+        aria-label="Radialmaske Zentrum verschieben (Pfeiltasten, Shift für größere Schritte)"
+        onKeyDown={onHandleKeyDown("center")}
         onPointerDown={(e) => beginDrag("center", e)}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className="absolute -ml-2 -mt-2 w-4 h-4 rounded-full bg-amber-200 border-2 border-stone-900 cursor-grab pointer-events-auto"
+        className={`${HANDLE_HIT_CLASS} cursor-grab pointer-events-auto`}
         style={{ ...centerStyle, touchAction: "none" }}
-      />
+      >
+        <span className="block w-4 h-4 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
+      </div>
       <div
         data-testid="radial-mask-handle-rx"
+        role="button"
+        tabIndex={0}
+        aria-label="Radialmaske horizontaler Radius (Pfeiltasten, Shift für größere Schritte)"
+        onKeyDown={onHandleKeyDown("rx")}
         onPointerDown={(e) => beginDrag("rx", e)}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className="absolute -ml-1.5 -mt-1.5 w-3 h-3 rounded-full bg-amber-200 border-2 border-stone-900 cursor-ew-resize pointer-events-auto"
+        className={`${HANDLE_HIT_CLASS} cursor-ew-resize pointer-events-auto`}
         style={{ ...rxStyle, touchAction: "none" }}
-      />
+      >
+        <span className="block w-3 h-3 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
+      </div>
       <div
         data-testid="radial-mask-handle-ry"
+        role="button"
+        tabIndex={0}
+        aria-label="Radialmaske vertikaler Radius (Pfeiltasten, Shift für größere Schritte)"
+        onKeyDown={onHandleKeyDown("ry")}
         onPointerDown={(e) => beginDrag("ry", e)}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className="absolute -ml-1.5 -mt-1.5 w-3 h-3 rounded-full bg-amber-200 border-2 border-stone-900 cursor-ns-resize pointer-events-auto"
+        className={`${HANDLE_HIT_CLASS} cursor-ns-resize pointer-events-auto`}
         style={{ ...ryStyle, touchAction: "none" }}
-      />
+      >
+        <span className="block w-3 h-3 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
+      </div>
     </div>
   );
 }

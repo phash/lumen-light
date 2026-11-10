@@ -9,7 +9,9 @@ import {
   type PresetGeometryWire,
 } from "../api/client";
 import { useApi } from "../api/use-api";
+import AutoFocusButton from "../components/AutoFocusButton";
 import Modal from "../components/Modal";
+import { useFocusRequest } from "../hooks/useFocusRequest";
 import StepCheckboxes from "./StepCheckboxes";
 import { masksToWire } from "./maskSerializer";
 import { defaultEnabledGroups } from "./profileGroups";
@@ -38,6 +40,92 @@ function emptyPublishState(): PublishState {
   return { enabled: false, genre: "", description: "", previewImageId: "" };
 }
 
+interface ApplyStepPanelProps {
+  readonly preset: Preset;
+  readonly enabledGroups: ReadonlySet<string>;
+  readonly onToggle: (key: string) => void;
+  readonly onCancel: () => void;
+  readonly onConfirm: () => void;
+}
+
+/**
+ * Verschachtelter Schritt-Dialog "Preset anwenden". Eigene Dialog-Rolle,
+ * Fokus beim Mount, Escape schliesst nur dieses Panel — der Listener
+ * haengt in der Capture-Phase am window und laeuft damit VOR dem
+ * document-Listener des umgebenden Modals.
+ */
+function ApplyStepPanel({
+  preset,
+  enabledGroups,
+  onToggle,
+  onCancel,
+  onConfirm,
+}: ApplyStepPanelProps) {
+  const cardRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const card = cardRef.current;
+    const previouslyFocused =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const first = card?.querySelector<HTMLElement>("input, button");
+    (first ?? card)?.focus();
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.stopPropagation();
+      e.stopImmediatePropagation();
+      e.preventDefault();
+      onCancel();
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => {
+      window.removeEventListener("keydown", onKey, true);
+      previouslyFocused?.focus();
+    };
+  }, [onCancel]);
+
+  return (
+    <div
+      data-testid="apply-step-panel"
+      className="absolute inset-0 z-40 flex items-center justify-center bg-black/70 p-4"
+      onClick={onCancel}
+    >
+      <div
+        ref={cardRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="apply-step-title"
+        tabIndex={-1}
+        className="w-full max-w-[320px] bg-stone-900 border border-stone-700 p-4 space-y-3 outline-none"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 id="apply-step-title" className="text-stone-200 text-sm">
+          {`„${preset.name}“ anwenden`}
+        </h3>
+        <StepCheckboxes enabled={enabledGroups} onToggle={onToggle} />
+        <div className="flex justify-end gap-2 pt-1">
+          <button
+            type="button"
+            data-testid="apply-cancel"
+            onClick={onCancel}
+            className="text-xs text-stone-400 hover:text-stone-200"
+          >
+            Abbrechen
+          </button>
+          <button
+            type="button"
+            data-testid="apply-confirm"
+            onClick={onConfirm}
+            disabled={enabledGroups.size === 0}
+            className="px-3 py-1 text-[10px] uppercase tracking-[0.2em] bg-amber-200/20 border border-amber-300 text-amber-200 hover:bg-amber-200/30 disabled:opacity-40"
+          >
+            Anwenden
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 interface Props {
   readonly open: boolean;
   readonly onClose: () => void;
@@ -52,7 +140,10 @@ export default function PresetDialog({
   onLoadedPresetIdChange,
 }: Props) {
   const api = useApi();
+  const requestFocus = useFocusRequest();
   const [presets, setPresets] = useState<Preset[]>([]);
+  // Zweistufiges Loeschen (Fehlklick-Schutz), analog zur Bibliothek.
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
@@ -235,6 +326,7 @@ export default function PresetDialog({
 
   const onDelete = async (id: string) => {
     setError(null);
+    setConfirmDeleteId(null);
     setBusy(true);
     try {
       await api.deletePreset(id);
@@ -326,6 +418,8 @@ export default function PresetDialog({
     }
   };
 
+  const closeApplyPanel = useCallback(() => setApplyTarget(null), []);
+
   if (!open) return null;
 
   const loadedPreset =
@@ -338,8 +432,8 @@ export default function PresetDialog({
       onClose={onClose}
       testId="preset-dialog"
       labelledBy="preset-dialog-title"
-      backdropClassName="absolute inset-0 z-30 flex items-center justify-center bg-black/60"
-      cardClassName="relative w-[420px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
+      backdropClassName="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4"
+      cardClassName="relative w-full max-w-[420px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
     >
         <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
           <h2 id="preset-dialog-title" className="text-stone-200">Presets</h2>
@@ -347,7 +441,7 @@ export default function PresetDialog({
             type="button"
             data-testid="preset-close"
             onClick={onClose}
-            className="text-stone-500 hover:text-stone-200"
+            className="text-stone-400 hover:text-stone-200"
             aria-label="Schließen"
           >
             ✕
@@ -356,12 +450,12 @@ export default function PresetDialog({
 
         <div className="flex-1 overflow-y-auto px-4 py-3">
           {loading && (
-            <p data-testid="preset-loading" className="text-stone-500 italic">
-              Lade …
+            <p data-testid="preset-loading" role="status" className="text-stone-400 italic">
+              Lädt …
             </p>
           )}
           {!loading && presets.length === 0 && (
-            <p className="text-stone-500 italic">Keine Presets gespeichert.</p>
+            <p className="text-stone-400 italic">Keine Presets gespeichert.</p>
           )}
           <ul data-testid="preset-list" className="divide-y divide-stone-800">
             {presets.map((p) => {
@@ -378,7 +472,7 @@ export default function PresetDialog({
                   <div className="min-w-0">
                     <div className="truncate">{p.name}</div>
                     {p.masks.length > 0 && (
-                      <div className="text-[10px] uppercase tracking-wider text-stone-500">
+                      <div className="text-[10px] uppercase tracking-wider text-stone-400">
                         {p.masks.length} {p.masks.length === 1 ? "Maske" : "Masken"}
                       </div>
                     )}
@@ -402,15 +496,51 @@ export default function PresetDialog({
                     >
                       YAML
                     </button>
-                    <button
-                      type="button"
-                      data-testid={`preset-delete-${p.id}`}
-                      onClick={() => void onDelete(p.id)}
-                      disabled={busy}
-                      className="text-stone-500 hover:text-red-400 disabled:opacity-40"
-                    >
-                      Löschen
-                    </button>
+                    {confirmDeleteId === p.id ? (
+                      <span className="flex flex-wrap items-center justify-end gap-2">
+                        {p.visibility === "public" && (
+                          <span
+                            data-testid={`preset-delete-public-warning-${p.id}`}
+                            className="basis-full text-right text-[11px] text-amber-200"
+                          >
+                            Öffentlich im Marketplace — wird auch dort entfernt.
+                          </span>
+                        )}
+                        <AutoFocusButton
+                          data-testid={`preset-delete-confirm-${p.id}`}
+                          onClick={() => void onDelete(p.id)}
+                          disabled={busy}
+                          className="text-red-400 hover:text-red-300 disabled:opacity-40"
+                        >
+                          Wirklich löschen?
+                        </AutoFocusButton>
+                        <button
+                          type="button"
+                          data-testid={`preset-delete-cancel-${p.id}`}
+                          onClick={() => {
+                            setConfirmDeleteId(null);
+                            requestFocus(`preset-delete-${p.id}`);
+                          }}
+                          className="text-stone-400 hover:text-stone-200"
+                        >
+                          Abbrechen
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        data-testid={`preset-delete-${p.id}`}
+                        aria-label={`„${p.name}“ löschen`}
+                        onClick={() => {
+                          setError(null);
+                          setConfirmDeleteId(p.id);
+                        }}
+                        disabled={busy}
+                        className="text-stone-400 hover:text-red-400 disabled:opacity-40"
+                      >
+                        Löschen
+                      </button>
+                    )}
                   </div>
                 </li>
               );
@@ -420,7 +550,7 @@ export default function PresetDialog({
 
         <div className="px-4 py-3 border-t border-stone-800 space-y-3">
           {error && (
-            <p data-testid="preset-error" className="text-red-400 text-xs">
+            <p data-testid="preset-error" role="alert" className="text-red-400 text-xs">
               {error}
             </p>
           )}
@@ -451,14 +581,18 @@ export default function PresetDialog({
 
           {publish.enabled && (
             <div className="space-y-2 border border-stone-800 px-3 py-2 bg-stone-950/50">
-              <p className="text-[10px] text-stone-500">
+              <p className="text-xs text-stone-400">
                 Vorschaubild, Beschreibung, Genre sowie dein Handle und deine
                 Bio (sofern gesetzt) werden <strong>öffentlich sichtbar — auch
                 für nicht angemeldete Besucher und Suchmaschinen/KI-Crawler</strong>.
-                Email bleibt privat. Wähle ein Vorschaubild, das keine
+                E-Mail bleibt privat. Wähle ein Vorschaubild, das keine
                 erkennbaren Dritten ohne deren Einwilligung zeigt.
               </p>
+              <label htmlFor="preset-publish-genre" className="sr-only">
+                Genre
+              </label>
               <select
+                id="preset-publish-genre"
                 value={publish.genre}
                 onChange={(e) =>
                   setPublish((s) => ({
@@ -469,7 +603,7 @@ export default function PresetDialog({
                 data-testid="preset-publish-genre"
                 className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
               >
-                <option value="">Genre wählen…</option>
+                <option value="">Genre wählen …</option>
                 {GENRE_OPTIONS.map((g) => (
                   <option key={g.value} value={g.value}>
                     {g.label}
@@ -477,7 +611,12 @@ export default function PresetDialog({
                 ))}
               </select>
               <div>
+                <label htmlFor="preset-publish-description" className="sr-only">
+                  Beschreibung
+                </label>
                 <textarea
+                  id="preset-publish-description"
+                  aria-describedby="preset-publish-description-counter"
                   value={publish.description}
                   onChange={(e) =>
                     setPublish((s) => ({ ...s, description: e.target.value }))
@@ -489,9 +628,10 @@ export default function PresetDialog({
                   className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200 text-sm"
                 />
                 <div
+                  id="preset-publish-description-counter"
                   className={`text-[10px] mt-0.5 text-right tabular-nums ${
                     publish.description.length < 10
-                      ? "text-stone-500"
+                      ? "text-amber-200/80"
                       : "text-stone-400"
                   }`}
                   data-testid="preset-publish-description-counter"
@@ -502,12 +642,12 @@ export default function PresetDialog({
               </div>
               <div data-testid="preset-publish-preview">
                 {images.length === 0 ? (
-                  <p className="text-[11px] text-stone-500">
+                  <p className="text-[11px] text-stone-400">
                     Erst ein Bild in der Bibliothek hochladen.
                   </p>
                 ) : (
                   <>
-                    <p className="text-[10px] text-stone-500 mb-1">
+                    <p className="text-[11px] text-stone-400 mb-1">
                       Vorschaubild wählen ({images.length} verfügbar)
                     </p>
                     <div className="grid grid-cols-4 gap-1.5 max-h-32 overflow-y-auto">
@@ -526,6 +666,7 @@ export default function PresetDialog({
                             }
                             data-testid={`preset-publish-preview-${img.id}`}
                             title={img.originalFilename}
+                            aria-pressed={isSelected}
                             className={`aspect-square overflow-hidden border-2 ${
                               isSelected
                                 ? "border-amber-300"
@@ -552,13 +693,13 @@ export default function PresetDialog({
             </div>
           )}
 
-          <label className="block text-[10px] uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200 cursor-pointer">
+          <label className="block text-[10px] uppercase tracking-[0.2em] text-stone-400 hover:text-stone-200 cursor-pointer focus-within:outline focus-within:outline-2 focus-within:outline-amber-300">
             YAML importieren
             <input
               type="file"
               accept=".yaml,.yml,application/yaml,text/yaml"
               data-testid="preset-import-input"
-              className="hidden"
+              className="sr-only"
               onChange={(e) => {
                 const f = e.target.files?.[0];
                 if (f) void onImportYaml(f);
@@ -571,6 +712,7 @@ export default function PresetDialog({
             <input
               type="text"
               data-testid="preset-save-name"
+              aria-label="Name für neues Preset"
               placeholder="Name für neues Preset"
               value={name}
               maxLength={80}
@@ -593,40 +735,13 @@ export default function PresetDialog({
         </div>
 
         {applyTarget && (
-          <div
-            data-testid="apply-step-panel"
-            className="absolute inset-0 z-40 flex items-center justify-center bg-black/70"
-            onClick={() => setApplyTarget(null)}
-          >
-            <div
-              className="w-[320px] bg-stone-900 border border-stone-700 p-4 space-y-3"
-              onClick={(e) => e.stopPropagation()}
-            >
-              <h3 className="text-stone-200 text-sm">
-                {`„${applyTarget.name}“ anwenden`}
-              </h3>
-              <StepCheckboxes enabled={enabledGroups} onToggle={toggleGroup} />
-              <div className="flex justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  data-testid="apply-cancel"
-                  onClick={() => setApplyTarget(null)}
-                  className="text-xs text-stone-500 hover:text-stone-300"
-                >
-                  Abbrechen
-                </button>
-                <button
-                  type="button"
-                  data-testid="apply-confirm"
-                  onClick={onApplyConfirm}
-                  disabled={enabledGroups.size === 0}
-                  className="px-3 py-1 text-[10px] uppercase tracking-[0.2em] bg-amber-200/20 border border-amber-300 text-amber-200 hover:bg-amber-200/30 disabled:opacity-40"
-                >
-                  Anwenden
-                </button>
-              </div>
-            </div>
-          </div>
+          <ApplyStepPanel
+            preset={applyTarget}
+            enabledGroups={enabledGroups}
+            onToggle={toggleGroup}
+            onCancel={closeApplyPanel}
+            onConfirm={onApplyConfirm}
+          />
         )}
     </Modal>
   );

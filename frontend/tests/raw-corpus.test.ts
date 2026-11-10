@@ -2,7 +2,8 @@
  * Verifikation der RAW-Detection gegen den echten Test-Korpus.
  * Setzt voraus, dass tests-fixtures/raw-samples/ via
  * scripts/fetch-test-images.sh gezogen wurde — sonst werden alle Tests
- * mit it.skip uebersprungen.
+ * mit it.skip uebersprungen. Mit LUMEN_REQUIRE_RAW_CORPUS=1 (Nightly-CI)
+ * schlagen fehlende Dateien fehl statt still zu skippen.
  */
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -26,6 +27,16 @@ interface Manifest {
 }
 
 const manifest = JSON.parse(readFileSync(MANIFEST_PATH, "utf8")) as Manifest;
+const REQUIRE_CORPUS = process.env.LUMEN_REQUIRE_RAW_CORPUS === "1";
+
+describe("RAW-Korpus · Vollstaendigkeit", () => {
+  (REQUIRE_CORPUS ? it : it.skip)("alle Manifest-Dateien sind vorhanden", () => {
+    const missing = manifest.samples
+      .map((s) => s.filename)
+      .filter((f) => !existsSync(join(FIXTURES, f)));
+    expect(missing).toEqual([]);
+  });
+});
 
 describe("RAW-Korpus · detectRawFormat", () => {
   for (const sample of manifest.samples) {

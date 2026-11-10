@@ -1,6 +1,7 @@
 import { useRef } from "react";
 
 import type { LinearMask, PointUv } from "./mask";
+import { HANDLE_HIT_CLASS, nudgeDelta } from "./overlayKeys";
 import { applyUv } from "./transform";
 
 interface Props {
@@ -77,6 +78,23 @@ export default function LinearMaskOverlay({
     dragRef.current = null;
   };
 
+  // Tastatur: Delta im Output-System addieren und zurueck ins Source-UV.
+  const onHandleKeyDown =
+    (which: "p1" | "p2") => (event: React.KeyboardEvent<HTMLDivElement>) => {
+      const d = nudgeDelta(event);
+      if (!d) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const cur = mask[which];
+      const out = applyUv(inverseUvTransform, cur.u, cur.v);
+      const src = applyUv(
+        forwardUvTransform,
+        clamp01(out.x + d.dx),
+        clamp01(out.y + d.dy),
+      );
+      onChangePoint(which, { u: clamp01(src.x), v: clamp01(src.y) });
+    };
+
   // Source-UV → Output-UV fuer Handle-Positionen.
   const p1Out = applyUv(inverseUvTransform, mask.p1.u, mask.p1.v);
   const p2Out = applyUv(inverseUvTransform, mask.p2.u, mask.p2.v);
@@ -109,22 +127,34 @@ export default function LinearMaskOverlay({
 
       <div
         data-testid="linear-mask-handle-p1"
+        role="button"
+        tabIndex={0}
+        aria-label="Verlaufsfilter Startpunkt verschieben (Pfeiltasten, Shift für größere Schritte)"
+        onKeyDown={onHandleKeyDown("p1")}
         onPointerDown={(e) => beginDrag("p1", e)}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className="absolute -ml-2 -mt-2 w-4 h-4 rounded-full bg-amber-200 border-2 border-stone-900 cursor-grab pointer-events-auto"
+        className={`${HANDLE_HIT_CLASS} cursor-grab pointer-events-auto`}
         style={{ ...p1Style, touchAction: "none" }}
-      />
+      >
+        <span className="block w-4 h-4 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
+      </div>
       <div
         data-testid="linear-mask-handle-p2"
+        role="button"
+        tabIndex={0}
+        aria-label="Verlaufsfilter Endpunkt verschieben (Pfeiltasten, Shift für größere Schritte)"
+        onKeyDown={onHandleKeyDown("p2")}
         onPointerDown={(e) => beginDrag("p2", e)}
         onPointerMove={onPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        className="absolute -ml-2 -mt-2 w-4 h-4 rounded-full bg-amber-200 border-2 border-stone-900 cursor-grab pointer-events-auto"
+        className={`${HANDLE_HIT_CLASS} cursor-grab pointer-events-auto`}
         style={{ ...p2Style, touchAction: "none" }}
-      />
+      >
+        <span className="block w-4 h-4 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
+      </div>
     </div>
   );
 }

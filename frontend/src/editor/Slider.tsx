@@ -69,15 +69,46 @@ export default function Slider({
 
   const onDoubleClick = () => onChange(defaultValue);
 
+  // Auf das Step-Raster runden (verhindert Float-Drift wie 0.30000000004).
+  const snap = (v: number): number => {
+    const decimals = Math.max(0, Math.ceil(-Math.log10(step)));
+    const snapped = Number((Math.round(v / step) * step).toFixed(decimals));
+    return Math.max(min, Math.min(max, snapped));
+  };
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     const factor = event.shiftKey ? 10 : 1;
-    if (event.key === "ArrowLeft") {
-      event.preventDefault();
-      onChange(Math.max(min, value - step * factor));
-    } else if (event.key === "ArrowRight") {
-      event.preventDefault();
-      onChange(Math.min(max, value + step * factor));
+    // PageUp/PageDown: 10 % der Spanne (ARIA-Slider-Konvention).
+    const page = Math.max(step, range / 10);
+    let next: number | null = null;
+    switch (event.key) {
+      case "ArrowLeft":
+      case "ArrowDown":
+        next = value - step * factor;
+        break;
+      case "ArrowRight":
+      case "ArrowUp":
+        next = value + step * factor;
+        break;
+      case "PageDown":
+        next = value - page;
+        break;
+      case "PageUp":
+        next = value + page;
+        break;
+      case "Home":
+        next = min;
+        break;
+      case "End":
+        next = max;
+        break;
+      default:
+        return;
     }
+    event.preventDefault();
+    // Globale Editor-Shortcuts (Pfeil-Nudges, Zoom) nicht zusaetzlich ausloesen.
+    event.stopPropagation();
+    onChange(snap(next));
   };
 
   const atDefault = isAtDefault(adjustmentKey, value);
@@ -93,7 +124,7 @@ export default function Slider({
           {label}
         </span>
         <span
-          className={`text-[12px] tabular-nums ${atDefault ? "text-stone-500" : "text-amber-200"}`}
+          className={`text-[12px] tabular-nums ${atDefault ? "text-stone-400" : "text-amber-200"}`}
           data-testid={`slider-${adjustmentKey}-value`}
         >
           {formatAdjustmentValue(adjustmentKey, value)}
@@ -106,13 +137,14 @@ export default function Slider({
         aria-valuemin={min}
         aria-valuemax={max}
         aria-valuenow={value}
+        aria-valuetext={formatAdjustmentValue(adjustmentKey, value)}
         tabIndex={0}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onDoubleClick={onDoubleClick}
         onKeyDown={onKeyDown}
-        className="relative h-5 cursor-ew-resize touch-none focus:outline-none focus:ring-1 focus:ring-amber-300/40"
+        className="relative h-5 py-3 -my-2 box-content cursor-ew-resize touch-none rounded-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
       >
         <div className="absolute inset-x-0 top-1/2 -translate-y-1/2 h-px bg-stone-700" />
         <div
