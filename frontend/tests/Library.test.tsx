@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, type Mock } from "vitest";
+import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
@@ -8,6 +8,7 @@ import * as useApiModule from "../src/api/use-api";
 import * as uploadModule from "../src/api/upload";
 import * as thumbnailModule from "../src/editor/thumbnail";
 import type { ApiClient, Image } from "../src/api/client";
+import { setLibraryView } from "../src/library/viewPrefs";
 import { makeFakeAuth, makeFakeUser, renderWithAuth } from "./test-utils";
 
 interface FakeApi extends ApiClient {
@@ -33,6 +34,8 @@ function makeFakeApi(images: Image[] = []): FakeApi {
     getImageEdit: vi.fn(),
     putImageEdit: vi.fn(),
     putImageThumbnail: vi.fn(),
+    updateImage: vi.fn(),
+    updateImages: vi.fn(),
     listMarketplacePresets: vi.fn(),
     getMarketplacePreset: vi.fn(),
     applyMarketplacePreset: vi.fn(),
@@ -62,6 +65,10 @@ function renderLibrary(api: FakeApi) {
 }
 
 describe("Library", () => {
+  // Diese Tests pruefen die Listenansicht (Zeilen-testids); das Raster
+  // (H2b-Default) testet h2b-library-grid.test.tsx.
+  beforeEach(() => setLibraryView("list"));
+
   it("zeigt Empty-State wenn die Liste leer ist", async () => {
     renderLibrary(makeFakeApi([]));
     await waitFor(() => {

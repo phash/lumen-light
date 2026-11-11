@@ -174,6 +174,45 @@ export interface Image {
   thumbUrl?: string | null;
   /** H2a: signierte URL des 1600-px-Vorschaubilds; null = noch keins. */
   previewUrl?: string | null;
+  /** H2b: 0 = unbewertet, sonst 1..5 Sterne. Fehlt bei alten Fixtures -> 0. */
+  rating?: number;
+  /** H2b: Farblabel; null = keins. */
+  colorLabel?: ColorLabel | null;
+  /** H2b: Markierung (Pick/Reject). */
+  flag?: ImageFlag;
+}
+
+/** H2b: Farblabels (Backend-CHECK in Migration 014). */
+export type ColorLabel = "red" | "yellow" | "green" | "blue" | "purple";
+/** H2b: Markierung eines Bildes. */
+export type ImageFlag = "none" | "pick" | "reject";
+
+/** H2b: PATCH-Body fuer Bewertung/Label/Markierung. Nur gesetzte Felder
+ *  aendern sich; `colorLabel: null` loescht das Label. */
+export interface ImageMetaPatch {
+  rating?: number;
+  colorLabel?: ColorLabel | null;
+  flag?: ImageFlag;
+}
+
+export type ImageSort = "created_desc" | "created_asc" | "rating_desc" | "name_asc";
+
+/** H2b: serverseitige Filter/Sortierung fuer GET /images. */
+export interface ImageListQuery {
+  minRating?: number;
+  colorLabels?: readonly ColorLabel[];
+  flag?: ImageFlag;
+  sort?: ImageSort;
+}
+
+/** Query-String-Teil (ohne state/limit/offset) fuer GET /images. */
+export function imageListParams(query: ImageListQuery = {}): URLSearchParams {
+  const p = new URLSearchParams();
+  if (query.minRating) p.set("minRating", String(query.minRating));
+  for (const label of query.colorLabels ?? []) p.append("colorLabel", label);
+  if (query.flag) p.set("flag", query.flag);
+  if (query.sort && query.sort !== "created_desc") p.set("sort", query.sort);
+  return p;
 }
 
 export interface ImageInit {
@@ -308,7 +347,12 @@ export interface ApiClient {
     payload: { imageIds: string[]; groups: string[] },
   ): Promise<BatchApplyResult>;
 
-  listImages(state?: ImageStateFilter): Promise<Image[]>;
+  /** Sammelt alle Seiten ein; `query` (H2b) wird an jede Seite gereicht. */
+  listImages(state?: ImageStateFilter, query?: ImageListQuery): Promise<Image[]>;
+  /** H2b: Bewertung/Label/Markierung eines Bildes setzen. */
+  updateImage(id: string, patch: ImageMetaPatch): Promise<Image>;
+  /** H2b: dasselbe fuer bis zu 500 Bilder; alles oder nichts (404). */
+  updateImages(ids: readonly string[], patch: ImageMetaPatch): Promise<Image[]>;
   initUpload(filename: string, contentType: string, sizeBytes: number): Promise<ImageInit>;
   confirmUpload(id: string): Promise<Image>;
   getImageUrl(id: string): Promise<ImageUrl>;
@@ -497,17 +541,31 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         body: JSON.stringify(payload),
       }),
 
-    listImages: async (state = "ready") => {
+    listImages: async (state = "ready", query = {}) => {
       // Backend paginiert (max 500 pro Seite) -> alle Seiten einsammeln.
+      // Filter/Sortierung gehen an jede Seite (sonst mischt Seite 2 fremde
+      // Treffer ein); die Sortierung ist serverseitig per id stabil.
       const all: Image[] = [];
       for (let offset = 0; ; offset += IMAGE_PAGE_LIMIT) {
-        const page = await request<Image[]>(
-          `/images?state=${encodeURIComponent(state)}&limit=${IMAGE_PAGE_LIMIT}&offset=${offset}`,
-        );
+        const p = imageListParams(query);
+        p.set("state", state);
+        p.set("limit", String(IMAGE_PAGE_LIMIT));
+        p.set("offset", String(offset));
+        const page = await request<Image[]>(`/images?${p.toString()}`);
         all.push(...page);
         if (page.length < IMAGE_PAGE_LIMIT) return all;
       }
     },
+    updateImage: (id, patch) =>
+      request<Image>(`/images/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        body: JSON.stringify(patch),
+      }),
+    updateImages: (ids, patch) =>
+      request<Image[]>("/images", {
+        method: "PATCH",
+        body: JSON.stringify({ ids, ...patch }),
+      }),
     initUpload: (filename, contentType, sizeBytes) =>
       request<ImageInit>("/images", {
         method: "POST",

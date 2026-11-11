@@ -26,13 +26,13 @@ test.describe("Bearbeitungs-Profile", () => {
       const img1 = await uploadTinyImage(token, "batch-a.png");
       const img2 = await uploadTinyImage(token, "batch-b.png");
 
-      // Library-Seite laden — die zwei Bilder erscheinen in der Liste.
+      // Library-Seite laden — die zwei Bilder erscheinen im Raster (H2b-Default).
       await page.goto("/library");
       await expect(page.getByTestId("page-library")).toBeVisible();
       await expect(
-        page.getByTestId(`image-row-${img1.id}`),
+        page.getByTestId(`image-tile-${img1.id}`),
       ).toBeVisible({ timeout: 10_000 });
-      await expect(page.getByTestId(`image-row-${img2.id}`)).toBeVisible();
+      await expect(page.getByTestId(`image-tile-${img2.id}`)).toBeVisible();
 
       // Beide Bilder selektieren.
       await page.getByTestId(`image-select-${img1.id}`).check();

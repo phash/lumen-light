@@ -39,6 +39,8 @@ function makeFakeApi(): FakeApi {
     getImageEdit: vi.fn(),
     putImageEdit: vi.fn(),
     putImageThumbnail: vi.fn(),
+    updateImage: vi.fn(),
+    updateImages: vi.fn(),
     listMarketplacePresets: vi.fn().mockResolvedValue({
       items: [],
       nextCursor: null,

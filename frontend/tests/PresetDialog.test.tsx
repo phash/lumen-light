@@ -41,6 +41,8 @@ function makeFakeApi(presets: Preset[] = []): FakeApi {
     getImageEdit: vi.fn(),
     putImageEdit: vi.fn(),
     putImageThumbnail: vi.fn(),
+    updateImage: vi.fn(),
+    updateImages: vi.fn(),
     listMarketplacePresets: vi.fn(),
     getMarketplacePreset: vi.fn(),
     applyMarketplacePreset: vi.fn(),
