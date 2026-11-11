@@ -268,7 +268,7 @@ export default function Account() {
         <section data-testid="account-shortcuts">
           <h2 className="text-stone-300 italic">Tastenkürzel</h2>
           <p id="account-single-key-hint" className="mt-1 text-sm text-stone-400">
-            Einzeltasten-Kürzel im Editor (0, R, P, \, +, −, ?) lösen
+            Einzeltasten-Kürzel im Editor (0, R, P, \, +, −, ?) und in der Bibliothek (0–9, P, X, U, E, C, Enter) lösen
             Aktionen ohne Strg/Cmd aus. Wenn du Spracheingabe oder
             Bedienhilfen nutzt, kannst du sie hier abschalten —
             Kombinationen wie Strg/Cmd + Z bleiben aktiv.

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import type { ReactNode } from "react";
+import type { KeyboardEventHandler, ReactNode } from "react";
 
 interface ModalProps {
   readonly onClose: () => void;
@@ -16,6 +16,9 @@ interface ModalProps {
   readonly cardClassName?: string;
   /** Klick auf den Backdrop schliesst (Default true). */
   readonly closeOnBackdrop?: boolean;
+  /** Tasten auf der Karte (inkl. Karte selbst fokussiert, z.B. nach Klick
+   *  auf eine nicht-interaktive Flaeche) — fuer Dialog-eigene Kuerzel. */
+  readonly onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
   readonly children: ReactNode;
 }
 
@@ -41,6 +44,7 @@ export default function Modal({
   backdropClassName = "fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4",
   cardClassName,
   closeOnBackdrop = true,
+  onKeyDown,
   children,
 }: ModalProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -73,6 +77,10 @@ export default function Modal({
 
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
+        // Offenes Menue im Dialog (data-popup-open, z.B. Farblabel-Palette)
+        // schliesst sich zuerst selbst; erst das naechste Esc schliesst
+        // den Dialog.
+        if (e.target instanceof Element && e.target.closest("[data-popup-open]")) return;
         // stopPropagation, damit Editor-Shortcuts (globaler keydown) nicht
         // zusaetzlich feuern, waehrend ein Dialog offen ist.
         e.stopPropagation();
@@ -121,6 +129,7 @@ export default function Modal({
         tabIndex={-1}
         className={cardClassName}
         onClick={(e) => e.stopPropagation()}
+        onKeyDown={onKeyDown}
       >
         {children}
       </div>

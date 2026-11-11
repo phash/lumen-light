@@ -7,9 +7,9 @@
  * Die Bedienelemente nicht-aktiver Kacheln sind per Maus/Touch erreichbar,
  * aber nicht in der Tab-Reihenfolge (sonst ~10 Tab-Stopps pro Bild).
  *
- * H2c haengt Einzeltasten (0-5, 6-9, P/X/U, Enter, E, C) an
- * `onTileKey` an — der Handler sieht nur Tasten, die direkt auf der
- * Kachel (nicht in einem Button darin) gedrueckt wurden.
+ * H2c haengt Einzeltasten (0-5, 6-9, P/X/U, Enter, E, C, ?) an
+ * `onTileKey` an (Library.tsx) — der Handler sieht nur Tasten, die direkt
+ * auf der Kachel (nicht in einem Button darin) gedrueckt wurden.
  */
 import { useRef, useState, type KeyboardEvent } from "react";
 
@@ -26,6 +26,8 @@ export interface LibraryGridProps {
   readonly onToggleSelect: (id: string) => void;
   readonly onMetaChange: (id: string, patch: ImageMetaPatch) => void;
   readonly onOpen: (id: string) => void;
+  /** H2c: Lupe fuer dieses Bild oeffnen (Button-Weg zu Enter). */
+  readonly onLoupe?: (id: string) => void;
   readonly onAskDelete: (id: string) => void;
   readonly onConfirmDelete: (id: string) => void;
   readonly onCancelDelete: (id: string) => void;
@@ -63,6 +65,7 @@ export default function LibraryGrid({
   onToggleSelect,
   onMetaChange,
   onOpen,
+  onLoupe,
   onAskDelete,
   onConfirmDelete,
   onCancelDelete,
@@ -200,6 +203,7 @@ export default function LibraryGrid({
                     tabbable={active}
                     confirming={confirmDeleteId === img.id}
                     onOpen={() => onOpen(img.id)}
+                    onLoupe={onLoupe ? () => onLoupe(img.id) : undefined}
                     onAskDelete={() => onAskDelete(img.id)}
                     onConfirmDelete={() => onConfirmDelete(img.id)}
                     onCancelDelete={() => onCancelDelete(img.id)}

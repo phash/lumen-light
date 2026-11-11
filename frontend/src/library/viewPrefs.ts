@@ -31,3 +31,29 @@ export function setLibraryView(view: LibraryView): void {
     /* localStorage unverfuegbar — Modul-Cache gilt fuer diese Sitzung */
   }
 }
+
+/** H2c: Lupe springt nach Bewertung/Label/Markierung zum naechsten Bild.
+ *  Default aus; gleiches Cache-Muster wie oben. */
+const AUTO_ADVANCE_KEY = "lumen.library.autoAdvance";
+
+let cachedAutoAdvance: boolean = (() => {
+  try {
+    return window.localStorage.getItem(AUTO_ADVANCE_KEY) === "1";
+  } catch {
+    return false;
+  }
+})();
+
+export function getLoupeAutoAdvance(): boolean {
+  return cachedAutoAdvance;
+}
+
+export function setLoupeAutoAdvance(enabled: boolean): void {
+  cachedAutoAdvance = enabled;
+  try {
+    if (enabled) window.localStorage.setItem(AUTO_ADVANCE_KEY, "1");
+    else window.localStorage.removeItem(AUTO_ADVANCE_KEY);
+  } catch {
+    /* localStorage unverfuegbar — Modul-Cache gilt fuer diese Sitzung */
+  }
+}
