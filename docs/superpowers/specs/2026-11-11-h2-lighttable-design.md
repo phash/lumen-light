@@ -127,3 +127,27 @@ dekodieren; der Browser kann es (libraw-wasm) und kennt die Bearbeitung.
 - Ob libraw-wasm eingebettete Vorschauen liefert (sonst Platzhalter).
 - Exaktes Kachel-Layout; an bestehendes Design (stone/amber) anlehnen,
   `frontend-design`-Skill nutzen.
+
+## Umsetzung H2a (2026-11-11)
+
+- **libraw-wasm 1.6.0 liefert eingebettete Vorschauen**: `thumbnailData()`
+  → `{data, width, height, format: "jpeg"|"bitmap"|"unknown"}`, ohne
+  Demosaicing. Gedreht wird nach LibRaw-`flip` (EXIF des eingebetteten
+  JPEGs wird ignoriert). Ohne Vorschau → Platzhalter.
+- Migration heißt `013_h2a_thumbnails` und enthält nur `thumb_key`/
+  `preview_key`; die H2b-Spalten kommen in Migration 014 (Abweichung von
+  „Migration 013 zusätzlich" oben).
+- Upload nur für bestätigte Bilder (sonst 409); Formate JPEG/PNG (TIFF/
+  andere → 415, unlesbar → 422); Grenze 1 000 000 Bytes, damit sie unter
+  dem globalen 1-MiB-Body-Limit inkl. Multipart-Overhead greift.
+- Editor: Vorschau aus der Live-Textur (max. 1600 px breit) per
+  `Canvas.renderThumbnail` — kein zweiter WebGL-Context. Zusätzlich zum
+  Autosave-Auslöser bekommt jedes aus der Bibliothek geöffnete Bild beim
+  Verlassen genau einen Upload (RAW-/TIFF-Bestand). Bei `pagehide`
+  (Tab schließen) geht nichts raus: `keepalive` ist auf 64 KB begrenzt.
+- `/me/export`: unverändert. Vorschaubilder sind metadatenfreie
+  Ableitungen der Originale, die der Export bereits per Download-URL
+  enthält; der Bearbeitungsstand ist ebenfalls enthalten.
+- `GET /images` signiert bis zu 1000 URLs pro 500er-Seite: lokal, gemessen
+  ~0.18 ms pro URL (~180 ms CPU pro voller Seite). Falls das stört:
+  eigenes SigV4-Query-Signing statt botocore (Backlog).

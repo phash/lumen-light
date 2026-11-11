@@ -28,7 +28,7 @@ Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Anna
 | P1 | Bearbeitungs-Profile: YAML-Export/Import, Schritt-Checkboxen, Batch-Anwendung | ✓ abgeschlossen |
 | SEO1 | Bilingual DE+EN + GEO/SEO/AEO-Politur (2026-06-09) | ✓ abgeschlossen |
 | H1 | Szenenbezogene Tonabbildung (Prozessversion 2, Schulter + Path-to-White) | ✓ abgeschlossen |
-| H2 | Lighttable: Sterne, Farblabels, Aussortieren | ⏳ geplant |
+| H2 | Lighttable: Sterne, Farblabels, Aussortieren | 🔄 in Arbeit (H2a ✓, H2b/H2c offen) |
 
 ## Phase 1 · Bildverarbeitung im Browser ✓
 
@@ -91,7 +91,7 @@ Ergebnis der Recherche vom 2026-11-11. darktable steht unter GPL-3.0: Wir übern
 | Item | Aufgabe | Aufwand | Status |
 |---|---|---|---|
 | H1 | Szenenbezogene Tonabbildung: Belichtung, Weißabgleich und Kontrast rechnen auf linearem Licht, erst am Ende bildet eine Sigmoid-/AgX-Kurve auf den Bildschirm ab. Ziel: Lightroom-artiges Verhalten, keine Farbverschiebung in hellen Lichtern. Bestehende Presets brauchen einen Kompatibilitätspfad (Pipeline-Version im Edit-State). Umgesetzt als `processVersion` 1/2 (fehlt = 1), Spec `docs/superpowers/specs/2026-11-11-h1-scene-referred-tonemapping-design.md`. Follow-up H1b: 16-bit-Dekodierung in Float-Textur für echten Headroom. | M | ✓ abgeschlossen |
-| H2 | Lighttable in der Bibliothek: Sterne (0–5), Farblabels, Filter danach, Tastatur-Aussortieren (Vorschau groß, Taste vergeben, nächstes Bild), Vergleichsansicht. Braucht Migration für Bewertung/Label pro Bild und `GET /images`-Filter. | M | ⏳ geplant |
+| H2 | Lighttable in der Bibliothek: Sterne (0–5), Farblabels, Filter danach, Tastatur-Aussortieren (Vorschau groß, Taste vergeben, nächstes Bild), Vergleichsansicht. Braucht Migration für Bewertung/Label pro Bild und `GET /images`-Filter. Spec: `docs/superpowers/specs/2026-11-11-h2-lighttable-design.md`. **H2a ✓** Vorschaubilder pro Bild (Migration 013, `PUT /images/{id}/thumbnail`, Backfill, Listen-Vorschau). H2b Raster/Sterne/Labels/Filter (Migration 014) und H2c Lupe/Vergleich offen. | M | 🔄 in Arbeit |
 
 Weitere Kandidaten aus derselben Recherche (Backlog):
 - Zentrale Aktionsliste mit frei belegbaren Tasten, Befehlspalette und beschrifteter Undo-Historie (REAPER) (M)
