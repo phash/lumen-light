@@ -98,7 +98,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `frontend/src/editor/profileGroups.ts` | Importiert `backend/schemas/edit-groups.json`, exportiert `GROUPS`, `defaultEnabledGroups()`, `mergeGroups(base, profile, enabled)`. Gleicher Repo-Root-Build-Context wie `lensProfile.ts`. |
 | `frontend/src/editor/profileYaml.ts` | `serializeProfileYaml` / `parseProfileYaml` (yaml-npm). YAML-Format-Version 1 (`lumenProfile: 1`). Import schickt geparste Struktur an `POST /presets` — Pydantic validiert. |
 | `frontend/src/editor/StepCheckboxes.tsx` | Geteilte Schritt-Checkbox-Gruppe (8 Gruppen, crop/lens default aus mit bildspezifisch-Hinweis). Genutzt in PresetDialog + BatchApplyModal. |
-| `frontend/src/library/` | H2b-Lighttable: `LibraryGrid.tsx` (Raster, Roving-Tabindex, Erweiterungspunkt `onTileKey` fuer H2c), `MetaControls.tsx` (Sterne/Farblabel/Markierung, auch Batch), `FilterBar.tsx` (serverseitige Filter + Raster/Liste-Umschalter), `meta.ts` (Labels, Ansagetexte, `nextGridIndex`), `viewPrefs.ts` (Ansicht, Modul-Cache), `ImageThumb.tsx`, `ImageActions.tsx` (Editor/Loeschen, testids in beiden Ansichten gleich). Optimistische Updates + Rollback in `pages/Library.tsx`. |
+| `frontend/src/library/` | H2b-Lighttable: `LibraryGrid.tsx` (Raster, Roving-Tabindex, Erweiterungspunkt `onTileKey` fuer H2c), `MetaControls.tsx` (Sterne/Farblabel/Markierung, auch Batch), `FilterBar.tsx` (serverseitige Filter + Raster/Liste-Umschalter), `meta.ts` (Labels, Ansagetexte, `nextGridIndex`), `viewPrefs.ts` (Ansicht, Modul-Cache), `ImageThumb.tsx`, `ImageActions.tsx` (Lupe/Editor/Loeschen, testids in beiden Ansichten gleich). H2c: `Loupe.tsx` (Vollbild-Dialog, Blaettern, Auto-Weiter), `CompareView.tsx` (2 Bilder), `PreviewImage.tsx` (previewUrl → thumbUrl → Hinweis), `libraryKeys.ts` (Lightroom-Tasten als reine Funktion + `isShortcutBlocked`). Optimistische Updates + Rollback und Tasten-Dispatch (`onTileKey`) in `pages/Library.tsx`. |
 | `frontend/src/pages/BatchApplyModal.tsx` | Library-Batch-Modal: Preset-Auswahl + StepCheckboxes + `POST /presets/{id}/apply` → `onApplied(applied, total)`. Triggerbar per `batch-apply-open`-Button wenn ≥1 Bild selektiert. |
 | `backend/app/routers/admin.py` | Admin-Endpoints (Users-Liste/Disable, Stats, Feedback-Inbox + PATCH). Gating via `current_admin` Dep |
 | `backend/app/routers/feedback.py` | User-Feedback-Submit. Honeypot `website` (silent drop), Rate-Limit 5/h |
@@ -304,6 +304,16 @@ gesetzt — pytest läuft sonst gegen 429er.
   `beforeEach` (Modul-Cache, nicht localStorage); E2E loescht
   `lumen.library.view` per `addInitScript`. Aktions-testids
   (`image-select/edit/delete-*`) sind in beiden Ansichten gleich.
+- **Bibliothek-Einzeltasten (H2c)**: laufen nur ueber `getSingleKeyShortcutsEnabled()`
+  und `isShortcutBlocked` (Eingabefeld fokussiert oder `[data-popup-open]` im
+  Bereich — `ColorLabelPicker` setzt das Attribut, solange die Palette offen
+  ist; `Modal` ignoriert Esc darin, damit Esc zuerst nur das Menue schliesst).
+  Pfeiltasten in der Lupe sind keine Zeichen-Kuerzel und bleiben immer aktiv.
+  Dialog-eigene Tasten gehoeren an `Modal onKeyDown` (Karte), nicht an ein
+  inneres div: ohne Layout (jsdom) und nach Klick auf eine nicht-interaktive
+  Flaeche hat die Karte selbst den Fokus. Die `library-announce`-Region
+  wandert waehrend Lupe/Vergleich in den Dialog (aria-modal) — es gibt sie
+  immer genau einmal.
 - **PATCH /images vs. /images/{id}**: Batch-Route ist `PATCH ""` — `colorLabel:
   null` loescht, weggelassen laesst unveraendert (Pydantic `model_fields_set`).
 - **Port 5173 belegt** (anderes Dev-Projekt): Vite weicht auf 5174 aus —
@@ -354,6 +364,7 @@ backend pytest. E2E nicht in PR-Pipeline (Stack-Compose dauert).
 
 ## Aktueller Stand
 
+- **Phase H**: H1 Prozessversion 2 und H2 Lighttable komplett (H2a Vorschaubilder, H2b Raster/Sterne/Labels/Filter, H2c Lupe/Vergleich/Einzeltasten).
 - **Phase E komplett**: HSL (E1), Tonkurve (E2), Sharpening + Noise (E3), Face-Detection (E4, opt-in), Auto-Straighten (E5).
 - **Phase F1 komplett**: Preset-Marketplace mit Backend (Migration 005, 7 Endpunkte, Auto-Hide), Frontend (Marketplace-Page, Detail-Modal, PresetDialog-Publish-Toggle, Account-Profil + veroeffentlichte Presets).
 - **Phase G komplett**: G1 Highlight-Recovery, G2 Local-Contrast/Clarity, G3 TCA-Korrektur (RawTherapee-inspiriert). G4 (Lensfun-DB-Stuetzstellen-Interpolation) bleibt Backlog.

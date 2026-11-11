@@ -6,6 +6,13 @@ Versionierung an [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased] — Pre-Beta
 
+### H2c Lupe, Vergleich, Aussortieren (2026-11-11)
+
+- **Lupe**: Vollbild-Dialog mit der 1600-px-Vorschau (sonst 400 px, sonst Hinweis), Blättern im aktuellen gefilterten und sortierten Ergebnis per Pfeiltasten, sichtbaren Vor-/Zurück-Buttons oder Wischen; Position „3 / 42"; Leiste mit Sternen, Markierung, Farblabel und „Im Editor öffnen"; Option „Nach Bewertung automatisch weiter" (pro Browser gemerkt); Nachbar-Vorschauen werden vorgeladen. Esc schließt, der Fokus landet auf der Kachel des zuletzt gezeigten Bildes. Erreichbar per Enter auf der Kachel oder Button „Lupe" (Raster und Liste).
+- **Vergleich**: genau zwei ausgewählte Bilder nebeneinander (schmal untereinander), jedes mit eigenen Sternen/Markierung/Label; Button „Vergleichen" nur bei genau zwei ausgewählten Bildern aktiv.
+- **Einzeltasten** (Lightroom-nah, im Raster und in der Lupe): `0`–`5` Sterne, `6`–`9` Label Rot/Gelb/Grün/Blau, `P`/`X`/`U` ausgewählt/abgelehnt/keine Markierung, `Enter` Lupe, `E` Editor, `C` Vergleich, `?` Hilfe. Nur wenn Einzeltasten-Kürzel im Account aktiv sind, nie in Eingabefeldern oder bei offenem Menü; jede Taste hat einen Button-Weg. Änderungen werden angesagt (die `aria-live`-Region wandert während Lupe/Vergleich in den Dialog).
+- **Tastenkürzel-Hilfe** mit Abschnitt „Bibliothek", aus der Bibliothek per „? Tastenkürzel" erreichbar.
+
 ### H2b Raster und Metadaten (2026-11-11)
 
 - **Raster-Ansicht** als Default der Bibliothek (Umschalter zurück zur Liste, pro Browser gemerkt): Kachel mit unbeschnittenem Vorschaubild auf dunklem Passepartout (sonst Platzhalter mit Dateityp), Dateiname, Sterne, Markierung, Farblabel (Punkt + Leiste am Bildrand); abgelehnte Bilder erscheinen abgedunkelt.

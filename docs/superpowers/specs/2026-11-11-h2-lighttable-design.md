@@ -200,3 +200,51 @@ dekodieren; der Browser kann es (libraw-wasm) und kennt die Bearbeitung.
   `library-announce`.
 - **Nicht in H2b**: Filter „ohne Label", Filter-Zustand in der URL,
   Lupe/Vergleich/Einzeltasten (H2c).
+
+## Umsetzung H2c (2026-11-11)
+
+- **Lupe als Overlay, keine Route**: `library/Loupe.tsx` im geteilten
+  `Modal` (role=dialog, aria-modal, Fokus-Falle, Esc). Blättert in genau der
+  Liste, die die Bibliothek gerade zeigt (Filter + Sortierung; die Liste
+  springt bei Bewertungsänderungen nicht, siehe H2b). Rand = Ende, kein
+  Umlauf; die Vor-/Zurück-Buttons sind am Rand `aria-disabled` statt
+  `disabled`, damit der Fokus nicht ins Leere fällt. Wischen ab 50 px
+  horizontal. Nachbar-Vorschauen per `new Image()` vorgeladen.
+- **Fokus beim Schließen**: auf die Kachel des zuletzt gezeigten Bildes
+  (nicht des Startbildes) — Raster `image-tile-<id>`, Liste
+  `image-loupe-<id>`. Die Kachel wird dadurch auch Roving-Tabindex-aktiv.
+- **Bild**: `previewUrl` (1600 px), sonst `thumbUrl`, sonst Hinweistext
+  „Noch keine Vorschau – öffne das Bild einmal im Editor …". Abgelehnte
+  Bilder werden in der Lupe nicht abgedunkelt (der gedrückte Ablehnen-Button
+  zeigt den Zustand).
+- **Auto-Weiter** („Nach Bewertung automatisch weiter", Default aus,
+  `localStorage.lumen.library.autoAdvance` mit Modul-Cache in
+  `viewPrefs.ts`): greift nach jeder Sterne-/Label-/Markierungs-Änderung in
+  der Lupe — per Taste und per Button —, am letzten Bild nicht. Ansage in
+  einem Satz: „Als ausgewählt markiert – weiter: b.nef, Bild 2 von 3".
+- **Tasten**: `library/libraryKeys.ts` (reine Funktion). Alle
+  Zeichen-Tasten **und Enter** nur bei aktiven Einzeltasten-Kürzeln (wie in
+  der Aufgabe festgelegt; ohne sie öffnet der Button „Lupe" auf der Kachel
+  bzw. in der Zeile). Pfeil links/rechts in der Lupe sind keine
+  Zeichen-Kürzel (WCAG 2.1.4) und laufen immer. Gesperrt in Text-/Select-
+  Feldern und solange ein Menü offen ist (`data-popup-open`). `?` öffnet
+  zusätzlich die Hilfe. `Lila` hat keine Taste (Lightroom: 6–9).
+- **Button-Wege**: Kachel/Zeile „Lupe" (`image-loupe-<id>`), Leiste in der
+  Lupe (`loupe-star-N`, `-star-0`, `-pick`, `-reject`, `-unflag`, `-label`,
+  `loupe-edit`, `loupe-auto-advance`, `loupe-prev|next|close`,
+  `loupe-position`), „Vergleichen" (`compare-open`, nur bei genau zwei
+  ausgewählten Bildern aktiv), „? Tastenkürzel" (`library-shortcuts-open`).
+- **Vergleich**: `library/CompareView.tsx`, Bilder in Anzeige-Reihenfolge
+  (nicht Klick-Reihenfolge), je eigene Sterne/Markierung/Label/„Bearbeiten"
+  (`compare-<id>-…`). Keine Einzeltasten im Vergleich (zwei Bilder = unklar,
+  welches gemeint ist); `C` im Raster mit falscher Auswahl sagt
+  „Zum Vergleichen genau zwei Bilder auswählen" an.
+- **Ansage**: Die vorhandene `library-announce`-Region wird während Lupe/
+  Vergleich im Dialog gerendert (Screenreader dürfen Inhalte außerhalb von
+  aria-modal ignorieren) und danach wieder auf der Seite — immer genau eine.
+- **Cheatsheet**: `ShortcutCheatsheet` bekommt `context="library"`
+  (Abschnitt „Bibliothek" zuerst, `fixed` statt `absolute`); im Editor
+  steht der Abschnitt am Ende, sonst unverändert.
+- **Nicht in H2c**: Zoom 1:1 in der Lupe, Einzeltasten in der
+  Listenansicht (Zeilen sind keine Fokus-Ziele; Buttons reichen).
+
