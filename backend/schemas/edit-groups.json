@@ -1,6 +1,6 @@
 [
   { "key": "tone",   "label": "Belichtung & Ton",
-    "fields": ["exposure","contrast","highlights","shadows","whites","blacks","highlightRecovery"],
+    "fields": ["exposure","contrast","highlights","shadows","whites","blacks","highlightRecovery","processVersion"],
     "defaultEnabled": true },
   { "key": "color",  "label": "Farbe & Weißabgleich",
     "fields": ["temperature","tint","vibrance","saturation"],

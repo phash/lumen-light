@@ -13,7 +13,7 @@ import type { Adjustments } from "./adjustments";
 // auf einem typischen Laptop laeuft.
 const ANALYSIS_SIZE = 200;
 
-interface HistogramStats {
+export interface HistogramStats {
   /** Quantil 0.5 % der Luminanzverteilung. */
   readonly p005: number;
   /** Quantil 50 % (Median). */
@@ -54,6 +54,12 @@ function readDownscaled(canvas: HTMLCanvasElement): Uint8ClampedArray | null {
 export function analyze(canvas: HTMLCanvasElement): HistogramStats | null {
   const data = readDownscaled(canvas);
   if (!data) return null;
+  return analyzePixels(data);
+}
+
+/** Reine Statistik ueber RGBA-Pixel (ohne Canvas) — testbar in jsdom. */
+export function analyzePixels(data: Uint8ClampedArray | Uint8Array): HistogramStats | null {
+  if (data.length < 4) return null;
 
   // Luminanz-Histogramm 256 bins (Rec. 709 weights). Pro Bin auch die
   // Summen der Kanal-Werte, damit wir den Trimmed-Mean ohne zweiten

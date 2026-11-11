@@ -368,7 +368,12 @@ async def apply_preset_batch(
             )
         ).scalars().all()
     }
-    default_state = ImageEditState(adjustments=Adjustments()).model_dump()
+    # Bild ohne gespeicherten Stand = frisch -> aktuelle Prozessversion 2
+    # (wie defaultAdjustments() im Editor). Der Pydantic-Default 1 gilt nur
+    # fuer gespeicherte Daten ohne Feld.
+    default_state = ImageEditState(
+        adjustments=Adjustments(processVersion=2)
+    ).model_dump()
 
     for image_id in image_ids:
         edit = existing_edits.get(image_id)

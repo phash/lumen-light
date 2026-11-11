@@ -16,6 +16,30 @@ import {
 import { DISTORTION_GAIN, TCA_GAIN, VIGNETTE_GAIN } from "../src/editor/lens";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "../src/editor/mask";
 import { FRAG_SRC } from "../src/editor/shaders";
+import { TONEMAP_GLSL_CONSTANTS } from "../src/editor/tonemap";
+
+// H1: Snapshot des PV1-Tonblocks (Schritte 4-6) aus main() vor H1. Der
+// Block lebt jetzt in toneProcessV1() und muss textgleich bleiben, sonst
+// aendern bestehende Edits/Presets ihr Aussehen.
+const PV1_BLOCK_SNAPSHOT = `  // 4. Linear -> sRGB fuer perzeptive Tonwertarbeit
+  vec3 c = linearToSrgb(lin);
+  c = clamp(c, 0.0, 2.0);
+
+  // 5. Tonwertbereiche via Luminanz-Masken
+  float L = luminance(c);
+  float shadowMask    = smoothstep(0.55, 0.0, L);
+  float highlightMask = smoothstep(0.45, 1.0, L);
+  float blackMask     = smoothstep(0.25, 0.0, L);
+  float whiteMask     = smoothstep(0.75, 1.0, L);
+  c += u_shadows    * 0.30 * shadowMask;
+  c += u_highlights * 0.30 * highlightMask;
+  c += u_blacks     * 0.25 * blackMask;
+  c += u_whites     * 0.25 * whiteMask;
+
+  // 6. Kontrast um 0.5
+  c = (c - 0.5) * (1.0 + effContrast) + 0.5;
+  c = clamp(c, 0.0, 1.0);
+`;
 
 describe("Shader-Limits-Sync", () => {
   it("MAX_LINEAR_MASKS in FRAG_SRC matched mask.ts", () => {
@@ -76,5 +100,23 @@ describe("Shader-Limits-Sync", () => {
     const m = FRAG_SRC.match(/const float LOCAL_CONTRAST_GAIN = ([\d.]+)/);
     expect(m).not.toBeNull();
     expect(Number(m![1])).toBeCloseTo(LOCAL_CONTRAST_GAIN, 5);
+  });
+
+  for (const [name, value] of Object.entries(TONEMAP_GLSL_CONSTANTS)) {
+    it(`${name} in FRAG_SRC matched tonemap.ts`, () => {
+      const m = FRAG_SRC.match(new RegExp(`const float ${name} = (-?[\\d.]+);`));
+      expect(m, `FRAG_SRC sollte ${name} deklarieren`).not.toBeNull();
+      expect(Number(m![1])).toBeCloseTo(value, 8);
+    });
+  }
+
+  it("u_processVersion ist als int-Uniform deklariert und steuert den Ton-Pfad", () => {
+    expect(FRAG_SRC).toMatch(/uniform int u_processVersion;/);
+    expect(FRAG_SRC).toMatch(/u_processVersion >= 2\s*\?\s*toneProcessV2\(lin, effContrast\)\s*:\s*toneProcessV1\(lin, effContrast\)/);
+  });
+
+  it("PV1-Block ist textgleich zum Stand vor H1", () => {
+    const expected = `vec3 toneProcessV1(vec3 lin, float effContrast) {\n${PV1_BLOCK_SNAPSHOT}  return c;\n}`;
+    expect(FRAG_SRC).toContain(expected);
   });
 });

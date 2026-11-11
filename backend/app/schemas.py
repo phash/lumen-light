@@ -116,6 +116,14 @@ class Adjustments(BaseModel):
     # 5x5-Gauss-Kernel. Negative Werte = Soften. Inspiriert von
     # RawTherapee's iplocalcontrast.cc.
     localContrast: float = Field(default=0, ge=-1, le=1)  # noqa: N815
+    # H1: Prozessversion der Ton-Pipeline. 1 = Display-Raum (bis Phase G),
+    # 2 = szenenbezogen. None = "nicht gesetzt" (Lightroom-Semantik):
+    # - Preset ohne Version laesst beim Anwenden die Version des Bildes
+    #   unangetastet (Default-Presets, Alt-Presets, YAML ohne Feld).
+    # - Edit-State ohne Version = vor H1 bearbeitet -> 1 (siehe
+    #   ImageEditState._fill_process_version).
+    # None wird als null serialisiert, nie durch einen Default ersetzt.
+    processVersion: Literal[1, 2] | None = None  # noqa: N815
     # null = HSL inaktiv. Spart 24 Felder im JSONB fuer alte Presets.
     hsl: HslAdjustments | None = None
     # null = Tonkurve inaktiv (Identitaet). Wireformat camelCase wie
@@ -456,6 +464,14 @@ class ImageEditState(BaseModel):
     lens_correction: LensCorrectionData | None = None
     lens_profile_id: str | None = Field(default=None, max_length=80)
     manual_lens_override: bool = False
+
+    @model_validator(mode="after")
+    def _fill_process_version(self) -> Self:
+        # H1: Ein Bearbeitungsstand hat immer eine konkrete Version. Fehlt
+        # sie (Stand von vor H1), gilt 1 — exakt der alte Look.
+        if self.adjustments.processVersion is None:
+            self.adjustments.processVersion = 1
+        return self
 
     @model_validator(mode="after")
     def _check_mask_caps(self) -> Self:

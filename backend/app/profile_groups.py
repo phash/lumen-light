@@ -66,6 +66,13 @@ def merge_edit_state(
                 state["masks"] = preset_masks
             elif field in _TOPLEVEL_GEOMETRY_FIELDS:
                 state[field] = geo.get(field, _DEFAULT_GEOMETRY[field])
+            elif field == "processVersion":
+                # H1 (Lightroom-Semantik): nur ein Preset, das die Version
+                # explizit traegt, setzt sie. Ohne Feld / null bleibt die
+                # Version des Bildes unangetastet.
+                version = preset_adjustments.get(field)
+                if version is not None:
+                    state["adjustments"][field] = version
             else:  # Adjustment-Skalar, hsl oder toneCurve
                 state["adjustments"][field] = preset_adjustments.get(field)
     return state

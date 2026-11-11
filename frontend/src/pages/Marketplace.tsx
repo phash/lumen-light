@@ -336,6 +336,8 @@ function DetailModal({
         current.masks.length > 0 ||
         Object.entries(current.adjustments).some(([k, v]) => {
           if (k === "hsl" || k === "toneCurve") return v !== null;
+          // Prozessversion ist kein Regler, sondern Pipeline-Wahl.
+          if (k === "processVersion") return false;
           return typeof v === "number" && Math.abs(v) > 1e-4;
         });
       if (dirty && !force) {

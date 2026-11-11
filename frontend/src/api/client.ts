@@ -77,6 +77,11 @@ export interface Adjustments {
   // tests/adjustments-wire-sync.test.ts).
   highlightRecovery: number;
   localContrast: number;
+  // H1: 1 = Display-Raum-Pipeline, 2 = szenenbezogen. null/fehlend =
+  // nicht gesetzt (Lightroom-Semantik): Presets ohne Version lassen die
+  // Version des Bildes unangetastet. Edit-States liefert das Backend immer
+  // mit konkreter Version (fehlt = 1).
+  processVersion?: 1 | 2 | null;
   hsl: HslAdjustmentsWire | null;
   toneCurve: ToneCurveWire | null;
 }

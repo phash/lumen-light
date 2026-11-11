@@ -202,6 +202,11 @@ describe("PresetDialog", () => {
     const payload = calls[0]![0];
     expect(payload.name).toBe("Mein Look");
     expect(payload.adjustments.exposure).toBe(0.5);
+    // H1: neue Presets tragen die Prozessversion explizit.
+    expect(payload.adjustments.processVersion).toBe(
+      useEditorStore.getState().adjustments.processVersion,
+    );
+    expect([1, 2]).toContain(payload.adjustments.processVersion);
     expect(payload.masks).toHaveLength(1);
     expect(payload.masks?.[0]?.type).toBe("linear");
     expect(onLoadedPresetIdChange).toHaveBeenCalledWith("new");

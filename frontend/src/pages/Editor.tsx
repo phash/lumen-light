@@ -31,6 +31,7 @@ import {
 } from "../editor/mask";
 import PresetDialog from "../editor/PresetDialog";
 import ShortcutCheatsheet from "../editor/ShortcutCheatsheet";
+import { CURRENT_PROCESS_VERSION } from "../editor/adjustments";
 import { analyze, computeAutoTone, computeAutoWb } from "../editor/autoAdjust";
 import { analyzeCanvasStraightenAngle } from "../editor/autoStraighten";
 import { detectFacesSafe } from "../editor/faceDetector";
@@ -386,6 +387,11 @@ export default function Editor() {
   const addToneCurvePoint = useEditorStore((s) => s.addToneCurvePoint);
   const removeToneCurvePoint = useEditorStore((s) => s.removeToneCurvePoint);
   const resetToneCurve = useEditorStore((s) => s.resetToneCurve);
+  const setProcessVersion = useEditorStore((s) => s.setProcessVersion);
+  const upgradeProcessVersion = useCallback(
+    () => setProcessVersion(CURRENT_PROCESS_VERSION),
+    [setProcessVersion],
+  );
   const bypass = useEditorStore((s) => s.bypass);
   const setBypass = useEditorStore((s) => s.setBypass);
   const cropRect = useEditorStore((s) => s.cropRect);
@@ -1411,6 +1417,7 @@ export default function Editor() {
         onToneCurveAddPoint={addToneCurvePoint}
         onToneCurveRemovePoint={removeToneCurvePoint}
         onToneCurveReset={resetToneCurve}
+        onUpgradeProcessVersion={upgradeProcessVersion}
         onResetAll={resetAll}
       />
 

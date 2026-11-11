@@ -8,6 +8,7 @@ import {
   type AdjustmentKey,
   type Adjustments,
   HSL_CHANNELS,
+  normalizeProcessVersion,
 } from "./adjustments";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "./mask";
 import { FRAG_SRC, VERT_SRC } from "./shaders";
@@ -84,6 +85,7 @@ interface UniformMap {
   readonly hslLum: WebGLUniformLocation;
   readonly toneCurveLut: WebGLUniformLocation;
   readonly toneCurveActive: WebGLUniformLocation;
+  readonly processVersion: WebGLUniformLocation;
   readonly adjustments: ReadonlyMap<string, WebGLUniformLocation>;
 }
 
@@ -343,6 +345,7 @@ export class Renderer {
       hslLum: get("u_hslLum[0]"),
       toneCurveLut: get("u_toneCurveLut"),
       toneCurveActive: get("u_toneCurveActive"),
+      processVersion: get("u_processVersion"),
       adjustments: adjustmentLocs,
     };
 
@@ -590,6 +593,13 @@ export class Renderer {
       adjustments.toneCurve === null ? 0 : 1,
     );
     gl.activeTexture(gl.TEXTURE0);
+
+    // H1: Prozessversion waehlt im Shader den Ton-Pfad (1 = Display-Raum,
+    // 2 = szenenbezogen). Fehlt das Feld (Altdaten), gilt 1.
+    gl.uniform1i(
+      this.uniforms.processVersion,
+      normalizeProcessVersion(adjustments.processVersion),
+    );
 
     for (const [key, loc] of this.uniforms.adjustments) {
       gl.uniform1f(loc, adjustments[key as AdjustmentKey]);

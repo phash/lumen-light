@@ -6,6 +6,7 @@
  * Muster wie lensProfile.ts mit infra/lensfun/profiles.json).
  */
 import type { ImageEditState } from "../api/client";
+import { explicitProcessVersion } from "./adjustments";
 import groupsData from "../../../backend/schemas/edit-groups.json";
 
 export interface EditGroup {
@@ -58,6 +59,11 @@ export function mergeGroups(
         // Top-Level-Geometrie-Feld
         (next as unknown as Record<string, unknown>)[field] =
           (profile as unknown as Record<string, unknown>)[field];
+      } else if (field === "processVersion") {
+        // H1 (Lightroom-Semantik): nur ein Profil mit expliziter Version
+        // setzt sie. Ohne Feld/null bleibt die Version des Bildes.
+        const version = explicitProcessVersion(profile.adjustments.processVersion);
+        if (version !== undefined) adjustments.processVersion = version;
       } else {
         // Adjustment-Skalar, hsl oder toneCurve
         (adjustments as unknown as Record<string, unknown>)[field] =
