@@ -234,3 +234,17 @@ def test_jwks_ausfall_drosselt_erneute_abrufe(monkeypatch):
         auth._jwk_cache.get("k")
     # Nach dem ersten Fehlschlag kein Abruf pro Request mehr (Backoff).
     assert calls == 1
+
+
+def test_leerer_cache_gilt_auch_bei_kleiner_uptime_als_abgelaufen(monkeypatch):
+    # Frisch gebooteter Host: time.monotonic() kleiner als die Cache-TTL.
+    auth._jwk_cache.reset()
+    monkeypatch.setattr(auth.time, "monotonic", lambda: 5.0)
+
+    def _fail() -> None:
+        raise HTTPException(status_code=503, detail="down")
+
+    monkeypatch.setattr(auth._jwk_cache, "_fetch", _fail)
+    with pytest.raises(HTTPException) as exc:
+        auth._jwk_cache.get("irgendein-kid")
+    assert exc.value.status_code == 503

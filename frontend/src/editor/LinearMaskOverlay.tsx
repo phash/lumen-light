@@ -1,7 +1,7 @@
 import { useRef } from "react";
 
 import type { LinearMask, PointUv } from "./mask";
-import { HANDLE_HIT_CLASS, nudgeDelta } from "./overlayKeys";
+import { HANDLE_HIT_CLASS, INV_ZOOM_SCALE, nudgeDelta } from "./overlayKeys";
 import { applyUv } from "./transform";
 
 interface Props {
@@ -127,7 +127,8 @@ export default function LinearMaskOverlay({
 
       <div
         data-testid="linear-mask-handle-p1"
-        role="button"
+        role="group"
+        aria-roledescription="Ziehpunkt"
         tabIndex={0}
         aria-label="Verlaufsfilter Startpunkt verschieben (Pfeiltasten, Shift für größere Schritte)"
         onKeyDown={onHandleKeyDown("p1")}
@@ -136,13 +137,14 @@ export default function LinearMaskOverlay({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         className={`${HANDLE_HIT_CLASS} cursor-grab pointer-events-auto`}
-        style={{ ...p1Style, touchAction: "none" }}
+        style={{ ...p1Style, touchAction: "none", transform: INV_ZOOM_SCALE }}
       >
         <span className="block w-4 h-4 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
       </div>
       <div
         data-testid="linear-mask-handle-p2"
-        role="button"
+        role="group"
+        aria-roledescription="Ziehpunkt"
         tabIndex={0}
         aria-label="Verlaufsfilter Endpunkt verschieben (Pfeiltasten, Shift für größere Schritte)"
         onKeyDown={onHandleKeyDown("p2")}
@@ -151,7 +153,7 @@ export default function LinearMaskOverlay({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         className={`${HANDLE_HIT_CLASS} cursor-grab pointer-events-auto`}
-        style={{ ...p2Style, touchAction: "none" }}
+        style={{ ...p2Style, touchAction: "none", transform: INV_ZOOM_SCALE }}
       >
         <span className="block w-4 h-4 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
       </div>

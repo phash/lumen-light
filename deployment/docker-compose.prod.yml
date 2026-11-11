@@ -121,8 +121,13 @@ services:
       KC_DB_USERNAME: keycloak
       KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?KEYCLOAK_DB_PASSWORD fehlt}
       # Bootstrap-Admin greift nur beim allerersten Start (leere KC-DB).
-      KC_BOOTSTRAP_ADMIN_USERNAME: ${KC_ADMIN_USER}
-      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_ADMIN_PASSWORD}
+      # Bewusst OHNE Wert: compose reicht sie nur durch, wenn sie in der
+      # Shell exportiert sind — deploy.sh tut das ausschliesslich bei leerer
+      # KC-DB und erzeugt KC danach ohne sie neu. So steht das Admin-Passwort
+      # im Normalbetrieb nicht in der Container-Env (Review L12). NICHT in
+      # deployment/.env eintragen (das --env-file wuerde sie sonst liefern).
+      KC_BOOTSTRAP_ADMIN_USERNAME:
+      KC_BOOTSTRAP_ADMIN_PASSWORD:
       KC_HTTP_ENABLED: "true"
       KC_HTTP_RELATIVE_PATH: /auth
       KC_HOSTNAME: ${KC_HOSTNAME}

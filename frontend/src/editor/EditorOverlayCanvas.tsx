@@ -4,8 +4,14 @@
  * Stateless: Pan + Zoom-Werte und Mask-Refs kommen vom Parent. Wraps
  * das WebGL-Canvas mit dem Transform-Wrapper, blendet Crop-, Linear-,
  * Radial- und Compare-Split-Overlays daruebergelegt.
+ *
+ * CSS-Vertrag fuer Overlays: der Wrapper setzt `--overlay-inv-zoom`
+ * (= 1 / zoom). Overlays liegen im skalierten Wrapper; Handles sollen
+ * `transform: scale(var(--overlay-inv-zoom, 1))` (bzw. ihre Groesse damit
+ * multiplizieren) nutzen, damit Trefferflaechen bei jedem Zoom >= 24 px
+ * bleiben (WCAG 2.5.8).
  */
-import { type Ref, useMemo } from "react";
+import { type CSSProperties, type Ref, useMemo } from "react";
 
 import Canvas, { type CanvasHandle } from "./Canvas";
 import CompareSplitOverlay from "./CompareSplitOverlay";
@@ -30,6 +36,7 @@ interface Props {
   readonly canvasHandleRef: Ref<CanvasHandle>;
   readonly onTick: () => void;
   readonly onError: (msg: string) => void;
+  readonly onRecovered?: () => void;
   readonly onCanvasMount: (canvas: HTMLCanvasElement) => void;
 
   readonly pan: { x: number; y: number };
@@ -67,6 +74,7 @@ export default function EditorOverlayCanvas({
   canvasHandleRef,
   onTick,
   onError,
+  onRecovered,
   onCanvasMount,
   pan,
   zoom,
@@ -102,19 +110,21 @@ export default function EditorOverlayCanvas({
     [forwardUvTransform],
   );
 
+  const wrapperStyle: CSSProperties & { "--overlay-inv-zoom": string } = {
+    transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
+    transformOrigin: "center center",
+    transition: isPanning ? "none" : "transform 0.05s linear",
+    // Gegen-Skalierung fuer Overlay-Handles (siehe Datei-Kommentar).
+    "--overlay-inv-zoom": String(zoom > 0 ? 1 / zoom : 1),
+  };
+
   return (
-    <div
-      className="relative max-w-full max-h-full"
-      style={{
-        transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
-        transformOrigin: "center center",
-        transition: isPanning ? "none" : "transform 0.05s linear",
-      }}
-    >
+    <div className="relative max-w-full max-h-full" style={wrapperStyle}>
       <Canvas
         ref={canvasHandleRef}
         onTick={onTick}
         onError={onError}
+        onRecovered={onRecovered}
         onCanvasMount={onCanvasMount}
         cropMode={cropMode}
       />

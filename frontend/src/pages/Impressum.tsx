@@ -1,13 +1,16 @@
+import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
+
 /**
  * Impressum — TMG/DDG § 5, § 18 Abs. 2 MStV. Betreiberdaten konsistent zur
  * Hauptseite phash.de (Manuel Rödig). Lumen ist eine privat betriebene
  * Selfhost-Instanz.
  */
 export default function Impressum() {
+  usePageMeta(`Impressum${TITLE_SUFFIX}`, "de");
   return (
     <section data-testid="page-impressum" className="px-8 py-12 max-w-3xl mx-auto text-stone-300">
       <h1 className="text-3xl text-stone-100">Impressum</h1>
-      <p className="mt-2 text-stone-500 text-sm">Stand: 2026-05-29</p>
+      <p className="mt-2 text-stone-400 text-sm">Stand: 2026-05-29</p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">Diensteanbieter</h2>
       <p className="mt-3">

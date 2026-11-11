@@ -10,6 +10,9 @@ interface Props {
   onClose: () => void;
 }
 
+const MIN_LENGTH = 10;
+const MAX_LENGTH = 2000;
+
 const KIND_OPTIONS: ReadonlyArray<{ value: FeedbackKind; label: string }> = [
   { value: "bug", label: "Bug" },
   { value: "idea", label: "Idee" },
@@ -45,11 +48,14 @@ export default function FeedbackDialog({ open, onClose }: Props) {
 
   if (!open) return null;
 
+  const trimmedLength = message.trim().length;
+  const tooShort = trimmedLength > 0 && trimmedLength < MIN_LENGTH;
+
   const submit = async () => {
     const trimmed = message.trim();
-    if (trimmed.length < 10) {
+    if (trimmed.length < MIN_LENGTH) {
       setFeedbackTone("error");
-      setFeedback("Bitte mindestens 10 Zeichen schreiben.");
+      setFeedback(`Bitte mindestens ${MIN_LENGTH} Zeichen schreiben.`);
       return;
     }
     setBusy(true);
@@ -81,7 +87,7 @@ export default function FeedbackDialog({ open, onClose }: Props) {
       onClose={onClose}
       cardTestId="feedback-dialog"
       labelledBy="feedback-dialog-title"
-      backdropClassName="fixed inset-0 z-40 bg-black/60 flex items-center justify-center p-4"
+      backdropClassName="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4"
       cardClassName="w-full max-w-md bg-stone-900 border border-stone-700 text-sm outline-none"
     >
         <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
@@ -117,28 +123,38 @@ export default function FeedbackDialog({ open, onClose }: Props) {
             ))}
           </div>
 
-          <label htmlFor="feedback-message" className="sr-only">
+          <label htmlFor="feedback-message" className="block text-xs text-stone-300">
             Nachricht
           </label>
+          {/* Anleitung sichtbar statt nur im Placeholder (verschwindet beim Tippen). */}
+          <p id="feedback-message-hint" className="-mt-2 text-[11px] text-stone-400">
+            Was ist dir aufgefallen? Mindestens {MIN_LENGTH}, höchstens {MAX_LENGTH} Zeichen.
+          </p>
           <textarea
             id="feedback-message"
-            aria-describedby="feedback-message-counter"
+            aria-describedby="feedback-message-hint feedback-message-counter"
             ref={messageRef}
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             rows={6}
-            minLength={10}
-            maxLength={2000}
-            placeholder="Was ist dir aufgefallen? (10–2000 Zeichen)"
+            minLength={MIN_LENGTH}
+            maxLength={MAX_LENGTH}
             data-testid="feedback-message"
             className="w-full bg-stone-950 border border-stone-700 px-2 py-1 text-stone-200"
           />
 
-          <div
-            id="feedback-message-counter"
-            className="text-[11px] text-stone-400 text-right tabular-nums"
-          >
-            {message.trim().length} / 2000
+          <div className="flex items-baseline justify-between gap-2 text-[11px]">
+            {/* Grund fuer den deaktivierten Senden-Button sichtbar machen. */}
+            <span data-testid="feedback-min-hint" className="text-amber-200/90">
+              {tooShort ? `Bitte mindestens ${MIN_LENGTH} Zeichen schreiben.` : ""}
+            </span>
+            <span
+              id="feedback-message-counter"
+              data-testid="feedback-message-counter"
+              className="text-stone-400 tabular-nums"
+            >
+              {trimmedLength} / {MAX_LENGTH} (min. {MIN_LENGTH})
+            </span>
           </div>
 
           {/* Honeypot — visuell + a11y versteckt, Bots fuellen es trotzdem.
@@ -195,7 +211,7 @@ export default function FeedbackDialog({ open, onClose }: Props) {
           <button
             type="button"
             onClick={() => void submit()}
-            disabled={busy || message.trim().length < 10}
+            disabled={busy || trimmedLength < MIN_LENGTH}
             data-testid="feedback-submit"
             className="px-4 py-1 text-[10px] uppercase tracking-[0.2em] bg-amber-200/20 border border-amber-300 text-amber-200 hover:bg-amber-200/30 disabled:opacity-40"
           >

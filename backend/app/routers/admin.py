@@ -25,7 +25,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_admin
 from app.database import get_db
+from app.moderation import release_publish_block
 from app.models import Feedback, Image, Preset, PresetReport, User
+from app.previews import clear_preview, delete_preview_object
+from app.storage import StorageService, get_storage
 from app.schemas import (
     AdminReportedPresetOut,
     AdminReportOut,
@@ -339,11 +342,15 @@ async def clear_preset_reports(
     preset_id: UUID,
     _admin: User = Depends(current_admin),
     db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
 ) -> PresetOut:
     """Meldungen eines (faelschlich) gemeldeten Presets verwerfen und
     report_count auf 0 setzen. Das Preset bleibt privat; der Creator kann
     es danach selbst wieder veroeffentlichen (die Republish-Sperre in
-    PUT /presets greift nur ab REPORT_AUTOHIDE_THRESHOLD Meldungen)."""
+    PUT /presets greift nur ab REPORT_AUTOHIDE_THRESHOLD Meldungen). Die
+    Publish-Sperre des Creators wird aufgehoben, sofern kein weiteres
+    seiner Presets auto-versteckt ist. Eine Rest-Vorschau eines privaten
+    Presets (Altbestand) wird entfernt."""
     preset = (
         await db.execute(
             select(Preset).where(Preset.id == preset_id).with_for_update()
@@ -353,6 +360,11 @@ async def clear_preset_reports(
         raise HTTPException(status_code=404, detail="Preset nicht gefunden.")
     await db.execute(delete(PresetReport).where(PresetReport.preset_id == preset.id))
     preset.report_count = 0
+    # Nicht-oeffentlich -> Rest-Vorschau leeren (Objekt nach Commit weg).
+    stale_preview = clear_preview(preset) if preset.visibility != "public" else None
+    await db.flush()
+    await release_publish_block(db, preset.user_id)
     await db.commit()
+    await delete_preview_object(storage, stale_preview)
     await db.refresh(preset)
     return PresetOut.model_validate(preset)

@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef } from "react";
 
+import { getSingleKeyShortcutsEnabled } from "./shortcutPrefs";
+
 interface Shortcuts {
   readonly onResetAll?: () => void;
   readonly onExport?: () => void;
@@ -36,6 +38,31 @@ const isModalOpen = (): boolean =>
     '[aria-modal="true"]:not([data-testid="onboarding-tour"])',
   ) !== null;
 
+/** Onboarding-Tour offen: Escape gehoert der Tour (sie schliesst sich
+ *  selbst) und darf nicht zusaetzlich Crop/WB-Modus verlassen. */
+const isTourOpen = (): boolean =>
+  document.querySelector('[data-testid="onboarding-tour"]') !== null;
+
+/** Einzelzeichen-Shortcuts (WCAG 2.1.4). */
+const SINGLE_KEYS: ReadonlySet<string> = new Set([
+  "0", "\\", "r", "R", "p", "P", "?", "+", "=", "-",
+]);
+
+/** Einzeltaste ohne Strg/Cmd. Backslash zaehlt immer als Einzeltaste:
+ *  auf DE-Layouts kommt er per AltGr (= Strg+Alt unter Windows). */
+const isSingleKeyShortcut = (e: KeyboardEvent): boolean =>
+  SINGLE_KEYS.has(e.key) && (e.key === "\\" || (!e.metaKey && !e.ctrlKey));
+
+/** Fokus auf/in einem role=slider: Zifferntasten etc. gehoeren dem Slider. */
+const isSliderFocused = (target: EventTarget | null): boolean => {
+  const inSlider = (el: Element | null): boolean =>
+    el !== null && el.closest('[role="slider"]') !== null;
+  return (
+    inSlider(document.activeElement) ||
+    (target instanceof Element && inSlider(target))
+  );
+};
+
 export function useKeyboardShortcuts(shortcuts: Shortcuts): void {
   // Letzte Callbacks in einem Ref halten: Aufrufer duerfen jedes Render ein
   // neues Objekt-Literal uebergeben, ohne dass die Listener neu abonniert
@@ -49,10 +76,19 @@ export function useKeyboardShortcuts(shortcuts: Shortcuts): void {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTextInput(e.target)) return;
       if (isModalOpen()) return;
+      // K1: Einzeltasten abschaltbar (Account) und nie auf Slidern.
+      if (
+        isSingleKeyShortcut(e) &&
+        (!getSingleKeyShortcutsEnabled() || isSliderFocused(e.target))
+      ) {
+        return;
+      }
       const s = ref.current;
       const plain = !e.metaKey && !e.ctrlKey && !e.altKey;
 
       if (e.key === "Escape") {
+        // K2: Tour faengt Escape selbst ab.
+        if (isTourOpen()) return;
         s.onEscape?.();
       } else if (e.key === "0" && !e.metaKey && !e.ctrlKey) {
         e.preventDefault();
@@ -96,6 +132,7 @@ export function useKeyboardShortcuts(shortcuts: Shortcuts): void {
       }
     };
 
+    // keyup bleibt ungegated: ein gedrueckter Bypass muss immer loslassen.
     const onKeyUp = (e: KeyboardEvent) => {
       if (e.key === "\\") {
         ref.current.setBypass?.(false);

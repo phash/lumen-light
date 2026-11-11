@@ -113,7 +113,7 @@ describe("Library", () => {
     await waitFor(() =>
       expect(screen.getByTestId("image-row-i-99")).toBeInTheDocument(),
     );
-    // Zweistufig: erst „Löschen" (zeigt Confirm), dann „Wirklich löschen?".
+    // Zweistufig: erst „Löschen" (zeigt Confirm), dann bestaetigendes „Löschen".
     await userEvent.click(screen.getByTestId("image-delete-i-99"));
     expect(api.deleteImage).not.toHaveBeenCalled();
     await userEvent.click(screen.getByTestId("image-delete-confirm-i-99"));
@@ -132,4 +132,56 @@ describe("Library", () => {
       ),
     );
   });
+
+  it("Ladefehler bietet Erneut versuchen an", async () => {
+    const api = makeFakeApi();
+    api.listImages.mockRejectedValueOnce(new Error("backend kaputt"));
+    renderLibrary(api);
+    const retry = await screen.findByTestId("library-retry");
+    expect(retry).toHaveTextContent("Erneut versuchen");
+    await userEvent.click(retry);
+    await waitFor(() => expect(screen.queryByTestId("library-error")).not.toBeInTheDocument());
+    expect(api.listImages).toHaveBeenCalledTimes(2);
+  });
+
+  it("Bestaetigung zeigt Frage als Text und Verb als Button", async () => {
+    const api = makeFakeApi([IMG_A]);
+    renderLibrary(api);
+    await userEvent.click(await screen.findByTestId("image-delete-i-a"));
+    expect(screen.getByText("Endgültig löschen?")).toBeInTheDocument();
+    expect(screen.getByTestId("image-delete-confirm-i-a")).toHaveTextContent(/^Löschen$/);
+  });
+
+  it("nach dem Loeschen landet der Fokus auf der naechsten Zeile", async () => {
+    const api = makeFakeApi([IMG_A, IMG_B]);
+    renderLibrary(api);
+    await userEvent.click(await screen.findByTestId("image-delete-i-a"));
+    api.listImages.mockResolvedValue([IMG_B]);
+    await userEvent.click(screen.getByTestId("image-delete-confirm-i-a"));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId("image-delete-i-b")),
+    );
+  });
+
+  it("nach dem Loeschen des letzten Bildes landet der Fokus auf der Ueberschrift", async () => {
+    const api = makeFakeApi([IMG_A]);
+    renderLibrary(api);
+    await userEvent.click(await screen.findByTestId("image-delete-i-a"));
+    api.listImages.mockResolvedValue([]);
+    await userEvent.click(screen.getByTestId("image-delete-confirm-i-a"));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByTestId("library-heading")),
+    );
+  });
 });
+
+const IMG_A = {
+  id: "i-a",
+  originalFilename: "a.jpg",
+  contentType: "image/jpeg",
+  sizeBytes: 100,
+  uploadState: "ready" as const,
+  createdAt: "x",
+  confirmedAt: "x",
+};
+const IMG_B = { ...IMG_A, id: "i-b", originalFilename: "b.jpg" };

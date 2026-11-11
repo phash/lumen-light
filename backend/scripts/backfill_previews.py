@@ -8,7 +8,9 @@ Presets, die vor dem Update veroeffentlicht wurden, haben preview_key NULL
     docker exec lumen-api python -m scripts.backfill_previews
 
 Idempotent; Presets mit unverarbeitbarer Quelle werden gezaehlt und
-uebersprungen. Stdout = einzeilige JSON-Statistik.
+uebersprungen. Ihr preview_image_id wird dabei geleert (die Quelle kann nie
+eine Vorschau liefern, previewUrl bleibt ohnehin null) — sonst waeren sie bei
+jedem Lauf erneut Kandidat. Stdout = einzeilige JSON-Statistik.
 """
 from __future__ import annotations
 
@@ -17,6 +19,8 @@ import json
 import sys
 from dataclasses import dataclass
 
+import logging
+
 from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,6 +28,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import Preset
 from app.previews import sync_preset_preview
 from app.storage import StorageService, get_storage
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,13 +54,21 @@ async def backfill_previews(db: AsyncSession, storage: StorageService) -> Backfi
     skipped = 0
     for preset in presets:
         try:
-            await sync_preset_preview(db, storage, preset, force=True)
-        except HTTPException:
-            skipped += 1
-            continue
+            # Kein Build-Rate-Limit: einmaliger Admin-Lauf, sequenziell.
+            await sync_preset_preview(
+                db, storage, preset, force=True, rate_limited=False
+            )
+        except HTTPException as exc:
+            if exc.status_code != 400:
+                # 503 (kein Build-Slot) o.ae.: naechster Lauf probiert erneut.
+                skipped += 1
+                continue
+            logger.info("Backfill: Preset %s ohne verwertbare Quelle", preset.id)
+            preset.preview_image_id = None
         if preset.preview_key:
             generated += 1
         else:
+            # z.B. Quelle noch pending: bleibt Kandidat fuer den naechsten Lauf.
             skipped += 1
         await db.commit()
     return BackfillResult(candidates=len(presets), generated=generated, skipped=skipped)

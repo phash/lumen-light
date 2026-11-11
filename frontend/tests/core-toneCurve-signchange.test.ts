@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { evaluateToneCurve } from "../src/editor/toneCurve";
+import { computeToneCurveLut, evaluateToneCurve } from "../src/editor/toneCurve";
 
 describe("toneCurve Fritsch-Carlson Vorzeichenwechsel", () => {
   it("Extrempunkt bekommt Tangente 0 -> kein Overshoot ueber den Gipfel", () => {
@@ -14,6 +14,9 @@ describe("toneCurve Fritsch-Carlson Vorzeichenwechsel", () => {
     for (let x = 0.4; x <= 0.6; x += 0.01) {
       expect(evaluateToneCurve(curve, x)).toBeLessThanOrEqual(0.8 + 1e-9);
     }
+    // Auch die GPU-LUT ueberschreitet den Gipfel nicht.
+    const lut = computeToneCurveLut(curve);
+    expect(Math.max(...lut)).toBeLessThanOrEqual(Math.round(0.8 * 255));
   });
 
   it("Talpunkt unterschreitet das Minimum nicht", () => {

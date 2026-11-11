@@ -6,6 +6,13 @@ Versionierung an [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased] — Pre-Beta
 
+### Review-Fixes Runde 2 (2026-11-10)
+
+- **Security**: JWKS-Backoff auf allen Abrufpfaden (kein 5-s-Stau bei Keycloak-Ausfall), Preview-Builds gedrosselt (2 parallel, 25 MB, 10/min) mit versionierten Keys, Keycloak-Loeschung mit Retry-Tabelle (Migration 012), Publish-Sperre als User-Flag, Quota-Checks mit Row-Lock, `.env` ohne Shell-Sourcing und auf 600, Keycloak-Bootstrap-Passwort nicht mehr im Container-Env, Service-Account auf `manage-users` begrenzt (Restrisiko R9 dokumentiert).
+- **DSGVO**: Retention fuer `preset_applies` und Feedback jeder Art, Vorschauen geloeschter/zurueckgezogener Bilder werden entfernt, Export enthaelt Marketplace-Anwendungen.
+- **Editor**: Autosave verliert beim Tab-Wechsel nichts mehr, keine Retries bei 4xx, keine Speicherungen in falscher Reihenfolge, Warnung vor Verwerfen eines ungespeicherten Bildes bei In-App-Navigation, Hochkant-Fotos behalten ihre Ausrichtung (EXIF-Orientation bleibt), Pan per Shift+Pfeil.
+- **Barrierefreiheit**: Fokus springt in Dialogen nicht mehr, Einzeltasten-Kuerzel abschaltbar (Account), Tonkurve ohne Doppelpunkte, Handles bleiben bei jedem Zoom bedienbar, mobiles Sheet kollidiert nicht mehr mit Dialogen, Kontrast, Fokus nach Bestaetigungen, Sprache/Titel auf allen Seiten, Erneut-versuchen bei Ladefehlern.
+
 ### Review-Fixes (2026-11-10)
 
 - **Marketplace-Vorschau serverseitig**: oeffentliche Presets zeigen ein neu kodiertes JPEG ohne Metadaten (max 1600 px), nie mehr das Original (Migration 011, `scripts/backfill_previews`).

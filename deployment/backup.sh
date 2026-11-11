@@ -28,7 +28,12 @@ BACKUP_DIR="${BACKUP_DIR:-/opt/backups/lumen}"
 RETENTION_DAYS="${RETENTION_DAYS:-14}"
 
 cd "$REPO_DIR"
-set -a; . deployment/.env; set +a
+# shellcheck source=lib/env.sh
+. deployment/lib/env.sh
+# .env als Daten laden, nicht als Shell-Code sourcen; Secrets nur fuer den
+# ausfuehrenden User lesbar (Review L10/L11).
+ensure_private_file deployment/.env || exit 1
+load_dotenv deployment/.env || exit 1
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
 TS="$(date +%Y%m%d-%H%M%S)"
@@ -38,6 +43,7 @@ TS="$(date +%Y%m%d-%H%M%S)"
 # — dann wird auch NICHT offsite kopiert (rsync nimmt nur *.gpg).
 PASSFILE="${BACKUP_PASSPHRASE_FILE:-}"
 if [ -n "$PASSFILE" ] && [ -r "$PASSFILE" ]; then
+  ensure_private_file "$PASSFILE" || exit 1
   seal() { gpg --batch --yes --quiet --symmetric --cipher-algo AES256 \
              --passphrase-file "$PASSFILE" -o "$1.gpg" "$1" && rm -f "$1"; }
   EXT=".gpg"

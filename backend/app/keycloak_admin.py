@@ -4,11 +4,10 @@ Produktiv-Setup: ein Service-Account-Client im lumen-Realm mit
 `manage-users`-Role. Auth via client_credentials grant (kein
 User-Token noetig) → Admin-API-Call DELETE /admin/realms/<realm>/users/<sub>.
 
-Best-effort: Fehler werden geloggt, fuehren aber NICHT zu einem 500
-beim DELETE /me. Andernfalls bliebe der App-Datensatz fuer immer
-stehen, nur weil KC gerade unerreichbar ist. Vor Public-Launch
-sollte aber ein Alerting auf den Logger hier sitzen, damit Reste
-nicht stillschweigend angesammelt werden.
+Fehler fuehren NICHT zu einem 500 beim DELETE /me (der App-Datensatz ist
+dann bereits committet). Statt fire-and-forget merkt DELETE /me die
+Loeschung in keycloak_deletions vor (Migration 012); der Janitor
+wiederholt fehlgeschlagene Versuche mit Backoff (app/janitor.py).
 """
 from __future__ import annotations
 
@@ -32,7 +31,7 @@ class KeycloakAdminError(RuntimeError):
     """Wird vom Caller in einen 5xx-Hinweis oder ins Log gewandelt."""
 
 
-def _is_configured() -> bool:
+def is_configured() -> bool:
     return bool(
         settings.keycloak_admin_client_id
         and settings.keycloak_admin_client_secret
@@ -95,27 +94,21 @@ def _fetch_admin_token() -> str:
         raise KeycloakAdminError(
             f"Service-Account-Token fehlgeschlagen: {r.status_code} {r.text[:200]}"
         )
-    data = r.json()
-    token = data.get("access_token")
-    if not token:
+    try:
+        data = r.json()
+    except ValueError as exc:
+        raise KeycloakAdminError("Token-Response ist kein JSON.") from exc
+    token = data.get("access_token") if isinstance(data, dict) else None
+    if not isinstance(token, str) or not token:
         raise KeycloakAdminError("Token-Response ohne access_token.")
     return token
 
 
-def delete_user(keycloak_sub: str) -> bool:
-    """Loescht den User in Keycloak. Gibt True bei Erfolg zurueck.
-
-    Bei nicht-konfiguriertem Service-Account (Dev) wird False zurueck-
-    gegeben und ein DEBUG-Log gemacht — DELETE /me funktioniert weiter,
-    der KC-Account bleibt nur stehen. Fehler beim Admin-Call landen als
-    WARNING im Log und liefern False; der Caller darf den /me-DELETE
-    trotzdem als Erfolg behandeln (best effort).
-    """
-    if not _is_configured():
-        logger.debug(
-            "keycloak_admin: not configured (KEYCLOAK_ADMIN_CLIENT_ID/SECRET fehlen)"
-        )
-        return False
+def attempt_delete_user(keycloak_sub: str) -> str | None:
+    """Ein Loeschversuch. None bei Erfolg (204 oder 404 = schon weg), sonst
+    ein kurzer Fehlertext (fuer keycloak_deletions.last_error). Wirft nie —
+    der Caller hat seinen DB-Commit dann schon hinter sich. Vorbedingung:
+    is_configured()."""
     try:
         token = _fetch_admin_token()
         base = _admin_base()
@@ -123,16 +116,30 @@ def delete_user(keycloak_sub: str) -> bool:
         url = urljoin(base + "/", f"admin/realms/{realm}/users/{keycloak_sub}")
         with httpx.Client(timeout=_DELETE_TIMEOUT) as c:
             r = c.delete(url, headers={"Authorization": f"Bearer {token}"})
-        # 204 = geloescht, 404 = schon weg → in beiden Faellen Erfolg.
         if r.status_code in (204, 404):
-            return True
+            return None
         logger.warning(
             "keycloak_admin.delete_user(%s): %s %s",
             keycloak_sub,
             r.status_code,
             r.text[:200],
         )
-        return False
-    except (httpx.HTTPError, KeycloakAdminError) as exc:
+        return f"HTTP {r.status_code}: {r.text[:200]}"
+    except (httpx.HTTPError, KeycloakAdminError, ValueError, TypeError) as exc:
         logger.warning("keycloak_admin.delete_user(%s) Fehler: %s", keycloak_sub, exc)
+        return f"{type(exc).__name__}: {exc}"[:500]
+
+
+def delete_user(keycloak_sub: str) -> bool:
+    """Loescht den User in Keycloak. Gibt True bei Erfolg zurueck.
+
+    Bei nicht-konfiguriertem Service-Account (Dev) wird False zurueck-
+    gegeben und ein DEBUG-Log gemacht. Fehler beim Admin-Call landen als
+    WARNING im Log und liefern False (siehe attempt_delete_user).
+    """
+    if not is_configured():
+        logger.debug(
+            "keycloak_admin: not configured (KEYCLOAK_ADMIN_CLIENT_ID/SECRET fehlen)"
+        )
         return False
+    return attempt_delete_user(keycloak_sub) is None

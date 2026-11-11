@@ -4,26 +4,30 @@ Login/Logout/Refresh/Register laufen ueber den externen Keycloak-Realm.
 DELETE/Export sind DSGVO Art. 17 + 20.
 """
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel, ConfigDict
-from sqlalchemy import desc, select
+from sqlalchemy import delete, desc, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth import current_user, current_user_allow_disabled, hash_sub
 from app.config import settings
 from app.database import get_db
-from app.keycloak_admin import delete_user as kc_delete_user
+from app import keycloak_admin
+from app.janitor import keycloak_retry_delay
+from app.keycloak_admin import attempt_delete_user as kc_attempt_delete
 from app.models import (
     AccountTombstone,
     Feedback,
     Image,
     ImageEdit,
+    KeycloakDeletion,
     Preset,
+    PresetApply,
     PresetReport,
     StoragePurge,
     User,
@@ -117,9 +121,10 @@ async def delete_me(
        purgt den Prefix nach Ablauf von not_before erneut und loescht die
        Vormerkung erst dann.
     3. Keycloak-Account via Admin-API loeschen (Service-Account, falls
-       konfiguriert). Best-effort: ein KC-Ausfall schluckt den /me-DELETE
-       NICHT — App-Daten gehen trotzdem weg, KC-Account bleibt nur als
-       Reststand stehen (Logger-WARNING).
+       konfiguriert). Die Loeschung ist in Schritt 1 in keycloak_deletions
+       vorgemerkt (gleiche Transaktion wie der Grabstein): Erfolg -> Row weg;
+       Fehler -> attempts/last_error, der Janitor wiederholt mit Backoff. Ein
+       KC-Ausfall liefert dem Client trotzdem 204 (App-Daten sind weg).
     """
     prefix = f"{user.id}/"
     keycloak_sub = user.keycloak_sub
@@ -135,6 +140,16 @@ async def delete_me(
             sub_hash=hash_sub(keycloak_sub),
             deleted_at=now,
             banned=banned,
+        )
+    )
+    # KC-Loeschung vormerken (M2): ueberlebt einen Crash/KC-Ausfall nach
+    # dem Commit, der Janitor arbeitet die Row ab.
+    await db.merge(
+        KeycloakDeletion(
+            keycloak_sub=keycloak_sub,
+            attempts=0,
+            last_error=None,
+            next_attempt_at=now,
         )
     )
     purge = await db.merge(
@@ -164,9 +179,42 @@ async def delete_me(
             await db.rollback()
 
     # Erst nach erfolgreichem App-Cleanup den KC-Account abraeumen.
-    # kc_delete_user macht bis zu zwei blockierende httpx-Roundtrips (Token
-    # + DELETE, zusammen bis 15 s) -> Threadpool.
-    await run_in_threadpool(kc_delete_user, keycloak_sub)
+    # Ohne Service-Account (Dev) bleibt die Vormerkung fuer den Janitor
+    # stehen, bis die Credentials gesetzt sind.
+    if keycloak_admin.is_configured():
+        await _delete_keycloak_account(db, keycloak_sub)
+
+
+async def _delete_keycloak_account(db: AsyncSession, keycloak_sub: str) -> None:
+    """Sofortversuch der KC-Loeschung. Wirft nie: der App-Teil ist bereits
+    committet, der Client bekommt in jedem Fall 204."""
+    try:
+        # Bis zu zwei blockierende httpx-Roundtrips (Token + DELETE, zusammen
+        # bis 15 s) -> Threadpool.
+        error = await run_in_threadpool(kc_attempt_delete, keycloak_sub)
+    except Exception as exc:  # noqa: BLE001 — nach Commit kein 500
+        error = f"{type(exc).__name__}: {exc}"[:500]
+    cond = KeycloakDeletion.keycloak_sub == keycloak_sub
+    try:
+        if error is None:
+            await db.execute(delete(KeycloakDeletion).where(cond))
+        else:
+            logger.warning(
+                "delete_me: KC-Loeschung fehlgeschlagen, Janitor wiederholt: %s", error
+            )
+            await db.execute(
+                update(KeycloakDeletion)
+                .where(cond)
+                .values(
+                    attempts=1,
+                    last_error=error[:500],
+                    next_attempt_at=datetime.now(timezone.utc) + keycloak_retry_delay(1),
+                )
+            )
+        await db.commit()
+    except Exception as exc:  # noqa: BLE001 — Vormerkung existiert bereits
+        logger.warning("delete_me: KC-Vormerkung nicht aktualisiert: %s", exc)
+        await db.rollback()
 
 
 # ----- DSGVO Art. 15 + 20 (Auskunft + Datenuebertragbarkeit) -----
@@ -234,6 +282,15 @@ class FeedbackExport(BaseModel):
     created_at: datetime
 
 
+class ApplyExport(BaseModel):
+    """Apply-Dedupe-Eintrag (Marketplace): welches Preset der User an
+    welchem Tag angewendet hat. Der Janitor loescht Eintraege vor dem
+    aktuellen Tag, der Export enthaelt also hoechstens den heutigen Stand."""
+    model_config = CAMEL_OUT_CONFIG
+    preset_id: UUID
+    day: date
+
+
 class MeExport(BaseModel):
     model_config = CAMEL_BASE_CONFIG
     id: UUID
@@ -245,6 +302,7 @@ class MeExport(BaseModel):
     images: list[ImageExport]
     submitted_reports: list[ReportExport]
     feedbacks: list[FeedbackExport]
+    marketplace_applies: list[ApplyExport] = []
 
 
 @router.get("/me/export", response_model=MeExport)
@@ -313,6 +371,13 @@ async def export_me(
         FeedbackExport.model_validate(f) for f in feedback_result.scalars().all()
     ]
 
+    applies_result = await db.execute(
+        select(PresetApply)
+        .where(PresetApply.user_id == user.id)
+        .order_by(PresetApply.day, PresetApply.preset_id)
+    )
+    applies = [ApplyExport.model_validate(a) for a in applies_result.scalars().all()]
+
     return MeExport(
         id=user.id,
         email=user.email,
@@ -323,4 +388,5 @@ async def export_me(
         images=images,
         submitted_reports=reports,
         feedbacks=feedbacks,
+        marketplace_applies=applies,
     )

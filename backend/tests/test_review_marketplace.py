@@ -4,9 +4,11 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from datetime import datetime, timedelta, timezone
+
 from sqlalchemy import update
 
-from app.models import Preset
+from app.models import Preset, User
 from tests.images import upload_image
 
 
@@ -54,6 +56,12 @@ async def test_owner_mit_auto_verstecktem_preset_kann_nicht_veroeffentlichen(
         update(Preset)
         .where(Preset.id == UUID(hidden["id"]))
         .values(visibility="private", published_at=None, report_count=3)
+    )
+    # Auto-Hide setzt die Sperre am User (Migration 012).
+    await db_session.execute(
+        update(User)
+        .where(User.id == UUID(user_a["user"]["id"]))
+        .values(publish_blocked_until=datetime.now(timezone.utc) + timedelta(days=30))
     )
     await db_session.commit()
 

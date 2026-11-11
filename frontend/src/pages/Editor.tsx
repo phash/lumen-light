@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
 
 import OnboardingTour from "../onboarding/OnboardingTour";
 import { getOnboardingState } from "../onboarding/state";
 
-import type { ApiClient, ImageEditState } from "../api/client";
+import { ApiError, type ApiClient, type ImageEditState } from "../api/client";
 import { useApi } from "../api/use-api";
-import { type CanvasHandle, type FullResExport } from "../editor/Canvas";
+import Modal from "../components/Modal";
+import { CONTEXT_LOST_MESSAGE, type CanvasHandle, type FullResExport } from "../editor/Canvas";
 import EditorBanners from "../editor/EditorBanners";
 import EditorOverlayCanvas from "../editor/EditorOverlayCanvas";
 import EditorSidebar from "../editor/EditorSidebar";
@@ -49,10 +50,13 @@ function countByType(
   return n;
 }
 
+/** Pan-Schritt fuer Shift+Pfeiltasten (Tastatur-Alternative zum Drag). */
+const KEYBOARD_PAN_STEP = 40;
+
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-export type AutosaveStatus = "idle" | "saving" | "saved" | "error";
+export type AutosaveStatus = "idle" | "saving" | "saved" | "error" | "failed";
 
 /** Debounce des Autosaves: ein Slider-Drag erzeugt genau einen PUT. */
 export const AUTOSAVE_DEBOUNCE_MS = 1200;
@@ -64,12 +68,36 @@ interface PendingSave {
   readonly state: ImageEditState;
 }
 
+interface AutosaveView {
+  /** Bild, fuer das der Status gilt — anderes Bild -> "idle". */
+  readonly id: string | null;
+  readonly status: AutosaveStatus;
+  readonly reason: string | null;
+}
+
+/** 4xx ausser 408/429 ist permanent: ein Retry wuerde nur dasselbe liefern. */
+export function isPermanentSaveError(err: unknown): boolean {
+  return (
+    err instanceof ApiError &&
+    err.status >= 400 &&
+    err.status < 500 &&
+    err.status !== 408 &&
+    err.status !== 429
+  );
+}
+
 /**
  * C1: debounced Autosave des Bearbeitungsstands. Haelt den letzten
  * ungespeicherten Stand in einem Ref, damit er beim Unmount, bei pagehide
  * und bei visibilitychange=hidden per fetch-keepalive noch rausgeht.
- * Fehlgeschlagene Saves werden mit Backoff wiederholt; der Status ist fuer
- * einen Hinweis in der UI gedacht.
+ *
+ * - Es laeuft immer hoechstens ein Request; danach geht der neueste
+ *   ausstehende Stand raus (keine Out-of-Order-Saves).
+ * - Transiente Fehler werden mit Backoff wiederholt, der Status bleibt
+ *   dabei "error" (keine wiederholte Screenreader-Ansage).
+ * - Permanente 4xx (ausser 408/429) -> "failed" mit Grund, kein Retry.
+ * - visibilitychange=hidden verwirft den Stand erst nach Erfolg;
+ *   pagehide/Unmount/Bildwechsel senden ein letztes Mal und verwerfen.
  *
  * imageId/state = null -> nichts speichern (ausstehender Stand wird
  * verworfen; Aufrufer flusht vorher, wenn er ihn behalten will).
@@ -78,55 +106,103 @@ export function useEditAutosave(
   api: Pick<ApiClient, "putImageEdit">,
   imageId: string | null,
   state: ImageEditState | null,
-): { status: AutosaveStatus; flush: () => void } {
-  const [status, setStatus] = useState<AutosaveStatus>("idle");
+): { status: AutosaveStatus; reason: string | null; flush: () => void } {
+  const [view, setView] = useState<AutosaveView>({ id: null, status: "idle", reason: null });
   const apiRef = useRef(api);
   useLayoutEffect(() => {
     apiRef.current = api;
   });
   const pendingRef = useRef<PendingSave | null>(null);
+  const inFlightRef = useRef<PendingSave | null>(null);
   const timerRef = useRef<number | null>(null);
   const attemptRef = useRef(0);
   const mountedRef = useRef(false);
-  // Selbstreferenz fuer den Retry (send plant sich selbst erneut ein).
-  const sendRef = useRef<(entry: PendingSave) => void>(() => undefined);
+  // Selbstreferenz fuer Retry/Nachsenden (send ruft sich indirekt erneut).
+  const sendRef = useRef<(entry: PendingSave, keepalive: boolean) => void>(() => undefined);
 
   const clearTimer = useCallback(() => {
     if (timerRef.current !== null) window.clearTimeout(timerRef.current);
     timerRef.current = null;
   }, []);
 
+  /** Nach Abschluss eines Requests: neueren ausstehenden Stand senden,
+   *  sofern nicht noch dessen Debounce-/Retry-Timer laeuft. */
+  const sendNext = useCallback(() => {
+    const next = pendingRef.current;
+    if (!next || !mountedRef.current || timerRef.current !== null) return;
+    sendRef.current(next, false);
+  }, []);
+
   const send = useCallback(
-    (entry: PendingSave): void => {
+    (entry: PendingSave, keepalive: boolean): void => {
+      // Veralteter Timer (Stand inzwischen ersetzt/verworfen) -> nichts tun.
+      if (pendingRef.current !== entry) return;
+      // A4: Request laeuft noch -> nach dessen Ende kommt sendNext.
+      if (inFlightRef.current) return;
       clearTimer();
-      if (mountedRef.current) setStatus("saving");
-      apiRef.current
-        .putImageEdit(entry.id, entry.state)
+      inFlightRef.current = entry;
+      // A5: im Fehlerzustand bleibt der Status stehen, bis ein Save klappt.
+      if (mountedRef.current) {
+        setView((v) =>
+          v.id === entry.id && (v.status === "error" || v.status === "failed")
+            ? v
+            : { id: entry.id, status: "saving", reason: null },
+        );
+      }
+      const req = keepalive
+        ? apiRef.current.putImageEdit(entry.id, entry.state, { keepalive: true })
+        : apiRef.current.putImageEdit(entry.id, entry.state);
+      req
         .then(() => {
+          inFlightRef.current = null;
           attemptRef.current = 0;
           if (pendingRef.current === entry) pendingRef.current = null;
-          if (mountedRef.current && pendingRef.current === null) setStatus("saved");
-        })
-        .catch(() => {
           if (!mountedRef.current) return;
-          setStatus("error");
-          // Neuerer Stand wartet bereits mit eigenem Debounce -> kein Retry.
-          if (pendingRef.current !== entry) return;
+          const done = pendingRef.current === null;
+          setView({ id: entry.id, status: done ? "saved" : "saving", reason: null });
+          sendNext();
+        })
+        .catch((err: unknown) => {
+          inFlightRef.current = null;
+          if (!mountedRef.current) return;
+          // A2: Stand wurde ersetzt (neuere Aenderung oder anderes Bild) ->
+          // kein Fehler fuer den aktuellen Stand, ggf. neuesten senden.
+          if (pendingRef.current !== entry) {
+            sendNext();
+            return;
+          }
+          if (isPermanentSaveError(err)) {
+            // A3: kein Retry — ein erneuter Versuch liefert denselben Fehler.
+            pendingRef.current = null;
+            setView({
+              id: entry.id,
+              status: "failed",
+              reason: err instanceof Error ? err.message : null,
+            });
+            return;
+          }
+          setView((v) =>
+            v.id === entry.id && v.status === "error"
+              ? v
+              : { id: entry.id, status: "error", reason: null },
+          );
           const idx = Math.min(attemptRef.current, AUTOSAVE_RETRY_MS.length - 1);
           attemptRef.current += 1;
           clearTimer();
-          timerRef.current = window.setTimeout(
-            () => sendRef.current(entry),
-            AUTOSAVE_RETRY_MS[idx],
-          );
+          timerRef.current = window.setTimeout(() => {
+            timerRef.current = null;
+            sendRef.current(entry, false);
+          }, AUTOSAVE_RETRY_MS[idx]);
         });
     },
-    [clearTimer],
+    [clearTimer, sendNext],
   );
   useLayoutEffect(() => {
     sendRef.current = send;
   }, [send]);
 
+  /** Letzte Chance (pagehide, Unmount, Bildwechsel): keepalive senden und
+   *  den Stand verwerfen — danach kann niemand mehr wiederholen. */
   const flush = useCallback(() => {
     const entry = pendingRef.current;
     if (!entry) return;
@@ -138,6 +214,17 @@ export function useEditAutosave(
       .catch(() => undefined);
   }, [clearTimer]);
 
+  /** A1: Tab im Hintergrund — Seite lebt evtl. weiter. Stand bleibt
+   *  ausstehend, bis der Request klappt; Fehler -> normaler Retry. */
+  const flushSoft = useCallback(() => {
+    const entry = pendingRef.current;
+    if (!entry) return;
+    // Laufender Request: danach sendet sendNext den neuesten Stand.
+    if (inFlightRef.current) return;
+    clearTimer();
+    send(entry, true);
+  }, [clearTimer, send]);
+
   useEffect(() => {
     if (!imageId || !state) {
       pendingRef.current = null;
@@ -148,14 +235,17 @@ export function useEditAutosave(
     pendingRef.current = entry;
     attemptRef.current = 0;
     clearTimer();
-    timerRef.current = window.setTimeout(() => send(entry), AUTOSAVE_DEBOUNCE_MS);
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
+      send(entry, false);
+    }, AUTOSAVE_DEBOUNCE_MS);
   }, [imageId, state, send, clearTimer]);
 
   useEffect(() => {
     mountedRef.current = true;
     const onPageHide = () => flush();
     const onVisibility = () => {
-      if (document.visibilityState === "hidden") flush();
+      if (document.visibilityState === "hidden") flushSoft();
     };
     window.addEventListener("pagehide", onPageHide);
     document.addEventListener("visibilitychange", onVisibility);
@@ -165,26 +255,51 @@ export function useEditAutosave(
       mountedRef.current = false;
       flush();
     };
-  }, [flush]);
+  }, [flush, flushSoft]);
 
-  return { status, flush };
+  const current = view.id !== null && view.id === imageId;
+  return {
+    status: current ? view.status : "idle",
+    reason: current ? view.reason : null,
+    flush,
+  };
 }
 
 /** Dezenter Hinweis, wenn der Autosave fehlschlaegt. Live-Region bleibt
- *  gemountet, damit Screenreader die Text-Aenderung ansagen. */
-export function AutosaveIndicator({ status }: { readonly status: AutosaveStatus }) {
-  const failed = status === "error";
+ *  gemountet, damit Screenreader die Text-Aenderung ansagen. Position:
+ *  unten links ueber der Toolbar (--editor-toolbar-clearance), damit weder
+ *  der mobile Regler-Toggle (oben rechts) noch die Kamera-Info verdeckt
+ *  werden. */
+export function AutosaveIndicator({
+  status,
+  reason = null,
+}: {
+  readonly status: AutosaveStatus;
+  readonly reason?: string | null;
+}) {
+  const failed = status === "error" || status === "failed";
+  const text =
+    status === "failed"
+      ? `Nicht gespeichert – ${reason ?? "Server hat den Stand abgelehnt"}`
+      : status === "error"
+        ? "Nicht gespeichert – erneuter Versuch …"
+        : "";
   return (
     <div
       role="status"
       data-testid="autosave-status"
       className={
         failed
-          ? "absolute top-3 right-3 z-20 px-3 py-1.5 text-xs bg-red-950/90 border border-red-700 text-red-100 pointer-events-none"
+          ? "absolute left-2 sm:left-6 z-20 max-w-[calc(100%-1rem)] px-3 py-1.5 text-xs bg-red-950/90 border border-red-700 text-red-100 pointer-events-none"
           : "sr-only"
       }
+      style={
+        failed
+          ? { bottom: "calc(var(--editor-toolbar-clearance, 4.5rem) + 0.5rem)" }
+          : undefined
+      }
     >
-      {failed ? "Nicht gespeichert – erneuter Versuch …" : ""}
+      {text}
     </div>
   );
 }
@@ -311,6 +426,12 @@ export default function Editor() {
 
   const onTick = useCallback(() => setTick((t) => t + 1), []);
   const onCanvasError = useCallback((msg: string) => setError(msg), []);
+  // C1: nach webglcontextrestored nur den Kontextverlust-Hinweis entfernen,
+  // andere Fehlermeldungen bleiben stehen.
+  const onCanvasRecovered = useCallback(
+    () => setError((e) => (e === CONTEXT_LOST_MESSAGE ? null : e)),
+    [],
+  );
   const onCanvasMount = useCallback((c: HTMLCanvasElement) => {
     canvasElementRef.current = c;
     setCanvasElement(c);
@@ -410,6 +531,8 @@ export default function Editor() {
       setSuggestedGenre(null);
       setSuggestionDismissed(false);
       setCompareSnapshot(null);
+      // E1: ein abgeloester Bibliotheks-Load setzt das Flag nicht mehr zurueck.
+      setLibraryLoading(false);
       return gen;
     },
     [flushAutosave, clearSuggestionTimer],
@@ -777,6 +900,32 @@ export default function Editor() {
     [pan],
   );
 
+  // E4: Pan per Tastatur (Shift+Pfeil) bei fokussierter Bildansicht.
+  // Overlay-Handles stoppen ihre eigenen Pfeil-Nudges per stopPropagation.
+  const onViewportKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLElement>) => {
+      if (!hasImage || !e.shiftKey || e.defaultPrevented) return;
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const t = e.target;
+      if (
+        t instanceof HTMLElement &&
+        (t.isContentEditable || t.closest('input, select, textarea, [role="slider"]'))
+      ) {
+        return;
+      }
+      let dx = 0;
+      let dy = 0;
+      if (e.key === "ArrowLeft") dx = -KEYBOARD_PAN_STEP;
+      else if (e.key === "ArrowRight") dx = KEYBOARD_PAN_STEP;
+      else if (e.key === "ArrowUp") dy = -KEYBOARD_PAN_STEP;
+      else if (e.key === "ArrowDown") dy = KEYBOARD_PAN_STEP;
+      else return;
+      e.preventDefault();
+      setPan((p) => ({ x: p.x + dx, y: p.y + dy }));
+    },
+    [hasImage],
+  );
+
   const onCanvasClickForWb = useCallback(
     (e: React.MouseEvent<HTMLDivElement>) => {
       if (!wbPickerActive || !canvasElement) return;
@@ -874,6 +1023,88 @@ export default function Editor() {
     return () => window.removeEventListener("beforeunload", onBeforeUnload);
   }, [hasImage, storedImageId]);
 
+  // E3: In-App-Navigation (Header, Toolbar-Link "Marketplace") wuerde das
+  // lokale Bild ebenfalls verwerfen. Ohne Data Router (useBlocker) fangen
+  // wir Klicks auf interne Links in der Capture-Phase ab — vor dem
+  // onClick von <Link> — und fragen per Dialog nach.
+  const navigate = useNavigate();
+  const { pathname: currentPath } = useLocation();
+  const [pendingNav, setPendingNav] = useState<string | null>(null);
+  const navGuardActive = hasImage && !storedImageId;
+  useEffect(() => {
+    if (!navGuardActive) return;
+    const onClick = (e: MouseEvent) => {
+      if (e.defaultPrevented || e.button !== 0) return;
+      if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+      if (!(e.target instanceof Element)) return;
+      const a = e.target.closest<HTMLAnchorElement>('a[href^="/"]');
+      if (!a) return;
+      if (a.target && a.target !== "_self") return;
+      if (a.hasAttribute("download")) return;
+      const href = a.getAttribute("href") ?? "";
+      // "//host/..." ist protokoll-relativ = extern.
+      if (href.startsWith("//")) return;
+      const url = new URL(href, window.location.origin);
+      // Link auf den Editor selbst: Komponente bleibt gemountet.
+      if (url.pathname === currentPath) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setPendingNav(`${url.pathname}${url.search}${url.hash}`);
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [navGuardActive, currentPath]);
+  const cancelPendingNav = useCallback(() => setPendingNav(null), []);
+  const confirmPendingNav = useCallback(() => {
+    if (pendingNav === null) return;
+    setPendingNav(null);
+    void navigate(pendingNav);
+  }, [navigate, pendingNav]);
+
+  // E2: Hoehe = sichtbarer Viewport (100dvh, mobil ohne Browser-Leisten)
+  // minus tatsaechlicher Oberkante (Header-Hoehe variiert, z.B. Umbruch).
+  // Direkt am DOM gesetzt: kein setState im Effect, kein Re-Render.
+  const sectionRef = useRef<HTMLElement>(null);
+  useLayoutEffect(() => {
+    const el = sectionRef.current;
+    if (!el) return;
+    const update = () => {
+      const top = Math.max(0, Math.round(el.getBoundingClientRect().top + window.scrollY));
+      el.style.setProperty("--editor-top", `${top}px`);
+    };
+    update();
+    window.addEventListener("resize", update);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    const header = el.parentElement?.previousElementSibling;
+    if (ro && header) ro.observe(header);
+    return () => {
+      window.removeEventListener("resize", update);
+      ro?.disconnect();
+    };
+  }, []);
+
+  // A6: Abstand Unterkante -> Oberkante der Toolbar (sie bricht mobil um),
+  // damit der Autosave-Hinweis darueber sitzt statt sie zu verdecken.
+  const toolbarSlotRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const main = viewportRef.current;
+    const toolbar = toolbarSlotRef.current?.firstElementChild;
+    if (!main || !(toolbar instanceof HTMLElement)) return;
+    const update = () => {
+      const clearance = Math.max(0, main.clientHeight - toolbar.offsetTop);
+      main.style.setProperty("--editor-toolbar-clearance", `${clearance}px`);
+    };
+    update();
+    window.addEventListener("resize", update);
+    const ro = typeof ResizeObserver !== "undefined" ? new ResizeObserver(update) : null;
+    ro?.observe(toolbar);
+    ro?.observe(main);
+    return () => {
+      window.removeEventListener("resize", update);
+      ro?.disconnect();
+    };
+  }, [hasImage]);
+
   // C1: Bild aus der Bibliothek laden und gespeicherten Stand anwenden.
   // Jeder Schritt prueft die Lade-Generation (M6) — ein inzwischen
   // gestarteter anderer Load gewinnt.
@@ -948,10 +1179,18 @@ export default function Editor() {
     selected && selected.type === "radial" ? selected : null;
 
   return (
-    <section data-testid="page-editor" className="flex h-[calc(100vh-3rem)]">
+    <section
+      ref={sectionRef}
+      data-testid="page-editor"
+      className="flex overflow-hidden"
+      style={{ height: "calc(100dvh - var(--editor-top, 3rem))" }}
+    >
       <main
         ref={viewportRef}
-        className="flex-1 relative flex items-center justify-center bg-stone-950 overflow-hidden p-8"
+        aria-label="Bildansicht"
+        tabIndex={hasImage ? 0 : undefined}
+        onKeyDown={onViewportKeyDown}
+        className="flex-1 min-w-0 min-h-0 relative flex items-center justify-center bg-stone-950 overflow-hidden p-8 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-amber-300"
         onDrop={onDrop}
         onDragOver={(e) => e.preventDefault()}
         onWheel={onWheel}
@@ -977,6 +1216,7 @@ export default function Editor() {
           canvasHandleRef={canvasHandleRef}
           onTick={onTick}
           onError={onCanvasError}
+          onRecovered={onCanvasRecovered}
           onCanvasMount={onCanvasMount}
           pan={pan}
           zoom={zoom}
@@ -1066,7 +1306,9 @@ export default function Editor() {
           </div>
         )}
 
-        {storedImageId && <AutosaveIndicator status={autosave.status} />}
+        {storedImageId && (
+          <AutosaveIndicator status={autosave.status} reason={autosave.reason} />
+        )}
 
         <EditorBanners
           error={error}
@@ -1079,6 +1321,9 @@ export default function Editor() {
           onDismissSuggestion={() => setSuggestionDismissed(true)}
         />
 
+        {/* display:contents — Toolbar bleibt relativ zu <main> positioniert,
+            der Slot dient nur zum Messen (A6). */}
+        <div ref={toolbarSlotRef} className="contents">
         {hasImage && (
           <EditorToolbar
             bypass={bypass}
@@ -1108,6 +1353,7 @@ export default function Editor() {
             onExport={triggerExport}
           />
         )}
+        </div>
 
         {presetDialogOpen && (
           <PresetDialog
@@ -1170,6 +1416,42 @@ export default function Editor() {
 
       {onboardingOpen && (
         <OnboardingTour onClose={() => setOnboardingOpen(false)} />
+      )}
+
+      {pendingNav !== null && (
+        <Modal
+          onClose={cancelPendingNav}
+          labelledBy="editor-discard-title"
+          testId="editor-discard-backdrop"
+          cardTestId="editor-discard-dialog"
+          cardClassName="w-full max-w-sm bg-stone-900 border border-stone-700 text-sm p-5 outline-none"
+        >
+          <h2 id="editor-discard-title" className="text-base text-stone-100 mb-2">
+            Ungespeichertes Bild verwerfen?
+          </h2>
+          <p className="text-stone-400 mb-5">
+            Das Bild ist nur lokal geöffnet und nicht in deiner Bibliothek gespeichert.
+            Beim Verlassen gehen Bild und Bearbeitung verloren.
+          </p>
+          <div className="flex justify-end gap-2">
+            <button
+              type="button"
+              data-testid="editor-discard-cancel"
+              onClick={cancelPendingNav}
+              className="px-4 py-2 text-xs uppercase tracking-[0.2em] border border-stone-700 text-stone-300 hover:border-amber-300/40 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+            >
+              Abbrechen
+            </button>
+            <button
+              type="button"
+              data-testid="editor-discard-confirm"
+              onClick={confirmPendingNav}
+              className="px-4 py-2 text-xs uppercase tracking-[0.2em] bg-red-950/60 border border-red-700 text-red-100 hover:bg-red-900/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+            >
+              Verwerfen
+            </button>
+          </div>
+        </Modal>
       )}
     </section>
   );

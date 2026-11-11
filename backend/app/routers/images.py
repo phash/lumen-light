@@ -124,6 +124,11 @@ async def init_upload(
             detail=f"size_bytes ueber Maximum {settings.max_image_size_bytes}.",
         )
 
+    # User-Row sperren (L5): parallele init_upload-Requests desselben Users
+    # wuerden sonst denselben Zaehlstand sehen und das Kontingent gemeinsam
+    # ueberschreiten. Die Sperre endet mit dem Commit unten.
+    await db.execute(select(User.id).where(User.id == user.id).with_for_update())
+
     # Soft-Quota gegen Zombie-Pending-Rows: ein Client koennte bis zum
     # Rate-Limit pending Uploads anlegen, die erst der Janitor (>15 min) wegraeumt.
     pending_count = (
@@ -440,6 +445,22 @@ async def delete_image(
         raise HTTPException(status_code=404, detail="Image nicht gefunden.")
     _ensure_owns_key(image, user)
 
+    # Vom Bild abgeleitete Marketplace-Vorschauen VOR dem S3-Delete des
+    # Originals entkoppeln — der User erwartet, dass das Motiv nach dem
+    # Loeschen nirgends mehr auftaucht, auch wenn das Original-Delete
+    # scheitert (Row bleibt dann als 'failed' stehen, die Vorschau nicht).
+    # (presets.preview_image_id wird per FK ON DELETE SET NULL geleert.)
+    derived = (
+        await db.execute(
+            select(Preset).where(
+                Preset.preview_image_id == image.id, Preset.user_id == user.id
+            )
+        )
+    ).scalars().all()
+    stale_preview_keys = [p.preview_key for p in derived if p.preview_key]
+    for p in derived:
+        p.preview_key = None
+
     try:
         await run_in_threadpool(storage.delete, image.bucket_key)
         # Staging-Rest (z.B. erneuter PUT mit der alten Upload-URL) mit weg.
@@ -455,24 +476,12 @@ async def delete_image(
         # funktionieren idempotent.
         image.upload_state = "failed"
         await db.commit()
+        for key in stale_preview_keys:
+            await delete_preview_object(storage, key)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Speicher-Backend nicht erreichbar — bitte erneut versuchen.",
         ) from exc
-
-    # Vom Bild abgeleitete Marketplace-Vorschauen mit entfernen — der User
-    # erwartet, dass das Motiv nach dem Loeschen nirgends mehr auftaucht.
-    # (presets.preview_image_id wird per FK ON DELETE SET NULL geleert.)
-    derived = (
-        await db.execute(
-            select(Preset).where(
-                Preset.preview_image_id == image.id, Preset.user_id == user.id
-            )
-        )
-    ).scalars().all()
-    stale_preview_keys = [p.preview_key for p in derived if p.preview_key]
-    for p in derived:
-        p.preview_key = None
 
     await db.delete(image)
     await db.commit()

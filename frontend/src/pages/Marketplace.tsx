@@ -45,6 +45,10 @@ export default function Marketplace() {
   const [selected, setSelected] = useState<MarketplaceDetail | null>(null);
   // ID der Karte, deren Detail gerade geladen wird (Lade-Feedback).
   const [detailLoadingId, setDetailLoadingId] = useState<string | null>(null);
+  // Welcher Ladevorgang fehlschlug — steuert „Erneut versuchen".
+  const [failed, setFailed] = useState<"list" | "more" | null>(null);
+  // Erhoehen erzwingt ein Neuladen der Liste (Retry).
+  const [reloadKey, setReloadKey] = useState(0);
 
   // Debounce-Suche, damit jede Tastatur-Eingabe nicht das Backend trifft.
   useEffect(() => {
@@ -60,6 +64,7 @@ export default function Marketplace() {
     // eslint-disable-next-line react-hooks/set-state-in-effect
     setLoading(true);
     setError(null);
+    setFailed(null);
     api
       .listMarketplacePresets({
         genre: genre || undefined,
@@ -74,16 +79,19 @@ export default function Marketplace() {
       .catch((err: unknown) => {
         if (reqId !== reqIdRef.current) return;
         setError(err instanceof Error ? err.message : "Laden fehlgeschlagen");
+        setFailed("list");
       })
       .finally(() => {
         if (reqId === reqIdRef.current) setLoading(false);
       });
-  }, [api, genre, debouncedQ, sort]);
+  }, [api, genre, debouncedQ, sort, reloadKey]);
 
   const onLoadMore = useCallback(() => {
     if (!cursor) return;
     const reqId = ++reqIdRef.current;
     setLoading(true);
+    setError(null);
+    setFailed(null);
     api
       .listMarketplacePresets({
         genre: genre || undefined,
@@ -99,11 +107,17 @@ export default function Marketplace() {
       .catch((err: unknown) => {
         if (reqId !== reqIdRef.current) return;
         setError(err instanceof Error ? err.message : "Laden fehlgeschlagen");
+        setFailed("more");
       })
       .finally(() => {
         if (reqId === reqIdRef.current) setLoading(false);
       });
   }, [api, cursor, genre, debouncedQ, sort]);
+
+  const onRetry = () => {
+    if (failed === "more") onLoadMore();
+    else setReloadKey((k) => k + 1);
+  };
 
   const openDetail = useCallback(
     async (id: string) => {
@@ -174,18 +188,32 @@ export default function Marketplace() {
       </div>
 
       {error && (
-        <div
-          className="mt-4 px-3 py-2 bg-red-900/40 border border-red-800 text-red-200 text-sm"
-          data-testid="marketplace-error"
-          role="alert"
-        >
-          {error}
+        <div className="mt-4 flex flex-wrap items-center gap-3 px-3 py-2 bg-red-900/40 border border-red-800 text-sm">
+          <span className="text-red-200" data-testid="marketplace-error" role="alert">
+            {error}
+          </span>
+          {failed && (
+            <button
+              type="button"
+              onClick={onRetry}
+              disabled={loading}
+              data-testid="marketplace-retry"
+              className="px-3 py-1 text-xs uppercase tracking-[0.2em] border border-red-700 text-red-100 hover:bg-red-900/40 disabled:opacity-50"
+            >
+              Erneut versuchen
+            </button>
+          )}
         </div>
       )}
 
       <p role="status" className="sr-only" data-testid="marketplace-status">
-        {loading ? "Presets werden geladen …" : ""}
-        {detailLoadingId ? "Preset wird geöffnet …" : ""}
+        {detailLoadingId
+          ? "Preset wird geöffnet …"
+          : loading
+            ? "Presets werden geladen …"
+            : failed
+              ? ""
+              : `${items.length} ${items.length === 1 ? "Preset" : "Presets"} gefunden`}
       </p>
 
       <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
@@ -365,7 +393,7 @@ function DetailModal({
         onClose={onClose}
         testId="marketplace-detail-modal"
         labelledBy="marketplace-detail-title"
-        backdropClassName="fixed inset-0 z-30 bg-black/70 flex items-center justify-center p-4"
+        backdropClassName="fixed inset-0 z-50 bg-black/70 flex items-center justify-center p-4"
         cardClassName="bg-stone-950 border border-stone-700 max-w-2xl w-full max-h-[90vh] overflow-y-auto"
       >
           {detail.previewUrl ? (

@@ -92,6 +92,34 @@ function render(api: FakeApi) {
 }
 
 describe("Marketplace", () => {
+  it("Status meldet die Anzahl gefundener Presets", async () => {
+    const api = makeFakeApi();
+    api.listMarketplacePresets.mockResolvedValue({
+      items: [makeItem({ id: "p-a" }), makeItem({ id: "p-b" })],
+      nextCursor: null,
+    });
+    render(api);
+    await waitFor(() =>
+      expect(screen.getByTestId("marketplace-status")).toHaveTextContent(
+        "2 Presets gefunden",
+      ),
+    );
+    expect(screen.getByTestId("marketplace-status")).toHaveAttribute("role", "status");
+  });
+
+  it("Ladefehler bietet Erneut versuchen an", async () => {
+    const api = makeFakeApi();
+    api.listMarketplacePresets
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValue({ items: [makeItem({ id: "p-a" })], nextCursor: null });
+    render(api);
+    const retry = await screen.findByTestId("marketplace-retry");
+    await userEvent.click(retry);
+    expect(await screen.findByTestId("marketplace-card-p-a")).toBeInTheDocument();
+    expect(screen.queryByTestId("marketplace-error")).not.toBeInTheDocument();
+    expect(screen.getByTestId("marketplace-status")).toHaveTextContent("1 Preset gefunden");
+  });
+
   it("zeigt Empty-State wenn keine Presets gelistet sind", async () => {
     render(makeFakeApi());
     await waitFor(() => {

@@ -1,7 +1,7 @@
 import { useRef } from "react";
 
 import type { PointUv, RadialMask } from "./mask";
-import { HANDLE_HIT_CLASS, nudgeDelta } from "./overlayKeys";
+import { HANDLE_HIT_CLASS, INV_ZOOM_SCALE, nudgeDelta } from "./overlayKeys";
 import { applyUv } from "./transform";
 
 interface Props {
@@ -160,7 +160,8 @@ export default function RadialMaskOverlay({
 
       <div
         data-testid="radial-mask-handle-center"
-        role="button"
+        role="group"
+        aria-roledescription="Ziehpunkt"
         tabIndex={0}
         aria-label="Radialmaske Zentrum verschieben (Pfeiltasten, Shift für größere Schritte)"
         onKeyDown={onHandleKeyDown("center")}
@@ -169,13 +170,14 @@ export default function RadialMaskOverlay({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         className={`${HANDLE_HIT_CLASS} cursor-grab pointer-events-auto`}
-        style={{ ...centerStyle, touchAction: "none" }}
+        style={{ ...centerStyle, touchAction: "none", transform: INV_ZOOM_SCALE }}
       >
         <span className="block w-4 h-4 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
       </div>
       <div
         data-testid="radial-mask-handle-rx"
-        role="button"
+        role="group"
+        aria-roledescription="Ziehpunkt"
         tabIndex={0}
         aria-label="Radialmaske horizontaler Radius (Pfeiltasten, Shift für größere Schritte)"
         onKeyDown={onHandleKeyDown("rx")}
@@ -184,13 +186,14 @@ export default function RadialMaskOverlay({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         className={`${HANDLE_HIT_CLASS} cursor-ew-resize pointer-events-auto`}
-        style={{ ...rxStyle, touchAction: "none" }}
+        style={{ ...rxStyle, touchAction: "none", transform: INV_ZOOM_SCALE }}
       >
         <span className="block w-3 h-3 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
       </div>
       <div
         data-testid="radial-mask-handle-ry"
-        role="button"
+        role="group"
+        aria-roledescription="Ziehpunkt"
         tabIndex={0}
         aria-label="Radialmaske vertikaler Radius (Pfeiltasten, Shift für größere Schritte)"
         onKeyDown={onHandleKeyDown("ry")}
@@ -199,7 +202,7 @@ export default function RadialMaskOverlay({
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         className={`${HANDLE_HIT_CLASS} cursor-ns-resize pointer-events-auto`}
-        style={{ ...ryStyle, touchAction: "none" }}
+        style={{ ...ryStyle, touchAction: "none", transform: INV_ZOOM_SCALE }}
       >
         <span className="block w-3 h-3 rounded-full bg-amber-200 border-2 border-stone-900 pointer-events-none" />
       </div>

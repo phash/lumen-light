@@ -13,6 +13,10 @@ import {
 import { defaultAdjustments } from "../src/editor/adjustments";
 import Account from "../src/pages/Account";
 import * as clearCachesModule from "../src/auth/clearCaches";
+import {
+  getSingleKeyShortcutsEnabled,
+  setSingleKeyShortcutsEnabled,
+} from "../src/editor/shortcutPrefs";
 import { makeFakeAuth, makeFakeUser, renderWithAuth } from "./test-utils";
 
 interface FakeApi extends ApiClient {
@@ -98,6 +102,20 @@ function render(api: FakeApi) {
 }
 
 describe("Account", () => {
+  it("Toggle schaltet Einzeltasten-Kuerzel ab und wieder an", async () => {
+    setSingleKeyShortcutsEnabled(true);
+    render(makeFakeApi());
+    const toggle = screen.getByRole("checkbox", {
+      name: "Einzeltasten-Kürzel aktivieren",
+    });
+    expect(toggle).toBeChecked();
+    await userEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    expect(getSingleKeyShortcutsEnabled()).toBe(false);
+    await userEvent.click(toggle);
+    expect(getSingleKeyShortcutsEnabled()).toBe(true);
+  });
+
   it("laedt me + Profil + published-presets beim Mount", async () => {
     const api = makeFakeApi();
     render(api);

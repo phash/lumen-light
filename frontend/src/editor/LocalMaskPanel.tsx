@@ -85,7 +85,7 @@ export default function LocalMaskPanel({
         type="button"
         onClick={onRemove}
         data-testid={removeTestId}
-        className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
+        className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-400 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
       >
         {removeText}
       </button>

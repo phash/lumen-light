@@ -11,11 +11,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import current_user
 from app.config import settings
 from app.database import get_db
+from app.moderation import REPORT_AUTOHIDE_THRESHOLD, may_publish
 from app.models import Image, ImageEdit, Preset, User
 from app.previews import delete_preview_object, sync_preset_preview
 from app.profile_groups import merge_edit_state
 from app.rate_limit import limiter
-from app.routers.marketplace import REPORT_AUTOHIDE_THRESHOLD
 from app.schemas import (
     Adjustments,
     BatchApplyIn,
@@ -33,9 +33,35 @@ LIST_LIMIT_DEFAULT = 500
 LIST_LIMIT_MAX = 500
 
 
+_NAME_TAKEN_DETAIL = "Preset-Name bereits vergeben."
+
+
+async def lock_user_row(db: AsyncSession, user: User) -> None:
+    """SELECT ... FOR UPDATE auf die User-Row (L5): serialisiert parallele
+    Requests desselben Users zwischen Kontingent-Zaehlung und INSERT —
+    sonst zaehlen zwei gleichzeitige Requests denselben Stand und
+    ueberschreiten das Kontingent gemeinsam. Sperre endet mit dem Commit."""
+    await db.execute(select(User.id).where(User.id == user.id).with_for_update())
+
+
+async def _ensure_name_free(
+    db: AsyncSession, user: User, name: str, *, exclude_id: UUID | None = None
+) -> None:
+    cond = [Preset.user_id == user.id, Preset.name == name]
+    if exclude_id is not None:
+        cond.append(Preset.id != exclude_id)
+    taken = (
+        await db.execute(select(Preset.id).where(*cond).limit(1))
+    ).scalar_one_or_none()
+    if taken is not None:
+        raise HTTPException(status_code=409, detail=_NAME_TAKEN_DETAIL)
+
+
 async def ensure_preset_quota(db: AsyncSession, user: User) -> None:
     """Kontingent: max. settings.max_user_presets Presets pro User (409).
-    Genutzt von POST /presets und dem Marketplace-Fork."""
+    Genutzt von POST /presets und dem Marketplace-Fork. Sperrt vorher die
+    User-Row (lock_user_row), damit die Zaehlung race-frei ist."""
+    await lock_user_row(db, user)
     count = (
         await db.execute(
             select(func.count()).select_from(Preset).where(Preset.user_id == user.id)
@@ -52,21 +78,12 @@ async def ensure_preset_quota(db: AsyncSession, user: User) -> None:
 
 
 async def _ensure_may_publish(db: AsyncSession, user: User) -> None:
-    """Solange eines der eigenen Presets wegen Meldungen zurueckgezogen ist
-    (Auto-Hide), darf der User keine weiteren Presets veroeffentlichen —
-    sonst wuerde die Moderation per neuem Preset umgangen."""
-    hidden = (
-        await db.execute(
-            select(Preset.id)
-            .where(
-                Preset.user_id == user.id,
-                Preset.visibility == "private",
-                Preset.report_count >= REPORT_AUTOHIDE_THRESHOLD,
-            )
-            .limit(1)
-        )
-    ).scalar_one_or_none()
-    if hidden is not None:
+    """Solange die Publish-Sperre des Users laeuft (gesetzt beim Auto-Hide
+    eines eigenen Presets, Migration 012) oder ein eigenes Preset noch
+    auto-versteckt ist, darf er nichts veroeffentlichen. Die Sperre haengt
+    am User: Loeschen oder Umbenennen des versteckten Presets umgeht sie
+    nicht (L3); ein abgelaufener Timer hebt offene Moderation nicht auf."""
+    if not await may_publish(db, user):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=(
@@ -172,11 +189,13 @@ async def create_preset(
     )
     if payload.visibility == "public":
         await _ensure_may_publish(db, user)
+    # L9: Namenskonflikt VOR dem (teuren) Vorschau-Build erkennen.
+    await _ensure_name_free(db, user, payload.name)
     published_at: datetime | None = (
         datetime.now(timezone.utc) if payload.visibility == "public" else None
     )
     p = Preset(
-        # ID vorab vergeben: der Vorschau-Key (<uid>/previews/<id>.jpg)
+        # ID vorab vergeben: der Vorschau-Key (<uid>/previews/<id>-<v>.jpg)
         # braucht sie schon vor dem INSERT.
         id=uuid4(),
         user_id=user.id,
@@ -191,14 +210,16 @@ async def create_preset(
         published_at=published_at,
     )
     await sync_preset_preview(db, storage, p, force=True)
+    new_key = p.preview_key
     db.add(p)
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        # Vorschau wurde schon hochgeladen -> wieder wegraeumen.
-        await delete_preview_object(storage, p.preview_key)
-        raise HTTPException(status_code=409, detail="Preset-Name bereits vergeben.")
+        # Race (paralleler Request mit gleichem Namen): Vorschau wurde schon
+        # hochgeladen -> wieder wegraeumen.
+        await delete_preview_object(storage, new_key)
+        raise HTTPException(status_code=409, detail=_NAME_TAKEN_DETAIL)
     await db.refresh(p)
     return PresetOut.model_validate(p)
 
@@ -222,6 +243,9 @@ async def update_preset(
     await _validate_preview_image(
         db, user, payload.preview_image_id, public=payload.visibility == "public"
     )
+    # L9: Namenskonflikt VOR dem Vorschau-Build erkennen.
+    if payload.name != p.name:
+        await _ensure_name_free(db, user, payload.name, exclude_id=p.id)
     p.name = payload.name
     p.adjustments = payload.adjustments.model_dump()
     p.masks = [m.model_dump() for m in payload.masks]
@@ -242,7 +266,7 @@ async def update_preset(
         raise HTTPException(
             status_code=409,
             detail=(
-                "Preset wurde wegen Meldungen zurueckgezogen — bitte den"
+                "Preset wurde wegen Meldungen zurückgezogen — bitte den"
                 " Selfhost-Betreiber kontaktieren."
             ),
         )
@@ -260,13 +284,18 @@ async def update_preset(
             p.published_at = datetime.now(timezone.utc)
     else:
         p.published_at = None
+    previous_key = p.preview_key
     stale_key = await sync_preset_preview(db, storage, p, force=regenerate)
+    new_key = p.preview_key if p.preview_key != previous_key else None
     try:
         await db.commit()
     except IntegrityError:
         await db.rollback()
-        raise HTTPException(status_code=409, detail="Preset-Name bereits vergeben.")
-    # Erst nach erfolgreichem Commit: zurueckgezogene Vorschau loeschen.
+        # Neue (versionierte) Vorschau wieder weg; die alte ist unberuehrt
+        # und bleibt referenziert.
+        await delete_preview_object(storage, new_key)
+        raise HTTPException(status_code=409, detail=_NAME_TAKEN_DETAIL)
+    # Erst nach erfolgreichem Commit: abgeloeste Vorschau loeschen.
     await delete_preview_object(storage, stale_key)
     await db.refresh(p)
     return PresetOut.model_validate(p)

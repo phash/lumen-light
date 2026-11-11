@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it, vi } from "vitest";
 
 import type { ToneCurve } from "../src/editor/adjustments";
 import ToneCurvePanel, { largestGapMidpoint } from "../src/editor/ToneCurvePanel";
@@ -75,5 +75,43 @@ describe("ToneCurvePanel Tastatur", () => {
 
   it("largestGapMidpoint liefert die Mitte der groessten Luecke", () => {
     expect(largestGapMidpoint(CURVE)).toBeCloseTo(0.25);
+  });
+});
+
+describe("ToneCurvePanel Klick auf Punkt", () => {
+  // jsdom kennt kein Pointer-Capture.
+  beforeAll(() => {
+    const proto = Element.prototype as unknown as Record<string, unknown>;
+    proto.setPointerCapture ??= () => {};
+    proto.releasePointerCapture ??= () => {};
+  });
+
+  it("Klick auf einen Punkt legt keinen neuen Punkt an", () => {
+    const { onAddPoint } = renderPanel();
+    const p = screen.getByTestId("tone-curve-point-1");
+    fireEvent.pointerDown(p, { pointerId: 1 });
+    fireEvent.pointerUp(screen.getByTestId("tone-curve-svg"), { pointerId: 1 });
+    fireEvent.click(p);
+    expect(onAddPoint).not.toHaveBeenCalled();
+  });
+
+  it("Click am SVG nach Drag eines Punkts legt keinen Punkt an", () => {
+    const { onAddPoint } = renderPanel();
+    const svg = screen.getByTestId("tone-curve-svg");
+    fireEvent.pointerDown(screen.getByTestId("tone-curve-point-1"), { pointerId: 1 });
+    fireEvent.pointerUp(svg, { pointerId: 1 });
+    fireEvent.click(svg);
+    expect(onAddPoint).not.toHaveBeenCalled();
+  });
+
+  it("Klick auf freie Flaeche legt weiterhin einen Punkt an", () => {
+    const { onAddPoint } = renderPanel();
+    const svg = screen.getByTestId("tone-curve-svg");
+    fireEvent.pointerDown(screen.getByTestId("tone-curve-point-1"), { pointerId: 1 });
+    fireEvent.pointerUp(svg, { pointerId: 1 });
+    fireEvent.click(svg);
+    fireEvent.pointerDown(svg, { pointerId: 2 });
+    fireEvent.click(svg, { clientX: 10, clientY: 10 });
+    expect(onAddPoint).toHaveBeenCalledTimes(1);
   });
 });

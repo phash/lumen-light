@@ -23,8 +23,10 @@ Zusaetzlich (Security-Review 2026-10):
   storage_purges). Jede Loeschung merkt ihren Prefix vor; faellig erst ab
   not_before (nach Ablauf der Upload-Policy), damit spaete Staging-Uploads
   mit erfasst werden.
-- `prune_retention()` (Review 2026-11): erledigtes Feedback und alte
-  Marketplace-Meldungen nach Ablauf der Retention-Frist loeschen.
+- `prune_retention()` (Review 2026-11): Feedback, Marketplace-Meldungen und
+  Apply-Dedupe-Eintraege nach Ablauf der Retention-Fristen loeschen.
+- `retry_keycloak_deletions()` (Review 2026-11 r2): ausstehende KC-Account-
+  Loeschungen aus DELETE /me mit exponentiellem Backoff wiederholen.
 
 Robustheit: Kandidaten werden per FOR UPDATE SKIP LOCKED gesperrt (kein
 Wettlauf mit confirm/DELETE oder einem parallelen Janitor-Lauf), geloescht
@@ -36,15 +38,44 @@ Alle Funktionen sind async und werden von `backend/scripts/janitor.py`
 """
 from __future__ import annotations
 
+import asyncio
+import logging
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import keycloak_admin
 from app.config import settings
-from app.models import Feedback, Image, PresetReport, StoragePurge, User
+from app.moderation import REPORT_AUTOHIDE_THRESHOLD
+from app.models import (
+    Feedback,
+    Image,
+    KeycloakDeletion,
+    Preset,
+    PresetApply,
+    PresetReport,
+    StoragePurge,
+    User,
+)
 from app.storage import StorageService
+
+
+logger = logging.getLogger(__name__)
+
+__all__ = [
+    "REPORT_AUTOHIDE_THRESHOLD",
+    "KEYCLOAK_DELETE_MAX_ATTEMPTS",
+    "keycloak_retry_delay",
+    "pending_ttl",
+    "prune_pending_uploads",
+    "prune_retention",
+    "retry_keycloak_deletions",
+    "retry_storage_purges",
+    "sweep_stale_staging",
+]
 
 
 # Obergrenze pro Lauf — haelt Sperren und Laufzeit klein, Rest im naechsten Lauf.
@@ -112,7 +143,28 @@ async def prune_pending_uploads(
         done.append(image.id)
 
     db_deleted = 0
+    stale_previews: list[str] = []
     if done:
+        # Vom Bild abgeleitete Marketplace-Vorschauen mit wegraeumen:
+        # preview_image_id leert die FK (SET NULL), preview_key nicht —
+        # sonst zeigte der Marketplace weiter ein Motiv eines geloeschten
+        # Bildes.
+        rows = (
+            await db.execute(
+                select(Preset.id, Preset.preview_key).where(
+                    Preset.preview_image_id.in_(done),
+                    Preset.preview_key.is_not(None),
+                ).with_for_update()
+            )
+        ).all()
+        stale_previews = [key for _pid, key in rows if key]
+        if rows:
+            await db.execute(
+                update(Preset)
+                .where(Preset.id.in_([pid for pid, _ in rows]))
+                .values(preview_key=None)
+                .execution_options(synchronize_session="fetch")
+            )
         # WHERE upload_state: nur loeschen, was (noch) haengt.
         res = await db.execute(
             delete(Image)
@@ -122,6 +174,14 @@ async def prune_pending_uploads(
         db_deleted = int(res.rowcount or 0)  # type: ignore[attr-defined]
     # Commit auch ohne Loeschung: gibt die Row-Sperren frei.
     await db.commit()
+    # Erst nach dem Commit: Vorschau-Objekte best effort loeschen (ein Rest
+    # unter <uid>/previews/ ist unreferenziert, faellt spaetestens beim
+    # Prefix-Purge weg).
+    for key in stale_previews:
+        try:
+            storage.delete(key)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Janitor: Vorschau %s nicht geloescht: %s", key, exc)
 
     return PruneResult(
         candidates=len(candidates),
@@ -242,32 +302,172 @@ async def retry_storage_purges(
 class RetentionResult:
     feedback_deleted: int
     reports_deleted: int
+    applies_deleted: int = 0
 
 
 async def prune_retention(
     db: AsyncSession, *, now: datetime | None = None
 ) -> RetentionResult:
-    """DSGVO-Speicherbegrenzung: erledigtes (closed) Feedback, dessen letzte
-    Aenderung aelter als feedback_retention_days ist, und Marketplace-
-    Meldungen aelter als report_retention_days loeschen. Offenes Feedback
-    bleibt, bis es bearbeitet wurde. presets.report_count bleibt als
-    denormalisierter Moderationsstand unveraendert."""
+    """DSGVO-Speicherbegrenzung.
+
+    Feedback:
+    - erledigt (closed), letzte Aenderung aelter als feedback_retention_days;
+    - anonymisiert (user_id NULL, Account geloescht), angelegt vor mehr als
+      feedback_retention_days — niemand kann mehr antworten;
+    - JEDER Status, angelegt vor mehr als feedback_max_age_days (L14) —
+      liegengebliebenes offenes Feedback waechst sonst unbegrenzt.
+
+    Marketplace-Meldungen (aelter als report_retention_days) nur bei
+    NICHT-oeffentlichen Presets unterhalb der Auto-Hide-Schwelle. Begruendung:
+    - Die Meldung dient als Dedupe (eine pro Reporter+Preset). Wuerde sie bei
+      einem oeffentlichen Preset geloescht, koennte derselbe User erneut
+      melden und report_count stiege durch denselben Reporter.
+    - Ein privates Preset kann nicht gemeldet werden; erst nach erneutem
+      Veroeffentlichen sind neue Meldungen moeglich (neue Veroeffentlichung).
+    - Auto-versteckte Presets (report_count >= Schwelle) behalten ihre
+      Meldungen als Moderationsgrundlage, bis der Admin sie verwirft
+      (clear-reports loescht sie) oder das Preset geloescht wird (Cascade).
+    presets.report_count bleibt als denormalisierter Moderationsstand
+    unveraendert.
+
+    preset_applies (L2): nur der aktuelle Tag wird fuer das Apply-Dedupe
+    gebraucht — aeltere Eintraege (personenbezogenes Nutzungsprotokoll)
+    werden geloescht."""
     current = now or datetime.now(timezone.utc)
+    fb_cutoff = current - timedelta(days=settings.feedback_retention_days)
+    fb_max_cutoff = current - timedelta(days=settings.feedback_max_age_days)
     fb = await db.execute(
         delete(Feedback).where(
-            Feedback.status == "closed",
-            Feedback.updated_at
-            < current - timedelta(days=settings.feedback_retention_days),
+            or_(
+                (Feedback.status == "closed") & (Feedback.updated_at < fb_cutoff),
+                Feedback.user_id.is_(None) & (Feedback.created_at < fb_cutoff),
+                Feedback.created_at < fb_max_cutoff,
+            )
         ).execution_options(synchronize_session="fetch")
+    )
+    prunable_presets = select(Preset.id).where(
+        Preset.visibility != "public",
+        Preset.report_count < REPORT_AUTOHIDE_THRESHOLD,
     )
     rep = await db.execute(
         delete(PresetReport).where(
             PresetReport.created_at
             < current - timedelta(days=settings.report_retention_days),
+            PresetReport.preset_id.in_(prunable_presets),
         ).execution_options(synchronize_session="fetch")
+    )
+    # Gleiche Tagesdefinition wie beim INSERT (DB-current_date), ausser der
+    # Caller gibt einen Zeitpunkt vor.
+    today = current.date() if now is not None else func.current_date()
+    app_res = await db.execute(
+        delete(PresetApply)
+        .where(PresetApply.day < today)
+        .execution_options(synchronize_session=False)
     )
     await db.commit()
     return RetentionResult(
         feedback_deleted=int(fb.rowcount or 0),  # type: ignore[attr-defined]
         reports_deleted=int(rep.rowcount or 0),  # type: ignore[attr-defined]
+        applies_deleted=int(app_res.rowcount or 0),  # type: ignore[attr-defined]
     )
+
+
+# ----- Keycloak-Loeschungen (M2) -----
+
+# Danach gibt der Janitor auf (Row bleibt fuer manuelle Nacharbeit stehen
+# und wird in der Statistik als givenUp gezaehlt -> Alerting).
+KEYCLOAK_DELETE_MAX_ATTEMPTS = 50
+_KC_BACKOFF_BASE = timedelta(minutes=1)
+_KC_BACKOFF_MAX = timedelta(hours=24)
+
+
+def keycloak_retry_delay(attempts: int) -> timedelta:
+    """Exponentieller Backoff nach `attempts` Fehlversuchen: 1, 2, 4, ...
+    Minuten, gedeckelt auf 24 h."""
+    exponent = max(attempts - 1, 0)
+    if exponent >= 20:
+        return _KC_BACKOFF_MAX
+    return min(_KC_BACKOFF_BASE * (2**exponent), _KC_BACKOFF_MAX)
+
+
+@dataclass
+class KeycloakRetryResult:
+    configured: bool
+    candidates: int
+    deleted: int
+    errors: int
+    given_up: int
+
+
+async def retry_keycloak_deletions(
+    db: AsyncSession,
+    *,
+    now: datetime | None = None,
+    attempt: Callable[[str], str | None] | None = None,
+) -> KeycloakRetryResult:
+    """Faellige Vormerkungen (next_attempt_at <= now, attempts < Maximum)
+    erneut gegen die KC-Admin-API loeschen. Erfolg (204/404) -> Row weg;
+    Fehler -> attempts+1, last_error, next_attempt_at per Backoff. Ohne
+    konfigurierten Service-Account bleibt alles stehen."""
+    current = now or datetime.now(timezone.utc)
+    given_up = int(
+        (
+            await db.execute(
+                select(func.count())
+                .select_from(KeycloakDeletion)
+                .where(KeycloakDeletion.attempts >= KEYCLOAK_DELETE_MAX_ATTEMPTS)
+            )
+        ).scalar_one()
+    )
+    if not keycloak_admin.is_configured():
+        return KeycloakRetryResult(False, 0, 0, 0, given_up)
+    run = attempt or keycloak_admin.attempt_delete_user
+    rows = list(
+        (
+            await db.execute(
+                select(KeycloakDeletion)
+                .where(
+                    KeycloakDeletion.next_attempt_at <= current,
+                    KeycloakDeletion.attempts < KEYCLOAK_DELETE_MAX_ATTEMPTS,
+                )
+                .order_by(KeycloakDeletion.next_attempt_at)
+                .limit(BATCH_SIZE)
+                .with_for_update(skip_locked=True)
+            )
+        ).scalars().all()
+    )
+    deleted = 0
+    errors = 0
+    for row in rows:
+        sub = row.keycloak_sub
+        try:
+            # Blockierendes httpx -> Thread, damit der Loop frei bleibt.
+            error = await asyncio.to_thread(run, sub)
+        except Exception as exc:  # noqa: BLE001 — naechster Lauf
+            error = f"{type(exc).__name__}: {exc}"
+        cond = KeycloakDeletion.keycloak_sub == sub
+        if error is None:
+            await db.execute(
+                delete(KeycloakDeletion)
+                .where(cond)
+                .execution_options(synchronize_session="fetch")
+            )
+            deleted += 1
+            continue
+        attempts = row.attempts + 1
+        await db.execute(
+            update(KeycloakDeletion)
+            .where(cond)
+            .values(
+                attempts=attempts,
+                last_error=error[:500],
+                next_attempt_at=current + keycloak_retry_delay(attempts),
+            )
+            .execution_options(synchronize_session="fetch")
+        )
+        errors += 1
+        if attempts >= KEYCLOAK_DELETE_MAX_ATTEMPTS:
+            given_up += 1
+            logger.error("KC-Loeschung nach %d Versuchen aufgegeben", attempts)
+    await db.commit()
+    return KeycloakRetryResult(True, len(rows), deleted, errors, given_up)

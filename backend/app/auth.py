@@ -272,7 +272,8 @@ class _JwkCache:
 
     def __init__(self) -> None:
         self._keys_by_kid: dict[str, dict[str, Any]] = {}
-        self._fetched_at: float = 0.0
+        # -inf = nie geladen: gilt unabhaengig von der Host-Uptime als abgelaufen.
+        self._fetched_at: float = float("-inf")
         self._failed_at: float | None = None
         self._lock = threading.Lock()
 
@@ -318,31 +319,54 @@ class _JwkCache:
             return None
         return self._keys_by_kid.get(kid)
 
+    def _fallback(self, kid: str) -> dict[str, Any]:
+        """Kein (erfolgreicher) Abruf moeglich: gecachten Key nutzen, falls
+        er noch frisch oder innerhalb der Gnadenfrist ist. Sonst sofort
+        abweisen — 401, wenn der Cache frisch ist und nur der kid fehlt
+        (gefaelschtes Token), 503, wenn der Cache leer/abgelaufen ist."""
+        jwk = self._keys_by_kid.get(kid)
+        if jwk is not None and (not self._is_expired() or self._within_stale_grace()):
+            return jwk
+        if not self._is_expired():
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token-Signatur konnte nicht verifiziert werden (kid unbekannt).",
+            )
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Anmeldedienst vorübergehend nicht erreichbar.",
+        )
+
+    def _needs_fetch(self, kid: str) -> bool:
+        return self._is_expired() or kid not in self._keys_by_kid
+
     def get(self, kid: str) -> dict[str, Any]:
-        if self._is_expired() or kid not in self._keys_by_kid:
-            with self._lock:
-                # Double-Checked: ein paralleler Thread hat evtl. schon geladen.
-                if self._is_expired():
-                    stale_ok = kid in self._keys_by_kid and self._within_stale_grace()
-                    if stale_ok and self._in_failure_backoff():
-                        # Letzter Abruf ist eben erst gescheitert: alten Key
-                        # nutzen, ohne Keycloak erneut anzufragen.
-                        return self._keys_by_kid[kid]
-                    try:
-                        self._fetch()
-                        self._failed_at = None
-                    except HTTPException:
-                        self._failed_at = time.monotonic()
-                        # Keycloak kurz weg, Key aber (abgelaufen) im Cache:
-                        # innerhalb der Gnadenfrist weiter mit dem alten Key
-                        # statt alle User auszusperren; danach fail closed.
-                        if not stale_ok:
-                            raise
-                elif kid not in self._keys_by_kid and (
-                    time.monotonic() - self._fetched_at
-                    >= self.KID_MISS_REFETCH_SECONDS
-                ):
-                    self._fetch()
+        if not self._needs_fetch(kid):
+            return self._keys_by_kid[kid]
+        # Backoff VOR dem Lock pruefen: waehrend eines Keycloak-Ausfalls
+        # sollen Requests nicht hintereinander am Lock warten.
+        if self._in_failure_backoff():
+            return self._fallback(kid)
+        with self._lock:
+            # Double-Checked: ein paralleler Thread hat evtl. schon geladen
+            # oder ist eben gescheitert.
+            if not self._needs_fetch(kid):
+                return self._keys_by_kid[kid]
+            if self._in_failure_backoff():
+                return self._fallback(kid)
+            if not self._is_expired() and (
+                time.monotonic() - self._fetched_at < self.KID_MISS_REFETCH_SECONDS
+            ):
+                # kid-Miss bei frischem Cache: gedrosselt, kein Abruf.
+                return self._fallback(kid)
+            try:
+                self._fetch()
+            except HTTPException:
+                # Jeder Fehlschlag (Kaltstart, Expiry, kid-Miss) startet den
+                # Backoff — sonst loest jeder Request einen neuen Abruf aus.
+                self._failed_at = time.monotonic()
+                return self._fallback(kid)
+            self._failed_at = None
         if kid not in self._keys_by_kid:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
@@ -353,7 +377,7 @@ class _JwkCache:
     def reset(self) -> None:
         """Fuer Tests: Cache nach Container-Restart invalidieren."""
         self._keys_by_kid = {}
-        self._fetched_at = 0.0
+        self._fetched_at = float("-inf")
         self._failed_at = None
 
 

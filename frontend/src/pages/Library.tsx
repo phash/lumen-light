@@ -37,9 +37,11 @@ export default function Library() {
   const [batchOpen, setBatchOpen] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   // Zweistufiges Loeschen: erst Klick auf „Löschen" merkt sich die ID, der
-  // zweite Klick auf „Wirklich löschen?" loescht tatsaechlich. Schuetzt vor
+  // zweite Klick auf das bestaetigende „Löschen" loescht tatsaechlich. Schuetzt vor
   // Fehlklick — das Original im Cloud-Speicher ist unwiderruflich weg.
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
+  // Nur Ladefehler bieten „Erneut versuchen" an (Upload/Delete nicht).
+  const [loadFailed, setLoadFailed] = useState(false);
 
   const toggleSelected = (id: string) => {
     setToast(null);
@@ -55,8 +57,10 @@ export default function Library() {
     try {
       setImages(await api.listImages("ready"));
       setError(null);
+      setLoadFailed(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Liste laden fehlgeschlagen");
+      setLoadFailed(true);
     } finally {
       setLoaded(true);
     }
@@ -85,10 +89,16 @@ export default function Library() {
   const onDelete = async (id: string) => {
     setError(null);
     setConfirmDeleteId(null);
+    // Fokus-Ziel nach dem Entfernen der Zeile: naechste Zeile, sonst
+    // vorherige, sonst die Ueberschrift — sonst landet der Fokus im Body.
+    const idx = images.findIndex((i) => i.id === id);
+    const neighbor = images[idx + 1] ?? images[idx - 1];
     try {
       await api.deleteImage(id);
+      requestFocus(neighbor ? `image-delete-${neighbor.id}` : "library-heading");
       await refresh();
     } catch (err) {
+      requestFocus(`image-delete-${id}`);
       setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
     }
   };
@@ -107,7 +117,9 @@ export default function Library() {
 
   return (
     <section data-testid="page-library" className="p-8">
-      <h1 className="text-3xl">Bibliothek</h1>
+      <h1 data-testid="library-heading" tabIndex={-1} className="text-3xl outline-none">
+        Bibliothek
+      </h1>
       <p className="mt-2 text-stone-400">
         Optionaler Cloud-Speicher: Bilder hier hochladen, um sie auf einem zweiten
         Gerät weiterzubearbeiten. Pixel laufen direkt vom Browser zum Storage —
@@ -151,9 +163,21 @@ export default function Library() {
       </div>
 
       {error && (
-        <p data-testid="library-error" role="alert" className="mt-4 text-red-400">
-          {error}
-        </p>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <p data-testid="library-error" role="alert" className="text-red-400">
+            {error}
+          </p>
+          {loadFailed && (
+            <button
+              type="button"
+              data-testid="library-retry"
+              onClick={() => void refresh()}
+              className="text-xs uppercase tracking-[0.2em] border border-stone-700 px-3 py-1 text-stone-200 hover:border-amber-300/40 hover:text-amber-200"
+            >
+              Erneut versuchen
+            </button>
+          )}
+        </div>
       )}
 
       {images.length > 0 && (
@@ -213,12 +237,14 @@ export default function Library() {
               </button>
               {confirmDeleteId === img.id ? (
                 <span className="flex items-center gap-2">
+                  <span className="text-xs text-stone-300">Endgültig löschen?</span>
                   <AutoFocusButton
                     data-testid={`image-delete-confirm-${img.id}`}
                     onClick={() => void onDelete(img.id)}
+                    aria-label={`„${img.originalFilename}“ endgültig löschen`}
                     className="text-red-400 hover:text-red-300"
                   >
-                    Wirklich löschen?
+                    Löschen
                   </AutoFocusButton>
                   <button
                     type="button"

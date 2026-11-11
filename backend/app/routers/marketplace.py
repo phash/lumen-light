@@ -7,7 +7,9 @@ Sicherheitsmodell:
 - Apply, Fork und Report brauchen weiterhin einen authentifizierten User
   (current_user) und sind ratelimitiert.
 - Auto-Hide bei report_count >= 3 setzt das Preset still auf private
-  zurueck — Creator-Nachricht kommt erst mit SMTP (Backlog).
+  zurueck, entfernt die Vorschau und sperrt den Creator fuer weitere
+  Veroeffentlichungen (users.publish_blocked_until, app/moderation.py) —
+  Creator-Nachricht kommt erst mit SMTP (Backlog).
 """
 import base64
 import binascii
@@ -24,8 +26,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.auth import current_user
 from app.config import settings
 from app.database import get_db
+from app.moderation import REPORT_AUTOHIDE_THRESHOLD, block_publishing
 from app.models import Preset, PresetApply, PresetReport, User
+from app.previews import clear_preview, delete_preview_object
 from app.rate_limit import limiter
+from app.routers.presets import ensure_preset_quota
 from app.schemas import (
     Adjustments,
     MarketplaceApplyOut,
@@ -43,7 +48,6 @@ from app.storage import StorageService, get_storage
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-REPORT_AUTOHIDE_THRESHOLD = 3
 PAGE_LIMIT_DEFAULT = 24
 PAGE_LIMIT_MAX = 60
 # Spaltenlaenge presets.name (String(80)) — Fork-Namen muessen hineinpassen.
@@ -235,9 +239,7 @@ async def fork_marketplace_preset(
     db: AsyncSession = Depends(get_db),
 ) -> PresetOut:
     src, _ = await _load_public_preset(db, preset_id)
-    # Lazy-Import: presets importiert dieses Modul (REPORT_AUTOHIDE_THRESHOLD).
-    from app.routers.presets import ensure_preset_quota
-
+    # Kontingent inkl. Sperre der User-Row (race-frei, L5).
     await ensure_preset_quota(db, user)
     # INSERT ... ON CONFLICT DO NOTHING auf uq_presets_user_name statt
     # "SELECT pruefen, dann INSERT": parallele Forks desselben Presets
@@ -285,6 +287,7 @@ async def report_marketplace_preset(
     payload: PresetReportIn,
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
 ) -> None:
     preset, _ = await _load_public_preset(db, preset_id)
     # Eigene Presets melden ist sinnlos (und wuerde den eigenen Report-Count
@@ -332,10 +335,16 @@ async def report_marketplace_preset(
         )
     ).scalar_one()
     locked.report_count = int(count)
+    stale_preview: str | None = None
     if count >= REPORT_AUTOHIDE_THRESHOLD and locked.visibility == "public":
         locked.visibility = "private"
         locked.published_at = None
+        # L4: oeffentliche Vorschau mit zurueckziehen (Objekt nach Commit).
+        stale_preview = clear_preview(locked)
+        # L3: Sperre am Creator, nicht am Preset.
+        await block_publishing(db, locked.user_id)
         logger.warning(
             "preset %s auto-hidden after %d reports", locked.id, count
         )
     await db.commit()
+    await delete_preview_object(storage, stale_preview)

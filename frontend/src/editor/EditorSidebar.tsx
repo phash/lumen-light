@@ -1,5 +1,4 @@
-import { useState } from "react";
-
+import { useEffect, useRef, useState } from "react";
 
 import {
   ADJUSTMENTS,
@@ -27,6 +26,33 @@ import { type AspectRatio } from "./transform";
 function maskTypeLabel(type: "linear" | "radial"): string {
   return type === "linear" ? "Verlauf" : "Radial";
 }
+
+/** Begradigungswinkel in Grad, eine Nachkommastelle (Anzeige + aria-valuetext). */
+function straightenDegrees(radians: number): number {
+  return Math.round(((radians * 180) / Math.PI) * 10) / 10;
+}
+
+/** Vorzeichenbehafteter Prozentwert fuer Objektiv-Slider (-100 … +100). */
+function signedPercent(v: number): string {
+  const n = Math.round(v * 100);
+  return n > 0 ? `+${n} %` : `${n} %`;
+}
+
+/** aria-valuetext fuer Objektiv-Slider: Prozent plus Bedeutung der Richtung. */
+export function lensValueText(
+  v: number,
+  negative: string,
+  positive: string,
+): string {
+  const n = Math.round(v * 100);
+  if (n === 0) return "0 % (keine Korrektur)";
+  return `${signedPercent(v)} (${n < 0 ? negative : positive})`;
+}
+
+// Selektor fuer Dialoge, vor denen das mobile Regler-Sheet weichen muss.
+// Die Onboarding-Tour bleibt aussen vor: sie verweist bewusst auf die Regler.
+const DIALOG_SELECTOR =
+  '[aria-modal="true"]:not([data-testid="onboarding-tour"]), [role="dialog"]:not([data-testid="onboarding-tour"])';
 
 interface Props {
   // Histogramm
@@ -116,10 +142,44 @@ export default function EditorSidebar({
   // Mobile (< md): Sidebar als Bottom-Sheet, per Button ein-/ausblendbar.
   // Desktop: immer sichtbar, Breite unveraendert 320px.
   const [mobileOpen, setMobileOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement | null>(null);
+  const asideRef = useRef<HTMLElement | null>(null);
+
+  // Offenes Sheet: Escape schliesst es (Fokus zurueck auf den Toggle), und
+  // sobald ein Dialog erscheint (Presets, Export, Hilfe ...), klappt das
+  // Sheet weg, damit es den Dialog nicht ueberdeckt.
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const close = (refocus: boolean) => {
+      setMobileOpen(false);
+      if (refocus) toggleRef.current?.focus();
+    };
+    const dialogOutsideSheet = (): boolean =>
+      Array.from(document.querySelectorAll(DIALOG_SELECTOR)).some(
+        (el) => !asideRef.current?.contains(el),
+      );
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      // Ein offener Dialog behandelt Escape selbst.
+      if (dialogOutsideSheet()) return;
+      e.stopPropagation();
+      close(true);
+    };
+    document.addEventListener("keydown", onKey, true);
+    const observer = new MutationObserver(() => {
+      if (dialogOutsideSheet()) close(false);
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    return () => {
+      document.removeEventListener("keydown", onKey, true);
+      observer.disconnect();
+    };
+  }, [mobileOpen]);
 
   return (
     <>
     <button
+      ref={toggleRef}
       type="button"
       data-testid="editor-sidebar-toggle"
       aria-expanded={mobileOpen}
@@ -130,15 +190,16 @@ export default function EditorSidebar({
       {mobileOpen ? "Regler schließen" : "Regler"}
     </button>
     <aside
+      ref={asideRef}
       id="editor-sidebar"
       aria-label="Bearbeitungsregler"
       className={`${
         mobileOpen ? "flex" : "hidden"
-      } fixed inset-x-0 bottom-0 z-30 max-h-[70vh] border-t border-stone-800/80 bg-stone-950/95 flex-col md:static md:z-auto md:flex md:max-h-none md:w-[320px] md:border-t-0 md:border-l md:bg-stone-950/60`}
+      } fixed inset-x-0 top-28 z-30 max-h-[calc(100dvh-7rem-9rem)] border-y border-stone-800/80 bg-stone-950/95 flex-col md:static md:z-auto md:flex md:max-h-none md:w-[320px] md:border-y-0 md:border-l md:bg-stone-950/60`}
       data-testid="editor-sidebar"
     >
       <div className="p-4 border-b border-stone-800/60">
-        <div className="text-[10px] uppercase tracking-[0.2em] text-stone-500 mb-2">
+        <div className="text-[10px] uppercase tracking-[0.2em] text-stone-400 mb-2">
           Histogramm
         </div>
         <Histogram canvas={canvasElement} tick={tick} />
@@ -286,37 +347,43 @@ export default function EditorSidebar({
               <option value="16:9">16:9</option>
             </select>
           </label>
-          <label className="block py-1.5">
+          <div className="py-1.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] uppercase tracking-wider text-stone-400">
-                Begradigen ({Math.round((straightenAngle * 180) / Math.PI * 10) / 10}°)
-              </span>
+              <label
+                htmlFor="straighten-slider"
+                className="text-[11px] uppercase tracking-wider text-stone-400"
+              >
+                Begradigen ({straightenDegrees(straightenAngle)}°)
+              </label>
               <button
                 type="button"
                 onClick={onAutoStraighten}
                 data-testid="auto-straighten"
+                aria-label="Automatisch begradigen"
                 className="px-2 py-0.5 text-[10px] uppercase tracking-[0.2em] border border-stone-700 text-stone-400 hover:border-amber-300/40 hover:text-amber-200"
               >
                 Auto
               </button>
             </div>
             <input
+              id="straighten-slider"
               type="range"
               min={-MAX_STRAIGHTEN_RADIANS}
               max={MAX_STRAIGHTEN_RADIANS}
               step={0.001}
               value={straightenAngle}
+              aria-valuetext={`${straightenDegrees(straightenAngle)}°`}
               onChange={(e) => onStraightenChange(Number(e.target.value))}
               onDoubleClick={() => onStraightenChange(0)}
               data-testid="straighten-slider"
               className="mt-1 w-full"
             />
-          </label>
+          </div>
           <button
             type="button"
             onClick={onResetGeometry}
             data-testid="editor-reset-geometry"
-            className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
+            className="w-full mt-2 py-1.5 text-[10px] uppercase tracking-[0.25em] text-stone-400 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40"
           >
             Geometrie zurücksetzen
           </button>
@@ -329,7 +396,7 @@ export default function EditorSidebar({
           testId="lens-section"
         >
           <div
-            className="text-[10px] uppercase tracking-[0.18em] text-stone-500 mb-2"
+            className="text-[10px] uppercase tracking-[0.18em] text-stone-400 mb-2"
             data-testid="lens-profile-status"
           >
             {lensProfileId == null
@@ -348,6 +415,7 @@ export default function EditorSidebar({
               max={1}
               step={0.01}
               value={lensCorrection.distortion}
+              aria-valuetext={lensValueText(lensCorrection.distortion, "Tonnenverzeichnung ausgleichen", "Kissenverzeichnung ausgleichen")}
               onChange={(e) =>
                 onLensCorrectionChange({ distortion: Number(e.target.value) })
               }
@@ -366,6 +434,7 @@ export default function EditorSidebar({
               max={1}
               step={0.01}
               value={lensCorrection.vignette}
+              aria-valuetext={lensValueText(lensCorrection.vignette, "Ränder abdunkeln", "Ränder aufhellen")}
               onChange={(e) =>
                 onLensCorrectionChange({ vignette: Number(e.target.value) })
               }
@@ -387,6 +456,7 @@ export default function EditorSidebar({
               max={1}
               step={0.01}
               value={lensCorrection.tcaR}
+              aria-valuetext={lensValueText(lensCorrection.tcaR, "Korrektur roter Saum", "Korrektur roter Saum")}
               onChange={(e) =>
                 onLensCorrectionChange({ tcaR: Number(e.target.value) })
               }
@@ -408,6 +478,7 @@ export default function EditorSidebar({
               max={1}
               step={0.01}
               value={lensCorrection.tcaB}
+              aria-valuetext={lensValueText(lensCorrection.tcaB, "Korrektur blauer Saum", "Korrektur blauer Saum")}
               onChange={(e) =>
                 onLensCorrectionChange({ tcaB: Number(e.target.value) })
               }
@@ -422,7 +493,7 @@ export default function EditorSidebar({
           type="button"
           onClick={onResetAll}
           data-testid="editor-reset-all"
-          className="w-full mt-2 py-2 text-[10px] uppercase tracking-[0.25em] text-stone-500 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40 transition-colors"
+          className="w-full mt-2 py-2 text-[10px] uppercase tracking-[0.25em] text-stone-400 hover:text-amber-200 border border-stone-800 hover:border-amber-300/40 transition-colors"
         >
           Alles zurücksetzen ({ADJUSTMENTS.length} Slider)
         </button>

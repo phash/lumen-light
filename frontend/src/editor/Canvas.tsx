@@ -136,9 +136,17 @@ export interface CanvasHandle {
   exportFullResCanvas(): FullResExport | null;
 }
 
+/** Meldung bei webglcontextlost — exportiert, damit der Editor genau diese
+ *  Meldung nach erfolgreicher Wiederherstellung wieder entfernen kann. */
+export const CONTEXT_LOST_MESSAGE =
+  "Grafikkontext verloren — die Vorschau wird wiederhergestellt, sobald der Browser es erlaubt. Falls nicht, Bild erneut öffnen.";
+
 interface Props {
   readonly onTick: () => void;
   readonly onError: (message: string) => void;
+  /** Grafikkontext nach Verlust erfolgreich wiederhergestellt — Aufrufer
+   *  entfernt den Kontextverlust-Hinweis. */
+  readonly onRecovered?: () => void;
   /** Wird beim Mount mit dem Canvas-Element aufgerufen. */
   readonly onCanvasMount?: (canvas: HTMLCanvasElement) => void;
   /** Wenn aktiv, wird das volle Bild angezeigt — der Crop-Overlay
@@ -150,7 +158,7 @@ interface Props {
 const PREVIEW_MAX_WIDTH = 1600;
 
 const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
-  { onTick, onError, onCanvasMount, cropMode },
+  { onTick, onError, onRecovered, onCanvasMount, cropMode },
   ref,
 ) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -182,6 +190,13 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
     cropModeRef.current = cropMode;
   }, [cropMode]);
 
+  // Ref statt Effect-Dependency: ein neuer Callback soll den Renderer
+  // nicht neu aufbauen.
+  const onRecoveredRef = useRef(onRecovered);
+  useEffect(() => {
+    onRecoveredRef.current = onRecovered;
+  }, [onRecovered]);
+
   const masksUniforms = useMemo<MasksUniforms>(
     () => buildMasksUniforms(masks),
     [masks],
@@ -201,9 +216,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
       // preventDefault signalisiert, dass wir eine Wiederherstellung wollen.
       e.preventDefault();
       rendererRef.current = null;
-      onError(
-        "Grafikkontext verloren — die Vorschau wird wiederhergestellt, sobald der Browser es erlaubt. Falls nicht, Bild erneut öffnen.",
-      );
+      onError(CONTEXT_LOST_MESSAGE);
     };
     const onRestored = () => {
       try {
@@ -217,6 +230,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           renderState(r, st, cropModeRef.current ? IDENTITY_CROP : st.cropRect);
           onTick();
         }
+        onRecoveredRef.current?.();
       } catch (err) {
         onError(err instanceof Error ? err.message : String(err));
       }

@@ -328,6 +328,9 @@ export default function PresetDialog({
     setError(null);
     setConfirmDeleteId(null);
     setBusy(true);
+    // Die Zeile (und mit ihr der fokussierte Confirm-Button) verschwindet —
+    // Fokus auf die Dialog-Ueberschrift, damit er nicht in den Body faellt.
+    requestFocus("preset-dialog-title");
     try {
       await api.deletePreset(id);
       if (!mountedRef.current) return;
@@ -432,11 +435,18 @@ export default function PresetDialog({
       onClose={onClose}
       testId="preset-dialog"
       labelledBy="preset-dialog-title"
-      backdropClassName="absolute inset-0 z-30 flex items-center justify-center bg-black/60 p-4"
+      backdropClassName="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
       cardClassName="relative w-full max-w-[420px] max-h-[80vh] flex flex-col bg-stone-900 border border-stone-700 text-sm"
     >
         <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
-          <h2 id="preset-dialog-title" className="text-stone-200">Presets</h2>
+          <h2
+            id="preset-dialog-title"
+            data-testid="preset-dialog-title"
+            tabIndex={-1}
+            className="text-stone-200 outline-none"
+          >
+            Presets
+          </h2>
           <button
             type="button"
             data-testid="preset-close"
@@ -506,13 +516,15 @@ export default function PresetDialog({
                             Öffentlich im Marketplace — wird auch dort entfernt.
                           </span>
                         )}
+                        <span className="text-xs text-stone-300">Endgültig löschen?</span>
                         <AutoFocusButton
                           data-testid={`preset-delete-confirm-${p.id}`}
                           onClick={() => void onDelete(p.id)}
                           disabled={busy}
+                          aria-label={`„${p.name}“ endgültig löschen`}
                           className="text-red-400 hover:text-red-300 disabled:opacity-40"
                         >
-                          Wirklich löschen?
+                          Löschen
                         </AutoFocusButton>
                         <button
                           type="button"

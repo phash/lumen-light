@@ -48,4 +48,20 @@ describe("CropOverlay", () => {
     fireEvent.pointerMove(handle, { clientX: 100, clientY: 100, pointerId: 1 });
     expect(onChange).not.toHaveBeenCalled();
   });
+
+  it("Handles sind ehrlich als Ziehpunkte ausgezeichnet, nicht als Buttons", () => {
+    renderOverlay();
+    const handle = screen.getByTestId("crop-handle-se");
+    expect(handle).not.toHaveAttribute("role", "button");
+    expect(handle).toHaveAttribute("aria-roledescription", "Ziehpunkt");
+    expect(handle.getAttribute("aria-label")).toMatch(/verschieben/);
+    expect(screen.queryAllByRole("button")).toHaveLength(0);
+  });
+
+  it("Handles skalieren gegen den Zoom (--overlay-inv-zoom)", () => {
+    renderOverlay();
+    expect(screen.getByTestId("crop-handle-nw").style.transform).toContain(
+      "--overlay-inv-zoom",
+    );
+  });
 });

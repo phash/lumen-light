@@ -100,6 +100,69 @@ Liste der Punkte, die das Projekt zum Scheitern bringen oder verzögern können 
 
 ---
 
+### R9 · Service-Account `lumen-admin` darf alle Realm-User verwalten (akzeptiertes Risiko, Review M3 2026-11)
+
+**Risiko:** `DELETE /me` loescht auch den Keycloak-Account. Dafuer braucht der
+Confidential Client `lumen-admin` die Rolle `realm-management/manage-users`.
+Die erlaubt aber mehr als Loeschen: Passwoerter zuruecksetzen, Required
+Actions setzen, User anlegen/deaktivieren, Sessions beenden — fuer ALLE User
+des Realms `lumen`. Wer das Client-Secret hat, kann also jeden Account
+uebernehmen. Keycloak bietet auch mit Fine-Grained Admin Permissions v2
+(FGAP) keinen Scope "nur loeschen" (`manage` umfasst Loeschen und
+Credential-Reset), eine engere Rolle gibt es nicht.
+
+**Entscheidung:** akzeptiert. DSGVO-Loeschung inkl. IdP-Account wiegt schwerer;
+ein eigener Loesch-Microservice haette dasselbe Secret-Problem.
+
+**Mitigation (von `deploy.sh` Schritt 6a bei jedem Lauf idempotent erzwungen):**
+- Secret liegt nur in `deployment/.env` (chmod 600, von `deploy.sh`/`backup.sh`
+  erzwungen) und in der Env von `lumen-api` — nicht im Repo, nicht im Realm-JSON.
+- Client nur `client_credentials`: `publicClient=false`, `standardFlowEnabled`,
+  `implicitFlowEnabled`, `directAccessGrantsEnabled` = false,
+  `serviceAccountsEnabled=true`. Ein Login als Mensch ueber diesen Client ist
+  nicht moeglich. `deploy.sh` liest die Flags nach dem Merge zurueck und bricht
+  bei Abweichung ab.
+- Access-Token-Lebensdauer 60 s (`access.token.lifespan` am Client), kein
+  Refresh-Token bei client_credentials — ein abgegriffenes Token ist schnell
+  wertlos.
+- Service-Account hat GENAU `realm-management/manage-users`: `deploy.sh`
+  entfernt jede andere Rolle (auch `default-roles-lumen`, die Keycloak jedem
+  Service-Account gibt).
+- Admin-REST-API ist von aussen gesperrt (Caddy/nginx 404 fuer `/auth/admin/*`);
+  die API spricht Keycloak nur intern ueber `lumen-internal` an. Das Secret
+  nuetzt also nur mit Zugriff auf das interne Netz bzw. den Host.
+- Admin-Events sind an (`adminEventsEnabled` + `adminEventsDetailsEnabled` aus
+  `lumen-realm.prod.json`): jede Aktion des Service-Accounts (Passwort-Reset,
+  User-Update) steht im Admin-Event-Log des Realms.
+
+**Offen / Nachschaerfung:** Admin-Events werden nur gespeichert, nicht aktiv
+gemeldet. Sinnvoll waere ein Event-Listener (z.B. `jboss-logging` mit
+Log-Alert oder eigener SPI), der bei `UPDATE`/`ACTION` auf
+`users/*/reset-password` oder `users/*/execute-actions-email` durch den
+Service-Account alarmiert — im Normalbetrieb macht `lumen-admin` nur `DELETE`.
+Secret-Rotation: `kcadm.sh create clients/<id>/client-secret -r lumen` +
+`deploy.sh` (traegt das neue Secret ein und erzeugt `lumen-api` neu).
+
+---
+
+### R10 · Refresh-Token-Rotation bewusst aus (Review L13, 2026-11)
+
+**Risiko:** `revokeRefreshToken=false` — ein abgegriffenes Refresh-Token bleibt
+bis zum Ablauf der SSO-Session nutzbar (Idle 30 min, Max 30 Tage).
+
+**Entscheidung:** Die SPA speichert Tokens pro Tab in `sessionStorage`; alle
+Tabs teilen sich dieselbe Keycloak-Client-Session. Mit Rotation
+(`revokeRefreshToken=true`, `refreshTokenMaxReuse=0`) entwertet der Refresh in
+Tab A das Refresh-Token von Tab B -> Tab B fliegt beim naechsten Silent-Renew
+raus. Deshalb aus. Kompensiert durch kurze Access-Tokens (15 min), Idle-Timeout
+30 min (`ssoSessionIdleTimeout=1800`), Brute-Force-Schutz und CSP (kein
+Token-Abfluss per XSS-Drittskript). Die Werte stehen explizit in
+`lumen-realm.prod.json` und werden von `deploy.sh` bei jedem Lauf gesetzt.
+Rotation wieder einschalten, sobald die SPA Tokens tab-uebergreifend teilt
+(z.B. BroadcastChannel/`localStorage` mit Lock).
+
+---
+
 ## Offene Fragen vor Phase 1
 
 - [ ] Welche Domain wird verwendet? (DNS-Setup, TLS-Cert)

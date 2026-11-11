@@ -73,6 +73,8 @@ describe("Mask-Overlays Tastatur", () => {
     );
     const h = screen.getByTestId("linear-mask-handle-p1");
     expect(h).toHaveAttribute("tabindex", "0");
+    expect(h).toHaveAttribute("aria-roledescription", "Ziehpunkt");
+    expect(h.style.transform).toContain("--overlay-inv-zoom");
     fireEvent.keyDown(h, { key: "ArrowRight", shiftKey: true });
     const [which, uv] = onChangePoint.mock.calls[0] as ["p1" | "p2", { u: number; v: number }];
     expect(which).toBe("p1");

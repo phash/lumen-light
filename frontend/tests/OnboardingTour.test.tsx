@@ -49,6 +49,29 @@ describe("OnboardingTour", () => {
     );
   });
 
+  it("Escape ueberspringt die Tour und erreicht keine anderen window-Listener", () => {
+    const other = vi.fn();
+    // Vor der Tour registriert (wie die Editor-Shortcuts).
+    window.addEventListener("keydown", other);
+    const onClose = vi.fn();
+    render(onClose);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    window.removeEventListener("keydown", other);
+    expect(onClose).toHaveBeenCalledTimes(1);
+    expect(other).not.toHaveBeenCalled();
+  });
+
+  it("Escape bei offenem fremdem Dialog bleibt beim Dialog", () => {
+    const onClose = vi.fn();
+    render(onClose);
+    const dlg = document.createElement("div");
+    dlg.setAttribute("aria-modal", "true");
+    document.body.appendChild(dlg);
+    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    dlg.remove();
+    expect(onClose).not.toHaveBeenCalled();
+  });
+
   it("Skip persistiert als 'dismissed' und ruft onClose", async () => {
     const onClose = vi.fn();
     render(onClose);

@@ -6,7 +6,7 @@ import {
   type CropRect,
   updateCropOnDrag,
 } from "./transform";
-import { HANDLE_HIT_CLASS, nudgeDelta } from "./overlayKeys";
+import { HANDLE_HIT_CLASS, INV_ZOOM_SCALE, nudgeDelta } from "./overlayKeys";
 
 interface Props {
   readonly cropRect: CropRect;
@@ -173,7 +173,8 @@ export default function CropOverlay({
       >
         <div
           data-testid="crop-move"
-          role="button"
+          role="group"
+          aria-roledescription="Zuschnittfläche"
           tabIndex={0}
           aria-label="Zuschnitt verschieben (Pfeiltasten, Shift für größere Schritte)"
           onKeyDown={onHandleKeyDown("move")}
@@ -205,7 +206,8 @@ export default function CropOverlay({
           <div
             key={spec.id}
             data-testid={`crop-handle-${spec.id}`}
-            role="button"
+            role="group"
+            aria-roledescription="Ziehpunkt"
             tabIndex={0}
             aria-label={`${spec.label} verschieben (Pfeiltasten)`}
             onKeyDown={onHandleKeyDown(spec.id)}
@@ -219,6 +221,7 @@ export default function CropOverlay({
               top: `${spec.fy * 100}%`,
               cursor: spec.cursor,
               touchAction: "none",
+              transform: INV_ZOOM_SCALE,
             }}
           >
             {/* Sichtbarer Punkt bleibt klein, Trefferflaeche ist 24px. */}
