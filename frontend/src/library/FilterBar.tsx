@@ -4,13 +4,14 @@
  */
 import { useId } from "react";
 
-import type { ColorLabel, ImageFlag, ImageListQuery, ImageSort } from "../api/client";
+import type { ColorLabelFilter, ImageFlag, ImageListQuery, ImageSort } from "../api/client";
 import { COLOR_LABELS, MAX_RATING } from "./meta";
 import type { LibraryView } from "./viewPrefs";
 
 export interface LibraryFilter {
   minRating: number;
-  colorLabels: ColorLabel[];
+  /** Farben plus "none" (ohne Label); mehrere = ODER. */
+  colorLabels: ColorLabelFilter[];
   flag: ImageFlag | "all";
   sort: ImageSort;
 }
@@ -26,6 +27,13 @@ export const DEFAULT_FILTER: LibraryFilter = {
 export function isFilterActive(f: LibraryFilter): boolean {
   return f.minRating > 0 || f.colorLabels.length > 0 || f.flag !== "all";
 }
+
+/** Stabile Reihenfolge der Farblabel-Filter: Farben wie in der Palette,
+ *  „ohne Label" zuletzt (gleiche URL fuer gleiche Auswahl). */
+export const COLOR_LABEL_FILTER_ORDER: readonly ColorLabelFilter[] = [
+  ...COLOR_LABELS.map((l) => l.key),
+  "none",
+];
 
 export function toListQuery(f: LibraryFilter): ImageListQuery {
   return {
@@ -50,6 +58,10 @@ const FLAG_OPTIONS: ReadonlyArray<{ value: LibraryFilter["flag"]; label: string 
   { value: "reject", label: "Abgelehnt" },
 ];
 
+/** Gueltige Werte (z.B. fuer das Lesen aus der URL). */
+export const SORT_VALUES: readonly ImageSort[] = SORT_OPTIONS.map((o) => o.value);
+export const FLAG_FILTER_VALUES: readonly LibraryFilter["flag"][] = FLAG_OPTIONS.map((o) => o.value);
+
 const selectCls =
   "border border-stone-700 bg-stone-900 px-2 py-1 text-sm text-stone-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 hover:border-stone-500";
 const focusRing =
@@ -67,16 +79,17 @@ export default function FilterBar({
   readonly onViewChange: (view: LibraryView) => void;
 }) {
   const captionId = useId();
-  const toggleLabel = (key: ColorLabel) => {
+  const toggleLabel = (key: ColorLabelFilter) => {
     const has = filter.colorLabels.includes(key);
     onChange({
       ...filter,
       colorLabels: has
         ? filter.colorLabels.filter((l) => l !== key)
         : // Reihenfolge stabil halten (gleiche URL fuer gleiche Auswahl).
-          COLOR_LABELS.map((l) => l.key).filter((k) => k === key || filter.colorLabels.includes(k)),
+          COLOR_LABEL_FILTER_ORDER.filter((k) => k === key || filter.colorLabels.includes(k)),
     });
   };
+  const noLabelOn = filter.colorLabels.includes("none");
 
   return (
     <div
@@ -127,6 +140,27 @@ export default function FilterBar({
               </button>
             );
           })}
+          {/* H2d: Bilder ohne Farblabel (Server: colorLabel=none). */}
+          <button
+            type="button"
+            data-testid="filter-label-none"
+            aria-pressed={noLabelOn}
+            title="Bilder ohne Farblabel"
+            onClick={() => toggleLabel("none")}
+            className={`ml-1 flex h-8 items-center gap-1.5 border px-2 text-xs ${focusRing} ${
+              noLabelOn
+                ? "border-amber-300/70 bg-stone-800 text-stone-100"
+                : "border-transparent text-stone-400 hover:border-stone-700 hover:text-stone-200"
+            }`}
+          >
+            <span
+              aria-hidden="true"
+              className={`block h-3.5 w-3.5 rounded-full border border-dashed ${
+                noLabelOn ? "border-stone-200" : "border-stone-500"
+              }`}
+            />
+            Ohne Label
+          </button>
         </div>
       </div>
 

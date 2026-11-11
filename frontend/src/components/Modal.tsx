@@ -19,6 +19,9 @@ interface ModalProps {
   /** Tasten auf der Karte (inkl. Karte selbst fokussiert, z.B. nach Klick
    *  auf eine nicht-interaktive Flaeche) — fuer Dialog-eigene Kuerzel. */
   readonly onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
+  /** Esc zuerst dem Dialog anbieten (z.B. Lupe: Zoom verlassen).
+   *  true = verarbeitet, der Dialog bleibt offen. */
+  readonly onEscape?: () => boolean;
   readonly children: ReactNode;
 }
 
@@ -45,6 +48,7 @@ export default function Modal({
   cardClassName,
   closeOnBackdrop = true,
   onKeyDown,
+  onEscape,
   children,
 }: ModalProps) {
   const cardRef = useRef<HTMLDivElement | null>(null);
@@ -52,9 +56,11 @@ export default function Modal({
   // onClose eine Effect-Dependency, liefe der Fokus-Effekt bei jedem
   // Parent-Re-Render neu und zoege den Fokus aufs erste Element zurueck.
   const onCloseRef = useRef(onClose);
+  const onEscapeRef = useRef(onEscape);
   useEffect(() => {
     onCloseRef.current = onClose;
-  }, [onClose]);
+    onEscapeRef.current = onEscape;
+  }, [onClose, onEscape]);
 
   useEffect(() => {
     const card = cardRef.current;
@@ -84,6 +90,7 @@ export default function Modal({
         // stopPropagation, damit Editor-Shortcuts (globaler keydown) nicht
         // zusaetzlich feuern, waehrend ein Dialog offen ist.
         e.stopPropagation();
+        if (onEscapeRef.current?.()) return;
         onCloseRef.current();
         return;
       }

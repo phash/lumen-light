@@ -19,15 +19,16 @@ interface ShortcutGroup {
   readonly items: ReadonlyArray<Shortcut>;
 }
 
-/** H2c: Lighttable (Raster + Lupe). Einzeltasten nur bei aktiven
+/** H2c/H2d: Lighttable (Raster/Liste + Lupe). Einzeltasten nur bei aktiven
  *  Einzeltasten-Kuerzeln; jede Aktion hat auch einen Button. */
 const LIBRARY_SHORTCUTS: ShortcutGroup = {
   group: "Bibliothek",
   items: [
-    { keys: "← → ↑ ↓", desc: "Im Raster bewegen" },
-    { keys: "Leertaste", desc: "Bild auswählen (Raster)" },
+    { keys: "← → ↑ ↓", desc: "Im Raster bewegen (Liste: ↑ ↓)" },
+    { keys: "Leertaste", desc: "Bild auswählen (Raster/Liste)" },
     { keys: "Enter", desc: "Lupe öffnen" },
     { keys: "← / →", desc: "In der Lupe blättern" },
+    { keys: "Z", desc: "Lupe: Zoom 1:1 ein/aus" },
     { keys: "0 – 5", desc: "Sterne setzen (0 = keine)" },
     { keys: "6 / 7 / 8 / 9", desc: "Label Rot / Gelb / Grün / Blau" },
     { keys: "P", desc: "Als ausgewählt markieren" },
@@ -35,7 +36,7 @@ const LIBRARY_SHORTCUTS: ShortcutGroup = {
     { keys: "U", desc: "Markierung entfernen" },
     { keys: "E", desc: "Im Editor öffnen" },
     { keys: "C", desc: "Zwei ausgewählte Bilder vergleichen" },
-    { keys: "Esc", desc: "Lupe / Vergleich schließen" },
+    { keys: "Esc", desc: "Zoom verlassen, sonst Lupe / Vergleich schließen" },
   ],
 };
 

@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useApi } from "../api/use-api";
 import type { Image, ImageMetaPatch } from "../api/client";
@@ -17,27 +17,15 @@ import FilterBar, {
   toListQuery,
   type LibraryFilter,
 } from "../library/FilterBar";
-import ImageActions from "../library/ImageActions";
-import ImageThumb from "../library/ImageThumb";
 import LibraryGrid from "../library/LibraryGrid";
+import LibraryList from "../library/LibraryList";
+import { filterFromParams, filterToParams } from "../library/filterUrl";
 import Loupe from "../library/Loupe";
 import { ColorLabelPicker, FlagButtons, StarRating } from "../library/MetaControls";
 import { isShortcutBlocked, libraryKeyAction } from "../library/libraryKeys";
 import { announcePatch, metaOf, type ImageMeta } from "../library/meta";
 import { getLibraryView, setLibraryView, type LibraryView } from "../library/viewPrefs";
 import BatchApplyModal from "./BatchApplyModal";
-
-function formatSize(bytes: number | null): string {
-  if (bytes == null) return "—";
-  const units = ["B", "KB", "MB", "GB"];
-  let n = bytes;
-  let i = 0;
-  while (n >= 1024 && i < units.length - 1) {
-    n /= 1024;
-    i += 1;
-  }
-  return `${n.toFixed(n >= 10 ? 0 : 1)} ${units[i]}`;
-}
 
 function withMeta(image: Image, meta: Partial<ImageMeta>): Image {
   return { ...image, ...meta };
@@ -63,8 +51,15 @@ export default function Library() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   // Nur Ladefehler bieten „Erneut versuchen" an (Upload/Delete nicht).
   const [loadFailed, setLoadFailed] = useState(false);
-  // H2b: Filter/Sortierung (serverseitig) und Ansicht (gemerkt).
-  const [filter, setFilter] = useState<LibraryFilter>(DEFAULT_FILTER);
+  // H2b/H2d: Filter/Sortierung (serverseitig) leben in der URL, damit
+  // Neuladen und Zurueck aus dem Editor sie behalten; Ansicht (gemerkt) nicht.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paramsKey = searchParams.toString();
+  const filter = useMemo(() => filterFromParams(new URLSearchParams(paramsKey)), [paramsKey]);
+  // replace: Filterklicks fuellen den Verlauf nicht; die URL des Eintrags
+  // traegt den Stand trotzdem (Zurueck aus dem Editor landet darauf).
+  const setFilter = (next: LibraryFilter) =>
+    setSearchParams((prev) => filterToParams(next, prev), { replace: true });
   const [view, setView] = useState<LibraryView>(() => getLibraryView());
   // aria-live-Ansage; `n` erzwingt eine neue Ansage bei gleichem Text.
   const [announcement, setAnnouncement] = useState<{ text: string; n: number }>({
@@ -75,6 +70,8 @@ export default function Library() {
   const [loupeId, setLoupeId] = useState<string | null>(null);
   const [compareOpen, setCompareOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
+  // Lupe per Taste geoeffnet -> Fokus beim Schliessen zurueck auf die Zeile.
+  const loupeFromKey = useRef(false);
 
   // Nur die juengste Liste gewinnt (schnelles Umschalten der Filter).
   const loadSeq = useRef(0);
@@ -220,13 +217,26 @@ export default function Library() {
     setConfirmDeleteId(null);
     requestFocus(`image-delete-${id}`);
   };
+  // H2d: Original fuer den 1:1-Zoom der Lupe (signierte URL, nur bei Bedarf).
+  const loadOriginalUrl = useCallback(
+    async (id: string) => (await api.getImageUrl(id)).url,
+    [api],
+  );
   const openInEditor = (id: string) => void navigate(`/editor?image=${id}`);
 
-  /** H2c: Lupe schliessen — Fokus auf die Kachel (Raster) bzw. den
-   *  Lupen-Button (Liste) des zuletzt gezeigten Bildes. */
+  /** H2c/H2d: Lupe oeffnen; `fromKey` = per Enter auf Kachel/Zeile. */
+  const openLoupe = (id: string, fromKey: boolean) => {
+    loupeFromKey.current = fromKey;
+    setLoupeId(id);
+  };
+
+  /** H2c: Lupe schliessen — Fokus auf die Kachel (Raster) bzw. in der
+   *  Liste auf die Zeile (per Enter geoeffnet) oder den Lupen-Button des
+   *  zuletzt gezeigten Bildes. */
   const closeLoupe = (currentId: string) => {
     setLoupeId(null);
-    requestFocus(view === "grid" ? `image-tile-${currentId}` : `image-loupe-${currentId}`);
+    if (view === "grid") requestFocus(`image-tile-${currentId}`);
+    else requestFocus(loupeFromKey.current ? `image-row-${currentId}` : `image-loupe-${currentId}`);
   };
 
   // Vergleich: genau zwei ausgewaehlte Bilder in Anzeige-Reihenfolge.
@@ -236,8 +246,9 @@ export default function Library() {
       ? [comparePair[0], comparePair[1]]
       : null;
 
-  /** H2c: Einzeltasten auf einer Raster-Kachel. true = verarbeitet. */
-  const onTileKey = (image: Image, event: KeyboardEvent<HTMLElement>): boolean => {
+  /** H2c/H2d: Einzeltasten auf einer Raster-Kachel oder Listen-Zeile.
+   *  true = verarbeitet. */
+  const onImageKey = (image: Image, event: KeyboardEvent<HTMLElement>): boolean => {
     if (!getSingleKeyShortcutsEnabled()) return false;
     if (isShortcutBlocked(event.target, document)) return false;
     const action = libraryKeyAction(event);
@@ -246,7 +257,7 @@ export default function Library() {
         void changeMeta([image.id], action.patch);
         return true;
       case "loupe":
-        setLoupeId(image.id);
+        openLoupe(image.id, true);
         return true;
       case "editor":
         openInEditor(image.id);
@@ -480,77 +491,29 @@ export default function Library() {
             onToggleSelect={toggleSelected}
             onMetaChange={(id, p) => void changeMeta([id], p)}
             onOpen={openInEditor}
-            onLoupe={setLoupeId}
-            onTileKey={onTileKey}
+            onLoupe={(id) => openLoupe(id, false)}
+            onTileKey={onImageKey}
             onAskDelete={askDelete}
             onConfirmDelete={(id) => void onDelete(id)}
             onCancelDelete={cancelDelete}
           />
         )
       ) : (
-        <ul className="mt-6 divide-y divide-stone-800" data-testid="image-list">
-          {images.map((img) => {
-            const meta = metaOf(img);
-            const tid = `row-${img.id}`;
-            return (
-              <li
-                key={img.id}
-                data-testid={`image-row-${img.id}`}
-                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3"
-              >
-                <div className="flex min-w-0 flex-1 items-center gap-3">
-                  <input
-                    type="checkbox"
-                    data-testid={`image-select-${img.id}`}
-                    checked={selected.has(img.id)}
-                    onChange={() => toggleSelected(img.id)}
-                    aria-label={`„${img.originalFilename}“ auswählen`}
-                    className="accent-amber-300"
-                  />
-                  <ImageThumb
-                    key={img.thumbUrl ?? "none"}
-                    id={img.id}
-                    url={img.thumbUrl ?? null}
-                    contentType={img.contentType}
-                    dimmed={meta.flag === "reject"}
-                  />
-                  <div className="min-w-0">
-                    <div className="truncate text-stone-200">{img.originalFilename}</div>
-                    <div className="text-xs text-stone-400">
-                      {formatSize(img.sizeBytes)} · {img.contentType}
-                    </div>
-                  </div>
-                </div>
-                <div className="flex items-center">
-                  <StarRating
-                    value={meta.rating}
-                    testId={tid}
-                    onChange={(p) => void changeMeta([img.id], p)}
-                  />
-                  <FlagButtons
-                    value={meta.flag}
-                    testId={tid}
-                    onChange={(p) => void changeMeta([img.id], p)}
-                  />
-                  <ColorLabelPicker
-                    value={meta.colorLabel}
-                    testId={tid}
-                    onChange={(p) => void changeMeta([img.id], p)}
-                  />
-                </div>
-                <ImageActions
-                  image={img}
-                  confirming={confirmDeleteId === img.id}
-                  onOpen={() => openInEditor(img.id)}
-                  onLoupe={() => setLoupeId(img.id)}
-                  onAskDelete={() => askDelete(img.id)}
-                  onConfirmDelete={() => void onDelete(img.id)}
-                  onCancelDelete={() => cancelDelete(img.id)}
-                />
-              </li>
-            );
-          })}
-        </ul>
+        images.length > 0 && (
+          <LibraryList
+            images={images}
+            selected={selected}
+            confirmDeleteId={confirmDeleteId}
+            onToggleSelect={toggleSelected}
+            onMetaChange={(id, p) => void changeMeta([id], p)}
+            onOpen={openInEditor}
+            onLoupe={(id) => openLoupe(id, false)}
+            onRowKey={onImageKey}
+            onAskDelete={askDelete}
+            onConfirmDelete={(id) => void onDelete(id)}
+            onCancelDelete={cancelDelete}
+          />
+        )
       )}
 
       {loupeId !== null && (
@@ -561,6 +524,7 @@ export default function Library() {
           onMetaChange={(id, p) => void changeMeta([id], p)}
           onOpenEditor={openInEditor}
           announce={announce}
+          loadOriginalUrl={loadOriginalUrl}
           liveRegion={liveRegion}
         />
       )}
