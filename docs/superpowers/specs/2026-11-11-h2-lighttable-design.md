@@ -248,3 +248,44 @@ dekodieren; der Browser kann es (libraw-wasm) und kennt die Bearbeitung.
 - **Nicht in H2c**: Zoom 1:1 in der Lupe, Einzeltasten in der
   Listenansicht (Zeilen sind keine Fokus-Ziele; Buttons reichen).
 
+## Umsetzung H2d (2026-11-11)
+
+Nacharbeiten aus H2b/H2c („Nicht in …").
+
+- **Zoom 1:1 in der Lupe** (`library/LoupeZoom.tsx`, reine Hilfen in
+  `library/zoom.ts`): `Z` (Einzeltaste, gleiche Sperre wie die übrigen),
+  Button „1:1" (`loupe-zoom-toggle`, `aria-pressed`, ohne Vorschau
+  `disabled`) oder Klick aufs Bild — zentriert auf den Klickpunkt. Ziehen
+  (Pointer-Events, Ausschnitt per `scrollLeft/Top`, keine Scrollbalken)
+  verschiebt; ein Klick ohne Ziehen (< 4 px), `Z` oder `Esc` kehren zur
+  Einpassung zurück. **Esc im Zoom verlässt nur den Zoom** (neues
+  `Modal.onEscape`, true = verarbeitet), das zweite Esc schließt. Pfeile
+  blättern weiter und setzen den Zoom zurück; Wischen ist im Zoom aus.
+  Ansage „Zoom 1:1" / „Eingepasst".
+- **Quelle**: JPEG/PNG → Original über `GET /images/{id}/url`, erst beim
+  Zoomen geholt und pro Lupe gemerkt. Bis es geladen ist, steht die Vorschau
+  in 1:1 (Hinweis „Original wird geladen …"), dann tauscht ein verstecktes
+  Lade-`<img>` sie an derselben Stelle aus (Ankerpunkt 0..1 statt Pixel).
+  RAW/TIFF → Vorschau in natürlicher Größe plus Hinweis „1:1 der Vorschau
+  (1600 px) – RAW-Original nur im Editor"; Fehler beim Original → Vorschau
+  mit „Original nicht verfügbar – 1:1 der Vorschau". 1:1 heißt CSS-Pixel
+  (auf HiDPI-Bildschirmen also größer als ein Gerätepixel). Keine
+  Animationen (nichts für `prefers-reduced-motion` abzuschalten).
+- **Einzeltasten in der Liste** (`library/LibraryList.tsx`): Zeile
+  `image-row-<id>` ist `role=group` mit demselben Namen wie die Kachel
+  (`imageAriaLabel` in `meta.ts`) und Roving-Tabindex (ein zusätzlicher
+  Tab-Stopp; Bedienelemente der Zeilen bleiben anders als im Raster normal
+  tabbar). Pfeil hoch/runter, Pos1/Ende, Leertaste; alle übrigen Tasten
+  über denselben Dispatch wie die Kachel (`onImageKey` in `Library.tsx`).
+  Lupe per Enter auf der Zeile → Fokus beim Schließen zurück auf die Zeile,
+  per Button → auf den Button.
+- **Filter „Ohne Label"**: `GET /images?colorLabel=none` → `color_label IS
+  NULL`; mit Farben kombiniert per ODER. Filter-Typ `ColorLabelFilter`
+  (Backend-Literal, Frontend-Typ); PATCH kennt `none` nicht (422).
+- **Filter in der URL** (`library/filterUrl.ts`): `minRating`, `colorLabel`
+  (mehrfach), `flag`, `sort` mit denselben Namen wie die API. Ungültige
+  Werte fallen still auf den Default, Defaults werden nicht geschrieben,
+  Farben in Palettenreihenfolge, „ohne" zuletzt. Schreiben mit
+  `replace: true` — Filterklicks füllen den Verlauf nicht, Zurück aus dem
+  Editor landet trotzdem auf der gefilterten URL. Ansicht Raster/Liste
+  bleibt in `viewPrefs`.

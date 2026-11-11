@@ -123,13 +123,16 @@ def test_build_thumbnails_teilt_den_build_semaphore(monkeypatch):
 
 def test_presign_von_1000_urls_ist_lokal_und_schnell():
     """GET /images signiert bis zu 2 x 500 URLs pro Seite — reine HMAC-
-    Rechnung ohne Netzwerk. Grosszuegige Grenze gegen Ausreisser in CI."""
+    Rechnung ohne Netzwerk (lokal ~15 ms fuer 1000). Grosszuegige Grenze
+    gegen Ausreisser in CI, faengt aber einen Rueckfall auf boto3 (~0.2 s)
+    auf schnellen Maschinen nicht zwingend — der Byte-Vergleich in
+    test_s3_presign.py sichert die Semantik."""
     storage = get_storage()
     uid = uuid4()
     start = time.perf_counter()
     for _ in range(1000):
         storage.presign_get(f"{uid}/thumbs/{uuid4()}-abcdefabcdef-400.jpg")
-    assert time.perf_counter() - start < 5.0
+    assert time.perf_counter() - start < 1.0
 
 
 # ---------- PUT /images/{id}/thumbnail ----------
@@ -275,7 +278,12 @@ async def test_thumbnail_upload_rate_limit_30_pro_minute(client, user_a, monkeyp
 # ---------- ImageOut / Liste ----------
 
 
-async def test_liste_liefert_thumb_urls_oder_null(client, user_a):
+@pytest.mark.parametrize("threshold", [100, 1], ids=["event-loop", "threadpool"])
+async def test_liste_liefert_thumb_urls_oder_null(client, user_a, monkeypatch, threshold):
+    # threshold=1 erzwingt das Signieren im Threadpool (sonst erst ab 100 Bildern).
+    from app.routers import images as images_router
+
+    monkeypatch.setattr(images_router, "_SIGN_OFFLOAD_THRESHOLD", threshold)
     with_thumb = await upload_image(client, user_a["headers"])
     without = await upload_image(client, user_a["headers"])
     assert (await _put_thumb(client, user_a["headers"], with_thumb, make_jpeg(500, 500))).status_code == 200

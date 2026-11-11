@@ -98,7 +98,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `frontend/src/editor/profileGroups.ts` | Importiert `backend/schemas/edit-groups.json`, exportiert `GROUPS`, `defaultEnabledGroups()`, `mergeGroups(base, profile, enabled)`. Gleicher Repo-Root-Build-Context wie `lensProfile.ts`. |
 | `frontend/src/editor/profileYaml.ts` | `serializeProfileYaml` / `parseProfileYaml` (yaml-npm). YAML-Format-Version 1 (`lumenProfile: 1`). Import schickt geparste Struktur an `POST /presets` — Pydantic validiert. |
 | `frontend/src/editor/StepCheckboxes.tsx` | Geteilte Schritt-Checkbox-Gruppe (8 Gruppen, crop/lens default aus mit bildspezifisch-Hinweis). Genutzt in PresetDialog + BatchApplyModal. |
-| `frontend/src/library/` | H2b-Lighttable: `LibraryGrid.tsx` (Raster, Roving-Tabindex, Erweiterungspunkt `onTileKey` fuer H2c), `MetaControls.tsx` (Sterne/Farblabel/Markierung, auch Batch), `FilterBar.tsx` (serverseitige Filter + Raster/Liste-Umschalter), `meta.ts` (Labels, Ansagetexte, `nextGridIndex`), `viewPrefs.ts` (Ansicht, Modul-Cache), `ImageThumb.tsx`, `ImageActions.tsx` (Lupe/Editor/Loeschen, testids in beiden Ansichten gleich). H2c: `Loupe.tsx` (Vollbild-Dialog, Blaettern, Auto-Weiter), `CompareView.tsx` (2 Bilder), `PreviewImage.tsx` (previewUrl → thumbUrl → Hinweis), `libraryKeys.ts` (Lightroom-Tasten als reine Funktion + `isShortcutBlocked`). Optimistische Updates + Rollback und Tasten-Dispatch (`onTileKey`) in `pages/Library.tsx`. |
+| `frontend/src/library/` | H2b-Lighttable: `LibraryGrid.tsx` (Raster, Roving-Tabindex, Erweiterungspunkt `onTileKey` fuer H2c), `MetaControls.tsx` (Sterne/Farblabel/Markierung, auch Batch), `FilterBar.tsx` (serverseitige Filter + Raster/Liste-Umschalter), `meta.ts` (Labels, Ansagetexte, `nextGridIndex`), `viewPrefs.ts` (Ansicht, Modul-Cache), `ImageThumb.tsx`, `ImageActions.tsx` (Lupe/Editor/Loeschen, testids in beiden Ansichten gleich). H2c: `Loupe.tsx` (Vollbild-Dialog, Blaettern, Auto-Weiter), `CompareView.tsx` (2 Bilder), `PreviewImage.tsx` (previewUrl → thumbUrl → Hinweis), `libraryKeys.ts` (Lightroom-Tasten als reine Funktion + `isShortcutBlocked`). H2d: `LibraryList.tsx` (Listenansicht, Zeilen fokussierbar), `LoupeZoom.tsx` + `zoom.ts` (1:1-Zoom der Lupe), `filterUrl.ts` (Filter <-> URL). Optimistische Updates + Rollback und Tasten-Dispatch (`onTileKey`) in `pages/Library.tsx`. |
 | `frontend/src/pages/BatchApplyModal.tsx` | Library-Batch-Modal: Preset-Auswahl + StepCheckboxes + `POST /presets/{id}/apply` → `onApplied(applied, total)`. Triggerbar per `batch-apply-open`-Button wenn ≥1 Bild selektiert. |
 | `backend/app/routers/admin.py` | Admin-Endpoints (Users-Liste/Disable, Stats, Feedback-Inbox + PATCH). Gating via `current_admin` Dep |
 | `backend/app/routers/feedback.py` | User-Feedback-Submit. Honeypot `website` (silent drop), Rate-Limit 5/h |
@@ -294,7 +294,7 @@ gesetzt — pytest läuft sonst gegen 429er.
   Secret in `.env`.
 - **Deploy-Env**: `deployment/lib/env.sh` (`load_dotenv`, `ensure_private_file`) statt `. .env` — kein Shell-Expand; `$` nur in `'...'`. `.env` wird auf 600 gesetzt. `KC_BOOTSTRAP_ADMIN_*` nur beim Erst-Install (nie in `.env`).
 - **Preview-Builds** gedrosselt: max 2 parallel pro Prozess, 25 MB Quelle, 10/min pro User; versionierte Keys `{uid}/previews/{preset_id}-{hex}.jpg`.
-- **Bild-Vorschaubilder (H2a)**: Browser rendert (Library-Upload bzw. Editor via `Canvas.renderThumbnail`, gedrosselt in `useThumbnailUploader`), Server re-encodet in `PUT /images/{id}/thumbnail` (Multipart, max 1 MB = unter dem globalen 1-MiB-Body-Limit, 30/min) — bewusste Ausnahme von „Pixel nicht durch FastAPI". Dekodieren laeuft ueber `previews._decode_clean` und teilt `_BUILD_SEMAPHORE` mit der Marketplace-Vorschau. Keys `{uid}/thumbs/{id}-{hex}-{400|1600}.jpg`; `ImageOut.thumbUrl/previewUrl` werden pro Liste signiert (~0.18 ms/URL, lokal). Braucht `python-multipart`. FormData-Bodies im `request()` des ApiClient bekommen KEINEN JSON-Content-Type.
+- **Bild-Vorschaubilder (H2a)**: Browser rendert (Library-Upload bzw. Editor via `Canvas.renderThumbnail`, gedrosselt in `useThumbnailUploader`), Server re-encodet in `PUT /images/{id}/thumbnail` (Multipart, max 1 MB = unter dem globalen 1-MiB-Body-Limit, 30/min) — bewusste Ausnahme von „Pixel nicht durch FastAPI". Dekodieren laeuft ueber `previews._decode_clean` und teilt `_BUILD_SEMAPHORE` mit der Marketplace-Vorschau. Keys `{uid}/thumbs/{id}-{hex}-{400|1600}.jpg`; `ImageOut.thumbUrl/previewUrl` werden pro Liste signiert (eigener SigV4-GET-Presigner `app/s3_presign.py`, ~15 µs/URL statt ~0.2 ms mit boto3, byte-identisch per Test; ab 100 Bildern im Threadpool). Braucht `python-multipart`. FormData-Bodies im `request()` des ApiClient bekommen KEINEN JSON-Content-Type.
 - **Web-Container unprivilegiert**: `nginx-unprivileged` auf Port 8080.
 - **libraw-wasm liest nur camelCase-Optionen** (`outputBps`, `useCameraWb`,
   `noAutoBright`): snake_case wird still ignoriert. Bis H1b standen dort
@@ -325,7 +325,22 @@ gesetzt — pytest läuft sonst gegen 429er.
   inneres div: ohne Layout (jsdom) und nach Klick auf eine nicht-interaktive
   Flaeche hat die Karte selbst den Fokus. Die `library-announce`-Region
   wandert waehrend Lupe/Vergleich in den Dialog (aria-modal) — es gibt sie
-  immer genau einmal.
+  immer genau einmal. H2d: Listen-Zeilen (`image-row-*`, jetzt ein fokussierbares
+  `div role=group` im `li`) nutzen denselben Dispatch (`onImageKey`). `Z` ist
+  nur in der Lupe belegt.
+- **Esc-Reihenfolge in Dialogen (H2d)**: `Modal` faengt Esc per Capture-Listener
+  am `document` ab — ein `onKeyDown` der Karte kommt zu spaet. Wer Esc zuerst
+  selbst braucht (Lupe: Zoom verlassen), nutzt `Modal onEscape` (true = verarbeitet,
+  Dialog bleibt offen).
+- **Bibliothek-Filter in der URL (H2d)**: `minRating`/`colorLabel`/`flag`/`sort`
+  stehen in den Suchparametern von `/library` (`library/filterUrl.ts`), nicht im
+  State. Tests mit Filter-Startzustand: `MemoryRouter initialEntries={["/library?…"]}`
+  (Helfer `tests/library-fakes.tsx`: `renderLibraryAt`, `locationSearch`).
+  `colorLabel=none` = ohne Label (nur Filter, PATCH lehnt `none` ab).
+- **Worktree-Build**: `pnpm build` prerendert und braucht die KC-Variablen —
+  in frischen Worktrees fehlt die ignorierte `frontend/.env.local` (`cp
+  .env.example .env.local`), sonst bricht `prerender` mit „Run-Time-Config
+  'KEYCLOAK_AUTHORITY' fehlt" ab. `backend/.venv` fehlt dort ebenfalls.
 - **PATCH /images vs. /images/{id}**: Batch-Route ist `PATCH ""` — `colorLabel:
   null` loescht, weggelassen laesst unveraendert (Pydantic `model_fields_set`).
 - **Port 5173 belegt** (anderes Dev-Projekt): Vite weicht auf 5174 aus —
@@ -376,7 +391,7 @@ backend pytest. E2E nicht in PR-Pipeline (Stack-Compose dauert).
 
 ## Aktueller Stand
 
-- **Phase H**: H1 Prozessversion 2, H1b 16-bit-RAW/Half-Float-Textur und H2 Lighttable komplett (H2a Vorschaubilder, H2b Raster/Sterne/Labels/Filter, H2c Lupe/Vergleich/Einzeltasten).
+- **Phase H**: H1 Prozessversion 2, H1b 16-bit-RAW/Half-Float-Textur und H2 Lighttable komplett (H2a Vorschaubilder, H2b Raster/Sterne/Labels/Filter, H2c Lupe/Vergleich/Einzeltasten, H2d Zoom 1:1/Listen-Tasten/„Ohne Label"/Filter in der URL).
 - **Phase E komplett**: HSL (E1), Tonkurve (E2), Sharpening + Noise (E3), Face-Detection (E4, opt-in), Auto-Straighten (E5).
 - **Phase F1 komplett**: Preset-Marketplace mit Backend (Migration 005, 7 Endpunkte, Auto-Hide), Frontend (Marketplace-Page, Detail-Modal, PresetDialog-Publish-Toggle, Account-Profil + veroeffentlichte Presets).
 - **Phase G komplett**: G1 Highlight-Recovery, G2 Local-Contrast/Clarity, G3 TCA-Korrektur (RawTherapee-inspiriert). G4 (Lensfun-DB-Stuetzstellen-Interpolation) bleibt Backlog.

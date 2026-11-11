@@ -55,6 +55,15 @@ export function ratingText(rating: number): string {
   return rating === 1 ? "1 Stern" : `${rating} Sterne`;
 }
 
+/** Zugaenglicher Name einer Kachel/Zeile: „Datei, n Sterne, Label X, …". */
+export function imageAriaLabel(image: Image): string {
+  const meta = metaOf(image);
+  const parts = [image.originalFilename, ratingText(meta.rating)];
+  if (meta.colorLabel) parts.push(`Label ${colorLabelDef(meta.colorLabel).name}`);
+  if (meta.flag !== "none") parts.push(FLAG_NAMES[meta.flag]);
+  return parts.join(", ");
+}
+
 /** Text fuer die aria-live-Ansage nach einer Aenderung. */
 export function announcePatch(patch: ImageMetaPatch, count = 1): string {
   const parts: string[] = [];

@@ -435,6 +435,9 @@ class ImageInitOut(BaseModel):
 # H2b: Lighttable-Metadaten (CHECKs in Migration 014).
 ColorLabel = Literal["red", "yellow", "green", "blue", "purple"]
 ImageFlag = Literal["none", "pick", "reject"]
+# H2d: Filterwert fuer GET /images — "none" = ohne Label (color_label IS NULL).
+# Nur Filter, kein speicherbares Label (PATCH akzeptiert weiter nur ColorLabel).
+ColorLabelFilter = Literal["red", "yellow", "green", "blue", "purple", "none"]
 IMAGE_META_FIELDS = frozenset({"rating", "color_label", "flag"})
 IMAGE_META_BATCH_MAX = 500
 

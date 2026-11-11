@@ -15,7 +15,7 @@ from fastapi import (
     status,
 )
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +34,7 @@ from app.previews import (
 from app.rate_limit import limiter
 from app.schemas import (
     ALLOWED_IMAGE_CONTENT_TYPES,
-    ColorLabel,
+    ColorLabelFilter,
     ImageEditState,
     ImageFlag,
     ImageInitIn,
@@ -118,6 +118,10 @@ def _ensure_owns_key(image: Image, user: User) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="bucket_key gehoert nicht zum eingeloggten User.",
         )
+
+
+# Ab so vielen Bildern signiert GET /images ausserhalb des Event-Loops.
+_SIGN_OFFLOAD_THRESHOLD = 100
 
 
 def image_out(image: Image, storage: StorageService) -> ImageOut:
@@ -372,7 +376,7 @@ async def list_images(
     offset: int = Query(default=0, ge=0),
     # H2b-Filter (camelCase wie das restliche Wireformat).
     min_rating: int | None = Query(default=None, ge=0, le=5, alias="minRating"),
-    color_label: list[ColorLabel] | None = Query(default=None, alias="colorLabel"),
+    color_label: list[ColorLabelFilter] | None = Query(default=None, alias="colorLabel"),
     flag: ImageFlag | None = Query(default=None),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -389,7 +393,14 @@ async def list_images(
     if min_rating:
         cond.append(Image.rating >= min_rating)
     if color_label:
-        cond.append(Image.color_label.in_(set(color_label)))
+        # H2d: "none" = ohne Label; mehrere Werte verknuepfen per ODER.
+        colors = {c for c in color_label if c != "none"}
+        parts = []
+        if colors:
+            parts.append(Image.color_label.in_(colors))
+        if "none" in color_label:
+            parts.append(Image.color_label.is_(None))
+        cond.append(or_(*parts))
     if flag is not None:
         cond.append(Image.flag == flag)
     total = (
@@ -405,10 +416,15 @@ async def list_images(
         .limit(limit)
     )
     result = await db.execute(stmt)
+    images = result.scalars().all()
     # Bis zu 2 x 500 Signaturen pro Seite: presign_get ist reine lokale
-    # HMAC-Rechnung (kein S3-Roundtrip); gemessen ~0.18 ms pro URL, also
-    # ~180 ms CPU fuer eine volle 500er-Seite mit Vorschauen.
-    return [image_out(i, storage) for i in result.scalars().all()]
+    # HMAC-Rechnung (app/s3_presign.py, ~15 us pro URL). Grosse Seiten
+    # (Signieren + Pydantic, einige ms) laufen im Threadpool, damit der
+    # Event-Loop frei bleibt; die ORM-Objekte sind fertig geladen (kein
+    # Lazy-Load im Thread).
+    if len(images) >= _SIGN_OFFLOAD_THRESHOLD:
+        return await run_in_threadpool(lambda: [image_out(i, storage) for i in images])
+    return [image_out(i, storage) for i in images]
 
 
 @router.patch("", response_model=list[ImageOut])

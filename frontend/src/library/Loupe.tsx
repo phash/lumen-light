@@ -8,17 +8,32 @@
  * Einzeltasten (0-5, 6-9, P/X/U, E) nur bei aktiven Einzeltasten-Kuerzeln
  * und nicht in Eingabefeldern/offenen Menues; jede Taste hat einen Button
  * in der Leiste unten.
+ *
+ * H2d: Zoom 1:1 (Lightroom) per Z, Button oder Klick aufs Bild (zentriert
+ * auf den Klickpunkt); Ziehen verschiebt, Klick/Z/Esc kehren zur
+ * Einpassung zurueck — Esc im Zoom verlaesst nur den Zoom. Blaettern setzt
+ * den Zoom zurueck. Details in `LoupeZoom.tsx`.
  */
-import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode, type TouchEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+  type ReactNode,
+  type TouchEvent,
+} from "react";
 
 import type { Image, ImageMetaPatch } from "../api/client";
 import Modal from "../components/Modal";
 import { getSingleKeyShortcutsEnabled } from "../editor/shortcutPrefs";
+import LoupeZoom from "./LoupeZoom";
 import { ColorLabelPicker, FlagButtons, StarRating } from "./MetaControls";
 import PreviewImage, { previewSrc } from "./PreviewImage";
 import { isShortcutBlocked, libraryKeyAction } from "./libraryKeys";
 import { announcePatch, metaOf } from "./meta";
 import { getLoupeAutoAdvance, setLoupeAutoAdvance } from "./viewPrefs";
+import { CENTER_ANCHOR, anchorFromPoint, type ZoomAnchor } from "./zoom";
 
 /** Mindest-Wischweg in px fuer Blaettern per Touch. */
 const SWIPE_MIN_PX = 50;
@@ -30,6 +45,8 @@ export interface LoupeProps {
   readonly onMetaChange: (id: string, patch: ImageMetaPatch) => void;
   readonly onOpenEditor: (id: string) => void;
   readonly announce: (text: string) => void;
+  /** H2d: signierte URL des Originals (nur JPEG/PNG, erst beim Zoomen). */
+  readonly loadOriginalUrl: (id: string) => Promise<string>;
   /** Die aria-live-Region der Bibliothek — im Dialog gerendert, weil
    *  Screenreader Inhalte ausserhalb von aria-modal ignorieren duerfen. */
   readonly liveRegion?: ReactNode;
@@ -59,12 +76,17 @@ export default function Loupe({
   onMetaChange,
   onOpenEditor,
   announce,
+  loadOriginalUrl,
   liveRegion,
 }: LoupeProps) {
   const rootRef = useRef<HTMLDivElement>(null);
   const touchStart = useRef<{ x: number; y: number } | null>(null);
   const [currentId, setCurrentId] = useState(startId);
   const [autoAdvance, setAutoAdvance] = useState(() => getLoupeAutoAdvance());
+  // H2d: null = eingepasst, sonst 1:1 mit diesem Ankerpunkt.
+  const [zoom, setZoom] = useState<ZoomAnchor | null>(null);
+  // Geholte Original-URLs (Zoom aus/an ohne neuen Request).
+  const [originalUrls] = useState(() => new Map<string, string>());
 
   const found = images.findIndex((i) => i.id === currentId);
   const index = found >= 0 ? found : 0;
@@ -77,11 +99,28 @@ export default function Loupe({
   if (!image) return null;
   const meta = metaOf(image);
   const close = () => onClose(image.id);
+  const canZoom = previewSrc(image) !== null;
+
+  const setZoomed = (next: ZoomAnchor | null) => {
+    if ((next === null) === (zoom === null)) return;
+    setZoom(next);
+    announce(next ? "Zoom 1:1" : "Eingepasst");
+  };
+  const toggleZoom = () => {
+    if (zoom) setZoomed(null);
+    else if (canZoom) setZoomed(CENTER_ANCHOR);
+  };
+  /** Klick aufs eingepasste Bild: 1:1 zentriert auf den Klickpunkt. */
+  const onFitClick = (event: MouseEvent<HTMLDivElement>) => {
+    if (!(event.target instanceof HTMLImageElement)) return;
+    setZoomed(anchorFromPoint(event.target.getBoundingClientRect(), event.clientX, event.clientY));
+  };
 
   const goTo = (target: number, prefix?: string) => {
     const dest = images[target];
     if (!dest || target === index) return;
     setCurrentId(dest.id);
+    setZoom(null);
     const where = `${dest.originalFilename}, Bild ${positionText(target, count).replace(" / ", " von ")}`;
     announce(prefix ? `${prefix} – weiter: ${where}` : where);
   };
@@ -109,6 +148,9 @@ export default function Loupe({
     } else if (action?.kind === "editor") {
       event.preventDefault();
       onOpenEditor(image.id);
+    } else if (action?.kind === "zoom") {
+      event.preventDefault();
+      toggleZoom();
     }
   };
 
@@ -120,7 +162,8 @@ export default function Loupe({
     const start = touchStart.current;
     const t = event.changedTouches[0];
     touchStart.current = null;
-    if (!start || !t) return;
+    // Im Zoom verschiebt Ziehen den Ausschnitt statt zu blaettern.
+    if (!start || !t || zoom) return;
     const dx = t.clientX - start.x;
     const dy = t.clientY - start.y;
     if (Math.abs(dx) < SWIPE_MIN_PX || Math.abs(dx) < Math.abs(dy)) return;
@@ -158,6 +201,11 @@ export default function Loupe({
       backdropClassName="fixed inset-0 z-50 bg-stone-950"
       cardClassName="h-full w-full outline-none"
       onKeyDown={onKeyDown}
+      onEscape={() => {
+        if (!zoom) return false;
+        setZoomed(null);
+        return true;
+      }}
     >
       <div
         ref={rootRef}
@@ -171,6 +219,21 @@ export default function Loupe({
           <span data-testid="loupe-position" className="shrink-0 font-mono text-xs text-stone-400">
             {positionText(index, count)}
           </span>
+          <button
+            type="button"
+            data-testid="loupe-zoom-toggle"
+            aria-pressed={zoom !== null}
+            disabled={!canZoom}
+            onClick={toggleZoom}
+            title={canZoom ? "Zoom 1:1 (Z)" : "Keine Vorschau zum Zoomen"}
+            className={`shrink-0 border px-2 py-0.5 font-mono text-xs focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-300 disabled:opacity-40 ${
+              zoom
+                ? "border-amber-300/70 bg-stone-800 text-amber-200"
+                : "border-stone-700 text-stone-300 enabled:hover:border-stone-500"
+            }`}
+          >
+            <span className="sr-only">Zoom </span>1:1
+          </button>
           <button
             type="button"
             data-testid="loupe-close"
@@ -189,7 +252,24 @@ export default function Loupe({
           onTouchEnd={onTouchEnd}
         >
           {navButton("prev")}
-          <PreviewImage key={previewSrc(image) ?? image.id} image={image} testId="loupe" />
+          {zoom ? (
+            <LoupeZoom
+              key={image.id}
+              image={image}
+              anchor={zoom}
+              loadOriginalUrl={loadOriginalUrl}
+              originalUrls={originalUrls}
+              onExit={() => setZoomed(null)}
+            />
+          ) : (
+            // Klick aufs Bild zoomt (Maus); Tastatur nutzt Z bzw. den Button.
+            <div
+              className="flex h-full w-full items-center justify-center [&_img]:cursor-zoom-in"
+              onClick={onFitClick}
+            >
+              <PreviewImage key={previewSrc(image) ?? image.id} image={image} testId="loupe" />
+            </div>
+          )}
           {navButton("next")}
         </div>
 

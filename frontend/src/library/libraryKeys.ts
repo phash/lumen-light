@@ -2,7 +2,8 @@
  * H2c: Einzeltasten der Bibliothek (Lightroom-nah) als reine Funktion.
  *
  * 0-5 Sterne, 6-9 Labels rot/gelb/gruen/blau, P ausgewaehlt, X abgelehnt,
- * U Markierung weg, Enter Lupe, E Editor, C Vergleich, ? Hilfe.
+ * U Markierung weg, Enter Lupe, E Editor, C Vergleich, Z Zoom 1:1 (nur in
+ * der Lupe, H2d), ? Hilfe.
  *
  * Alle diese Tasten laufen nur, wenn Einzeltasten-Kuerzel aktiv sind
  * (WCAG 2.1.4, `shortcutPrefs.ts`) und der Fokus nicht in einem
@@ -16,6 +17,7 @@ export type LibraryKeyAction =
   | { readonly kind: "loupe" }
   | { readonly kind: "editor" }
   | { readonly kind: "compare" }
+  | { readonly kind: "zoom" }
   | { readonly kind: "help" };
 
 export interface KeyLike {
@@ -54,6 +56,8 @@ export function libraryKeyAction(event: KeyLike): LibraryKeyAction | null {
       return { kind: "editor" };
     case "c":
       return { kind: "compare" };
+    case "z":
+      return { kind: "zoom" };
     case "?":
       return { kind: "help" };
     default:
