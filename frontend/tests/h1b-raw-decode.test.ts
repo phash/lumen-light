@@ -1,6 +1,6 @@
 /**
  * H1b · decodeRaw mit 16 bit: Optionen (camelCase — libraw-wasm liest nur
- * diese), Pixel-Typ, Laengenpruefung, dispose.
+ * diese; Kamera-WB), Pixel-Typ, Laengenpruefung, dispose.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -42,7 +42,7 @@ describe("decodeRaw 16 bit", () => {
     const data = new Uint16Array([1, 2, 3, 65535, 0, 256]);
     result = { width: 2, height: 1, bits: 16, colors: 3, data };
     const out = await decodeRaw(rawFile());
-    expect(openSpy).toHaveBeenCalledWith({ outputBps: 16 });
+    expect(openSpy).toHaveBeenCalledWith({ useCameraWb: true, outputColor: 1, autoBrightThr: 0.005, outputBps: 16 });
     expect(out.pixels.bits).toBe(16);
     expect(out.pixels.rgb).toBe(data);
     expect(out.width).toBe(2);
@@ -53,7 +53,7 @@ describe("decodeRaw 16 bit", () => {
   it("bits 8 fordert outputBps 8 an (alter Pfad)", async () => {
     result = { width: 2, height: 1, bits: 8, colors: 3, data: new Uint8Array(6) };
     const out = await decodeRaw(rawFile(), { bits: 8 });
-    expect(openSpy).toHaveBeenCalledWith({ outputBps: 8 });
+    expect(openSpy).toHaveBeenCalledWith({ useCameraWb: true, outputColor: 1, autoBrightThr: 0.005, outputBps: 8 });
     expect(out.pixels.bits).toBe(8);
   });
 
@@ -62,6 +62,24 @@ describe("decodeRaw 16 bit", () => {
     await decodeRaw(rawFile());
     const settings = openSpy.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(Object.keys(settings).some((k) => k.includes("_"))).toBe(false);
+  });
+
+  it("Kamera-WB, sRGB und Auto-Helligkeit: 8 und 16 bit mit gleichen Optionen", async () => {
+    result = { width: 2, height: 1, data: new Uint16Array(6) };
+    await decodeRaw(rawFile(), { bits: 16 });
+    result = { width: 2, height: 1, data: new Uint8Array(6) };
+    await decodeRaw(rawFile(), { bits: 8 });
+    const [s16, s8] = openSpy.mock.calls.map((c) => c[0] as Record<string, unknown>);
+    expect(s16?.useCameraWb).toBe(true);
+    expect(s16?.outputColor).toBe(1);
+    expect(s16?.autoBrightThr).toBe(0.005);
+    // Auto-Helligkeit bleibt an -> kein noAutoBright, kein useAutoWb
+    expect(s16).not.toHaveProperty("noAutoBright");
+    expect(s16).not.toHaveProperty("useAutoWb");
+    const { outputBps: b16, ...rest16 } = s16 ?? {};
+    const { outputBps: b8, ...rest8 } = s8 ?? {};
+    expect([b16, b8]).toEqual([16, 8]);
+    expect(rest8).toEqual(rest16);
   });
 
   it("liefert die Bibliothek trotz 16-bit-Wunsch 8 bit, gilt 8 bit", async () => {

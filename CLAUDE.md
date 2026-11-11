@@ -297,10 +297,11 @@ gesetzt — pytest läuft sonst gegen 429er.
 - **Bild-Vorschaubilder (H2a)**: Browser rendert (Library-Upload bzw. Editor via `Canvas.renderThumbnail`, gedrosselt in `useThumbnailUploader`), Server re-encodet in `PUT /images/{id}/thumbnail` (Multipart, max 1 MB = unter dem globalen 1-MiB-Body-Limit, 30/min) — bewusste Ausnahme von „Pixel nicht durch FastAPI". Dekodieren laeuft ueber `previews._decode_clean` und teilt `_BUILD_SEMAPHORE` mit der Marketplace-Vorschau. Keys `{uid}/thumbs/{id}-{hex}-{400|1600}.jpg`; `ImageOut.thumbUrl/previewUrl` werden pro Liste signiert (eigener SigV4-GET-Presigner `app/s3_presign.py`, ~15 µs/URL statt ~0.2 ms mit boto3, byte-identisch per Test; ab 100 Bildern im Threadpool). Braucht `python-multipart`. FormData-Bodies im `request()` des ApiClient bekommen KEINEN JSON-Content-Type.
 - **Web-Container unprivilegiert**: `nginx-unprivileged` auf Port 8080.
 - **libraw-wasm liest nur camelCase-Optionen** (`outputBps`, `useCameraWb`,
-  `noAutoBright`): snake_case wird still ignoriert. Bis H1b standen dort
-  snake_case-Keys → RAWs laufen seit jeher mit libraw-Defaults (Tageslicht-WB,
-  Auto-Helligkeit an). Das ist bewusst so geblieben (Look-Aenderung, offen in
-  der Roadmap H1b). `imageData()` mit `outputBps: 16` = `Uint16Array`,
+  `noAutoBright`, `autoBrightThr`): snake_case wird still ignoriert (bis H1b
+  lief deshalb alles mit Tageslicht-WB). Optionen stehen zentral in
+  `RAW_DECODE_SETTINGS` (`raw.ts`): Kamera-WB, sRGB, Auto-Helligkeit mit
+  `autoBrightThr` 0.005 — gleich fuer 8 und 16 bit, Messwerte im H1b-Spec
+  „Nachtrag Kamera-WB". `imageData()` mit `outputBps: 16` = `Uint16Array`,
   `w×h×3`, 8 bit = 16 bit >> 8.
 - **RAW-Quelle 16 bit (H1b)**: Canvas haelt `Rgb16Image` (nicht ImageBitmap),
   Live-Vorschau per CPU-Box-Filter verkleinert, Textur `RGB16F` (Half,

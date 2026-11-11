@@ -5,7 +5,7 @@
  * UI-Thread bleibt frei. Magic-Byte-Detection macht die Format-Erkennung
  * unabhaengig vom Datei-Namen.
  */
-import LibRaw from "libraw-wasm";
+import LibRaw, { type LibRawSettings } from "libraw-wasm";
 
 export type RawFormat =
   | "cr2"      // Canon — TIFF-basierter Header
@@ -102,16 +102,31 @@ export async function isRawFile(file: File): Promise<boolean> {
 }
 
 /**
- * Decoded ein RAW als RGB-Pixel-Buffer (Default 16 bit, H1b).
+ * libraw-Optionen fuer die Entwicklung — fuer 8 und 16 bit identisch, nur
+ * `outputBps` kommt dazu.
  *
- * Achtung Optionen: libraw-wasm liest NUR camelCase-Schluessel
- * (`outputBps`, `useCameraWb`, `noAutoBright`, ...). Bis H1b standen hier
- * snake_case-Schluessel (`use_camera_wb`, `no_auto_bright`, ...), die nie
- * gewirkt haben — gemessen bitgleich zu `{}`. Effektiv laufen RAWs daher mit
- * den libraw-Defaults: Tageslicht-WB (nicht Kamera-WB), Auto-Helligkeit an,
- * sRGB. Das bleibt bewusst so (Look-Aenderung jedes RAWs, eigene Entscheidung,
- * siehe Spec H1b); hier wird nur die Bittiefe gesetzt.
+ * Achtung: libraw-wasm liest NUR camelCase-Schluessel (`useCameraWb`,
+ * `outputColor`, ...); snake_case (`use_camera_wb`) wird still ignoriert.
+ *
+ * - `useCameraWb`: Kamera-Weissabgleich ("Wie Aufnahme"). Fehlt er in der
+ *   Datei (`cam_mul[0] == -1`), rechnet libraw selbst einen Auto-WB; sind
+ *   die Multiplikatoren unbrauchbar, bleibt es bei Tageslicht. `useAutoWb`
+ *   bleibt deshalb aus.
+ * - `outputColor: 1` = sRGB (libraw-Default, hier explizit).
+ * - Auto-Helligkeit bleibt an: mit `noAutoBright` landen 4 von 7 Korpus-RAWs
+ *   bei rund halber mittlerer Helligkeit des Kamera-JPEGs (~1 EV dunkler).
+ *   `autoBrightThr` 0.005 statt libraw-Default 0.01: Auto-Helligkeit darf nur
+ *   noch 0.5 % statt 1 % der Pixel in Weiss schieben — libraw klemmt dort,
+ *   diese Lichter holt kein Regler zurueck. Kostet im Mittel ~5 % Helligkeit
+ *   (Messwerte: Spec H1b, Abschnitt „Nachtrag Kamera-WB“).
  */
+export const RAW_DECODE_SETTINGS = {
+  useCameraWb: true,
+  outputColor: 1,
+  autoBrightThr: 0.005,
+} as const satisfies LibRawSettings;
+
+/** Decoded ein RAW als RGB-Pixel-Buffer (Default 16 bit, H1b). */
 export async function decodeRaw(
   file: File,
   options: DecodeRawOptions = {},
@@ -120,7 +135,7 @@ export async function decodeRaw(
   const buffer = new Uint8Array(await file.arrayBuffer());
   const raw = new LibRaw();
   try {
-    await raw.open(buffer, { outputBps: bits });
+    await raw.open(buffer, { ...RAW_DECODE_SETTINGS, outputBps: bits });
 
     const meta = await raw.metadata(true);
     const result = await raw.imageData();

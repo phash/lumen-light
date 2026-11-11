@@ -39,11 +39,9 @@ sRGB, 8 bit.
 
 **(meine Entscheidung)** H1b ändert daran nichts außer `outputBps: 16`. Der
 heutige Look bleibt, wie er ist; die toten snake_case-Schlüssel fliegen raus
-und ein Kommentar dokumentiert den Ist-Zustand. Kamera-WB und Auto-Helligkeit
-aus wären eine sichtbare Änderung jedes RAWs und brauchen eine eigene
-Entscheidung (Kandidat: an eine neue Prozessversion koppeln, damit
-bestehende Bearbeitungen gleich bleiben). Steht als offener Punkt in der
-Roadmap.
+und ein Kommentar dokumentiert den Ist-Zustand. Kamera-WB ist eine sichtbare
+Änderung jedes RAWs und wurde getrennt entschieden — siehe „Nachtrag
+Kamera-WB" unten.
 
 ## Goals
 
@@ -63,7 +61,8 @@ Roadmap.
 ## Non-Goals
 
 - Headroom über Weiß / linearer libraw-Output.
-- Kamera-WB / Auto-Helligkeit korrigieren (siehe Befund).
+- Kamera-WB / Auto-Helligkeit korrigieren (siehe Befund; nachgezogen im
+  „Nachtrag Kamera-WB").
 - 16 bit für JPEG/PNG/TIFF (Browser-Decoder liefern 8 bit).
 - 16-bit-Export-Dateien (PNG16/TIFF). Export bleibt 8-bit-JPEG/PNG; der
   Gewinn steckt in der Verarbeitung vor der Quantisierung.
@@ -172,3 +171,57 @@ temporär, nicht im Repo). Überall `float16` für Vorschau und Export.
   (`rgbToImageBitmap`, 24 MP) des alten Pfads.
 - **Nicht gelaufen**: Playwright-E2E (`raw-pipeline.spec.ts`,
   `editor.spec.ts`) — Keycloak, Backend und Vite liefen lokal nicht.
+
+## Nachtrag Kamera-WB (2026-11-11, `fix/raw-camera-wb`)
+
+Entscheidung des Owners: sofort und ohne Kompatibilitätspfad korrigieren —
+Produktion hatte 0 Bilder und 0 Bearbeitungen, also keine neue
+Prozessversion.
+
+`raw.ts` setzt jetzt `RAW_DECODE_SETTINGS` = `{ useCameraWb: true,
+outputColor: 1, autoBrightThr: 0.005 }` plus `outputBps` (8 oder 16 — beide
+Pfade identisch). Namen geprüft gegen `libraw-wasm` 1.6
+(`dist/index.d.ts` und die Embind-Strings in `libraw.wasm`). `useAutoWb`
+bleibt aus: fehlt der Kamera-WB in der Datei, rechnet libraw bei
+`useCameraWb` selbst einen Auto-WB.
+
+Gemessen auf den 7 Korpus-RAWs, 16 bit, Vergleich mit dem eingebetteten
+Kamera-JPEG (`thumbnailData()`), Grey-World-Verhältnisse R/G, B/G und
+mittlere Luma (sRGB-kodiert, 0..255), Clipping = Anteil Pixel mit einem
+Kanal ≥ 254.5/255:
+
+| RAW | Abstand ΔR/G, ΔB/G alt (Tageslicht) | neu (Kamera-WB) | Luma JPEG / alt / neu | Clipping alt → neu |
+|-----|------|------|------|------|
+| Canon 600D CR2 | 0.160, 0.091 | 0.003, 0.052 | 109 / 132 / 125 | 1.07 % → 0.77 % |
+| Canon R CR3 | 0.081, 0.154 | 0.025, 0.018 | 153 / 140 / 142 | 1.07 % → 0.58 % |
+| Fuji X-Pro1 RAF | 0.138, 0.038 | 0.011, 0.134¹ | 131 / 97 / 90 | 1.03 % → 0.87 % |
+| Nikon D7100 NEF | 0.166, 0.071 | 0.013, 0.084 | 87 / 78 / 88 | 1.06 % → 0.74 % |
+| Olympus E-M5 ORF | 0.082, 0.119 | 0.029, 0.040 | 122 / 124 / 112 | 1.11 % → 0.52 % |
+| Panasonic G9 RW2 | 0.485, 0.444 | 0.020, 0.004 | 80 / 45 / 42 | 3.00 % → 1.53 % |
+| Sony A7M3 ARW | 0.149, 0.217 | 0.007, 0.015 | 145 / 91 / 85 | 1.07 % → 1.17 % |
+
+¹ Das RAF-JPEG ist zu 36 % ausgefressen, seine Grey-World-Werte sind
+verzerrt.
+
+Auto-Helligkeit, verglichene Varianten (alle mit Kamera-WB):
+
+- `noAutoBright`: 600D 63, CR3 83, NEF 50, ORF 64 Luma — rund 1 EV dunkler
+  als das JPEG (109/153/87/122). Verworfen.
+- `noAutoBright` + `bright: 1.8`: RAF 27.6 % und ARW 3.8 % Clipping,
+  CR3/ORF trotzdem 20–25 % dunkler. Ein fester Faktor passt nicht zu allen
+  Kameras. Verworfen.
+- Auto-Helligkeit mit libraw-Default `autoBrightThr` 0.01: Helligkeit nahe
+  am JPEG (600D 139, CR3 146, NEF 90, ORF 118), aber 1.0–1.6 % Clipping
+  gegenüber 0–0.07 % im JPEG.
+- `autoBrightThr` 0.002: Clipping 0.2–0.3 %, aber ORF fällt auf 95 (−23 %).
+- **`autoBrightThr` 0.005 (gewählt)**: Clipping halbiert (0.5–0.8 %),
+  Helligkeit −9 % … +15 % gegenüber dem JPEG. libraw klemmt bei Weiß, was
+  die Auto-Helligkeit ins Weiß schiebt, holt kein Regler zurück — dunkler
+  lässt sich dagegen per Belichtung/Auto-Ton ausgleichen.
+
+Grenze: ARW, RW2 und RAF haben schon ≥ 1 % Sensor-Sättigung, dort greift die
+Auto-Helligkeit nicht (alle Varianten ohne `bright` gleich). Diese drei
+bleiben 30–50 % dunkler als das Kamera-JPEG, das Belichtungs-Offsets bzw.
+DR-Modi der Kamera enthält. Auto-Ton (Belichtung aus dem Median, bis
+±1.5 EV) gleicht das auf Knopfdruck aus; Auto-Ton, Auto-WB und Vorschlag
+lesen das gerenderte Bild und brauchen keine Anpassung.
