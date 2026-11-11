@@ -440,6 +440,11 @@ class ImageOut(BaseModel):
     upload_state: Literal["pending", "ready", "failed"]
     created_at: datetime
     confirmed_at: datetime | None
+    # H2a: signierte GET-URLs der Vorschaubilder (400/1600 px, gleiche TTL
+    # wie /url); None, solange keine Vorschau existiert. Nie aus ORM-
+    # Attributen befuellt, sondern im Router (routers.images.image_out).
+    thumb_url: str | None = None
+    preview_url: str | None = None
     model_config = CAMEL_OUT_CONFIG
 
 

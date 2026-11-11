@@ -119,6 +119,14 @@ class StorageService:
         aktuell referenzierte (Rollback-sicher)."""
         return f"{user_id}/previews/{preset_id}-{uuid4().hex[:12]}.jpg"
 
+    def make_thumb_keys(self, user_id: UUID, image_id: UUID) -> tuple[str, str]:
+        """H2a: (<uid>/thumbs/<image_id>-<hex>-400.jpg, ...-1600.jpg).
+        Beide Groessen teilen eine Version; jeder Aufruf liefert eine neue,
+        sodass ein neuer Satz nie den referenzierten ueberschreibt. Gleicher
+        User-Prefix -> Prefix-Purge aus DELETE /me erfasst sie."""
+        base = f"{user_id}/thumbs/{image_id}-{uuid4().hex[:12]}"
+        return f"{base}-400.jpg", f"{base}-1600.jpg"
+
     def presign_get(self, key: str, *, attachment: bool = False) -> tuple[str, int]:
         """Pre-Signed GET. attachment=True setzt response-content-disposition
         (Originale): selbst wenn ein Objekt doch aktiven Inhalt enthielte,

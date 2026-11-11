@@ -145,6 +145,10 @@ class Image(Base):
     confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # H2a: serverseitig neu kodierte Vorschaubilder (Migration 013), beide
+    # unter <uid>/thumbs/. None = noch keine Vorschau vorhanden.
+    thumb_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    preview_key: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     user: Mapped[User] = relationship(back_populates="images")
 

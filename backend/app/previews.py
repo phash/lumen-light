@@ -57,7 +57,6 @@ BUILD_SLOT_TIMEOUT_SECONDS = 20.0
 # jedes Mal einen neuen Build.
 PREVIEW_BUILDS_PER_MINUTE = 10
 _BUILD_RATE = parse_limit(f"{PREVIEW_BUILDS_PER_MINUTE}/minute")
-_ACCEPTED_FORMATS = ("JPEG", "MPO")
 
 INVALID_PREVIEW_DETAIL = "Vorschaubild ungültig — bitte ein anderes JPEG wählen."
 BUSY_PREVIEW_DETAIL = (
@@ -90,27 +89,52 @@ def check_preview_build_rate(user_id: UUID) -> None:
         )
 
 
-def render_preview(data: bytes) -> bytes:
-    """JPEG-Bytes -> verkleinertes, metadatenfreies JPEG. Wirft PreviewError."""
+def _to_rgb(img: PILImage.Image) -> PILImage.Image:
+    """Beliebigen Pillow-Modus nach RGB. Transparenz wird auf Weiss gelegt
+    (sonst werden transparente PNG-Bereiche schwarz), 16-Bit-Graustufen
+    (PNG/TIFF) werden auf 8 Bit skaliert statt abgeschnitten."""
+    if img.mode in ("RGBA", "LA", "PA") or (
+        img.mode == "P" and "transparency" in img.info
+    ):
+        rgba = img.convert("RGBA")
+        bg = PILImage.new("RGB", rgba.size, (255, 255, 255))
+        bg.paste(rgba, mask=rgba.getchannel("A"))
+        return bg
+    if img.mode.startswith("I;16") or img.mode == "I":
+        return img.convert("I").point(lambda v: v / 256).convert("L").convert("RGB")
+    return img.convert("RGB")
+
+
+def _decode_clean(
+    data: bytes, formats: tuple[str, ...], max_edge: int
+) -> PILImage.Image:
+    """Gemeinsamer, abgesicherter Dekodierpfad fuer Marketplace-Vorschau
+    (M3) und Bild-Vorschaubilder (H2a): nur die angegebenen Pillow-Opener,
+    Pixel-Grenze VOR dem Dekodieren, Orientierung anwenden, auf max_edge
+    verkleinern, frisches RGB-Bild ohne info-Dict. Wirft PreviewError."""
+    accepted = set(formats)
+    if "JPEG" in accepted:
+        accepted.add("MPO")
     try:
-        # formats: nur der JPEG-Opener (L7) — kein Plugin-Zoo fuer
-        # Angreifer-Bytes. Er liefert fuer Mehrbild-JPEGs (MPO, z.B. iPhone)
-        # ein MpoImageFile; Frame 0 ist das Hauptbild und nach open() aktiv.
-        with PILImage.open(io.BytesIO(data), formats=["JPEG"]) as src:
-            if src.format not in _ACCEPTED_FORMATS:
-                raise PreviewError("Quelle ist kein JPEG.")
+        # formats: nur explizit erlaubte Opener (L7) — kein Plugin-Zoo fuer
+        # Angreifer-Bytes. Der JPEG-Opener liefert fuer Mehrbild-JPEGs (MPO,
+        # z.B. iPhone) ein MpoImageFile; Frame 0 ist das Hauptbild.
+        with PILImage.open(io.BytesIO(data), formats=list(formats)) as src:
+            if src.format not in accepted:
+                raise PreviewError("Quelle hat ein nicht erlaubtes Format.")
             width, height = src.size
             if width <= 0 or height <= 0 or width * height > MAX_SOURCE_PIXELS:
                 raise PreviewError("Quelle hat unzulaessige Abmessungen.")
             # draft(): JPEG direkt in reduzierter Aufloesung dekodieren
-            # (DCT-Skalierung) — spart Speicher bei grossen Quellen.
-            src.draft("RGB", (PREVIEW_MAX_EDGE, PREVIEW_MAX_EDGE))
+            # (DCT-Skalierung) — spart Speicher bei grossen Quellen. Fuer
+            # andere Formate ein No-op.
+            src.draft("RGB", (max_edge, max_edge))
             img = ImageOps.exif_transpose(src)
-            img = img.convert("RGB")
-            img.thumbnail((PREVIEW_MAX_EDGE, PREVIEW_MAX_EDGE), PILImage.Resampling.LANCZOS)
+            img = _to_rgb(img)
+            img.thumbnail((max_edge, max_edge), PILImage.Resampling.LANCZOS)
             # Frisches Bild aus den reinen Pixeln: kein info-Dict (EXIF,
             # ICC, XMP, Kommentare) wandert in die Ausgabe.
-            clean = PILImage.frombytes("RGB", img.size, img.tobytes())
+            return PILImage.frombytes("RGB", img.size, img.tobytes())
     except PreviewError:
         raise
     except (
@@ -121,16 +145,28 @@ def render_preview(data: bytes) -> bytes:
         SyntaxError,
     ) as exc:
         raise PreviewError(str(exc)) from exc
+
+
+def _encode_jpeg(img: PILImage.Image) -> bytes:
     out = io.BytesIO()
-    clean.save(out, "JPEG", quality=PREVIEW_QUALITY, optimize=True)
+    img.save(out, "JPEG", quality=PREVIEW_QUALITY, optimize=True)
     return out.getvalue()
+
+
+def render_preview(data: bytes) -> bytes:
+    """JPEG-Bytes -> verkleinertes, metadatenfreies JPEG. Wirft PreviewError."""
+    return _encode_jpeg(_decode_clean(data, ("JPEG",), PREVIEW_MAX_EDGE))
+
+
+def _acquire_build_slot() -> None:
+    if not _BUILD_SEMAPHORE.acquire(timeout=BUILD_SLOT_TIMEOUT_SECONDS):
+        raise PreviewBusy("Kein freier Vorschau-Slot.")
 
 
 def _build_preview(storage: StorageService, source_key: str, preview_key: str) -> None:
     """Blockierend (boto3 + Pillow) — nur im Threadpool aufrufen. Der
     Semaphore deckt Download UND Dekodieren ab (beides speicherintensiv)."""
-    if not _BUILD_SEMAPHORE.acquire(timeout=BUILD_SLOT_TIMEOUT_SECONDS):
-        raise PreviewBusy("Kein freier Vorschau-Slot.")
+    _acquire_build_slot()
     try:
         try:
             data = storage.get_bytes(source_key, MAX_SOURCE_BYTES)
@@ -139,6 +175,64 @@ def _build_preview(storage: StorageService, source_key: str, preview_key: str) -
         rendered = render_preview(data)
         del data
         storage.put_bytes(preview_key, rendered, "image/jpeg")
+    finally:
+        _BUILD_SEMAPHORE.release()
+
+
+# ---------- H2a: Vorschaubilder pro Bild ----------
+
+# Lange Kante der beiden gespeicherten Groessen: Liste/Kachel und Lupe.
+THUMB_EDGE = 400
+THUMB_PREVIEW_EDGE = PREVIEW_MAX_EDGE  # 1600
+# Browser-Upload (PUT /images/{id}/thumbnail): bewusst unter dem globalen
+# Body-Limit (1 MiB inkl. Multipart-Overhead), damit die eigene 413-Meldung
+# greift. Ein 1600-px-JPEG q0.85 liegt typischerweise bei 200-600 KB.
+THUMB_UPLOAD_MAX_BYTES = 1_000_000
+# Formate fuer den Browser-Upload (der Client schickt JPEG; PNG als
+# toleranter Fallback) und fuer den Bestands-Backfill aus Originalen.
+THUMB_UPLOAD_FORMATS: tuple[str, ...] = ("JPEG", "PNG")
+THUMB_BACKFILL_FORMATS: tuple[str, ...] = ("JPEG", "PNG", "TIFF")
+
+
+def render_thumbnails(
+    data: bytes, formats: tuple[str, ...] = THUMB_UPLOAD_FORMATS
+) -> tuple[bytes, bytes]:
+    """Bild-Bytes -> (400-px-JPEG, 1600-px-JPEG), beide ohne Metadaten.
+    Einmal dekodieren, die kleine Groesse aus der grossen ableiten. Kleine
+    Quellen werden nicht hochskaliert. Wirft PreviewError."""
+    large = _decode_clean(data, formats, THUMB_PREVIEW_EDGE)
+    small = large.copy()
+    small.thumbnail((THUMB_EDGE, THUMB_EDGE), PILImage.Resampling.LANCZOS)
+    return _encode_jpeg(small), _encode_jpeg(large)
+
+
+def build_thumbnails(
+    data: bytes, formats: tuple[str, ...] = THUMB_UPLOAD_FORMATS
+) -> tuple[bytes, bytes]:
+    """render_thumbnails unter dem prozessweiten Build-Semaphore (teilt die
+    Slots mit der Marketplace-Vorschau). Blockierend -> Threadpool."""
+    _acquire_build_slot()
+    try:
+        return render_thumbnails(data, formats)
+    finally:
+        _BUILD_SEMAPHORE.release()
+
+
+def build_thumbnails_from_storage(
+    storage: StorageService,
+    source_key: str,
+    formats: tuple[str, ...] = THUMB_BACKFILL_FORMATS,
+) -> tuple[bytes, bytes]:
+    """Backfill: Original laden (max. MAX_SOURCE_BYTES) und rendern. Der
+    Semaphore deckt Download UND Dekodieren ab. Blockierend -> Threadpool.
+    Wirft PreviewError (zu gross/kaputt), ObjectNotFound, PreviewBusy."""
+    _acquire_build_slot()
+    try:
+        try:
+            data = storage.get_bytes(source_key, MAX_SOURCE_BYTES)
+        except ValueError as exc:
+            raise PreviewError(str(exc)) from exc
+        return render_thumbnails(data, formats)
     finally:
         _BUILD_SEMAPHORE.release()
 
