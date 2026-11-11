@@ -100,10 +100,13 @@ def test_tone_curve_schema_matches_pydantic():
 
 
 def test_process_version_schema_matches_pydantic():
-    # H1: Literal[1, 2] mit Default 1 (fehlendes Feld = vor H1 = PV1).
+    # H1: Literal[1, 2] | None mit Default None (= nicht gesetzt).
     schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
     prop = schema["properties"]["processVersion"]
     field = Adjustments.model_fields["processVersion"]
-    assert sorted(prop["enum"]) == sorted(get_args(field.annotation))
-    assert prop["default"] == field.default == 1
+    assert {"type": "null"} in prop["oneOf"]
+    enum = next(o["enum"] for o in prop["oneOf"] if "enum" in o)
+    literal_args = next(a for a in get_args(field.annotation) if a is not type(None))
+    assert sorted(enum) == sorted(get_args(literal_args))
+    assert prop["default"] is None and field.default is None
     assert "processVersion" not in schema["required"]

@@ -82,11 +82,17 @@ export const CURRENT_PROCESS_VERSION: ProcessVersion = 2;
 /** Version gespeicherter Daten ohne Feld (vor H1). */
 export const LEGACY_PROCESS_VERSION: ProcessVersion = 1;
 
-/** Gelesene Rohwerte normalisieren: fehlt das Feld (oder ist es
- *  unbekannt), gilt PV1 — bestehende Edits/Presets aendern ihr Aussehen
- *  nicht. */
+/** Edit-State lesen: fehlt die Version (oder ist sie unbekannt), wurde
+ *  das Bild vor H1 bearbeitet -> PV1, exakt der alte Look. */
 export function normalizeProcessVersion(value: unknown): ProcessVersion {
   return value === 2 ? 2 : LEGACY_PROCESS_VERSION;
+}
+
+/** Preset/Profil lesen (Lightroom-Semantik): nur eine explizite Version
+ *  zaehlt. undefined = nicht gesetzt -> beim Anwenden bleibt die Version
+ *  des Bildes unangetastet. */
+export function explicitProcessVersion(value: unknown): ProcessVersion | undefined {
+  return value === 1 || value === 2 ? value : undefined;
 }
 
 export type Adjustments = ScalarAdjustments & {

@@ -10,6 +10,7 @@ import {
   ADJUSTMENTS,
   CURRENT_PROCESS_VERSION,
   defaultAdjustments,
+  explicitProcessVersion,
   normalizeProcessVersion,
 } from "../src/editor/adjustments";
 import EditorSidebar from "../src/editor/EditorSidebar";
@@ -52,7 +53,15 @@ describe("Prozessversion · Defaults und Normalisierung", () => {
     expect(ADJUSTMENTS.map((a) => a.key as string)).not.toContain("processVersion");
   });
 
-  it("fehlender oder unbekannter Wert wird zu 1", () => {
+  it("Preset/Profil: nur 1 oder 2 zaehlen als explizite Version", () => {
+    expect(explicitProcessVersion(undefined)).toBeUndefined();
+    expect(explicitProcessVersion(null)).toBeUndefined();
+    expect(explicitProcessVersion(3)).toBeUndefined();
+    expect(explicitProcessVersion(1)).toBe(1);
+    expect(explicitProcessVersion(2)).toBe(2);
+  });
+
+  it("Edit-State: fehlender oder unbekannter Wert wird zu 1", () => {
     expect(normalizeProcessVersion(undefined)).toBe(1);
     expect(normalizeProcessVersion(null)).toBe(1);
     expect(normalizeProcessVersion(3)).toBe(1);
@@ -100,10 +109,33 @@ describe("Prozessversion · Store", () => {
     expect(useEditorStore.getState().adjustments.processVersion).toBe(2);
   });
 
-  it("Preset ohne Feld (applyAdjustments) setzt Version 1", () => {
+  it("Preset ohne Feld (applyAdjustments) laesst die Version des Bildes unangetastet", () => {
     useEditorStore.getState().applyAdjustments(legacyAdjustments({ contrast: 0.2 }));
-    expect(useEditorStore.getState().adjustments.processVersion).toBe(1);
+    expect(useEditorStore.getState().adjustments.processVersion).toBe(2);
     expect(useEditorStore.getState().adjustments.contrast).toBe(0.2);
+
+    useEditorStore.setState({ adjustments: { ...defaultAdjustments(), processVersion: 1 } });
+    useEditorStore.getState().applyAdjustments(legacyAdjustments({ contrast: 0.1 }));
+    expect(useEditorStore.getState().adjustments.processVersion).toBe(1);
+  });
+
+  it("Smart-Suggestion: Default-Preset (processVersion null) auf frischem Bild bleibt Version 2", () => {
+    // Gleicher Pfad wie Editor.onApplySuggestion: applyAdjustments(preset.adjustments)
+    // mit einem Preset aus GET /presets (Default-Presets tragen null).
+    const preset: WireAdjustments = {
+      ...defaultAdjustments(),
+      processVersion: null,
+      contrast: 0.15,
+      saturation: 0.1,
+    };
+    useEditorStore.getState().applyAdjustments(preset);
+    expect(useEditorStore.getState().adjustments.processVersion).toBe(2);
+    expect(useEditorStore.getState().adjustments.contrast).toBe(0.15);
+  });
+
+  it("Preset mit expliziter Version setzt sie (applyAdjustments)", () => {
+    useEditorStore.getState().applyAdjustments({ ...defaultAdjustments(), processVersion: 1 });
+    expect(useEditorStore.getState().adjustments.processVersion).toBe(1);
   });
 
   it("Auto-Ton-Muster {...cur, ...delta} behaelt die aktuelle Version", () => {
@@ -136,9 +168,14 @@ describe("Prozessversion · mergeGroups", () => {
     expect(mergeGroups(base, preset, new Set(["color", "hsl"])).adjustments.processVersion).toBe(2);
   });
 
-  it("Profil ohne Feld zaehlt mit Ton-Gruppe als Version 1", () => {
+  it("Profil ohne Feld oder mit null laesst die Version des Bildes unangetastet", () => {
     const legacy = edit(legacyAdjustments() as WireAdjustments);
-    expect(mergeGroups(base, legacy, new Set(["tone"])).adjustments.processVersion).toBe(1);
+    const nulled = edit({ ...defaultAdjustments(), processVersion: null });
+    const tone = new Set(["tone"]);
+    expect(mergeGroups(base, legacy, tone).adjustments.processVersion).toBe(2);
+    expect(mergeGroups(base, nulled, tone).adjustments.processVersion).toBe(2);
+    const pv1Base = edit({ ...defaultAdjustments(), processVersion: 1 });
+    expect(mergeGroups(pv1Base, legacy, tone).adjustments.processVersion).toBe(1);
   });
 
   it("applyProfileGroups im Store normalisiert und ist undobar", () => {
@@ -161,10 +198,17 @@ describe("Prozessversion · YAML-Profil", () => {
     expect(parseProfileYaml(text).adjustments.processVersion).toBe(2);
   });
 
-  it("Profil ohne Feld wird als Version 1 gelesen", () => {
+  it("Profil ohne Feld bleibt ungesetzt", () => {
     const parsed = parseProfileYaml("lumenProfile: 1\nname: alt\nadjustments:\n  exposure: 0.2\n");
-    expect(parsed.adjustments.processVersion).toBe(1);
+    expect(parsed.adjustments.processVersion).toBeUndefined();
     expect(parsed.adjustments.exposure).toBe(0.2);
+  });
+
+  it("Profil mit null bleibt ungesetzt", () => {
+    const parsed = parseProfileYaml(
+      "lumenProfile: 1\nname: alt\nadjustments:\n  processVersion: null\n",
+    );
+    expect(parsed.adjustments.processVersion).toBeNull();
   });
 
   it("ungueltige Version wird abgelehnt", () => {

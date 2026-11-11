@@ -11,7 +11,6 @@ import type {
   PresetGeometryWire,
   PresetMask,
 } from "../api/client";
-import { normalizeProcessVersion } from "./adjustments";
 
 const PROFILE_VERSION = 1;
 
@@ -54,11 +53,11 @@ export function parseProfileYaml(text: string): ProfileFile {
   if (typeof obj.adjustments !== "object" || obj.adjustments === null || Array.isArray(obj.adjustments)) {
     throw new Error("Profil-Datei hat keine Anpassungen.");
   }
-  // processVersion ist optional (Format bleibt lumenProfile: 1); fehlt
-  // es, stammt das Profil von vor H1 -> PV1. Unbekannte Werte nicht still
-  // umdeuten, sondern ablehnen.
+  // processVersion ist optional (Format bleibt lumenProfile: 1). Fehlt es
+  // (oder null), bleibt es ungesetzt: beim Anwenden behaelt das Bild seine
+  // Version. Unbekannte Werte nicht still umdeuten, sondern ablehnen.
   const rawVersion = (obj.adjustments as Record<string, unknown>).processVersion;
-  if (rawVersion !== undefined && rawVersion !== 1 && rawVersion !== 2) {
+  if (rawVersion !== undefined && rawVersion !== null && rawVersion !== 1 && rawVersion !== 2) {
     throw new Error("Profil-Datei hat eine ungültige Prozessversion (1 oder 2 erwartet).");
   }
   if (obj.masks !== undefined && obj.masks !== null && !Array.isArray(obj.masks)) {
@@ -66,10 +65,7 @@ export function parseProfileYaml(text: string): ProfileFile {
   }
   return {
     name: obj.name,
-    adjustments: {
-      ...(obj.adjustments as Adjustments),
-      processVersion: normalizeProcessVersion(rawVersion),
-    },
+    adjustments: obj.adjustments as Adjustments,
     masks: Array.isArray(obj.masks) ? (obj.masks as PresetMask[]) : [],
     geometry: (obj.geometry ?? null) as PresetGeometryWire | null,
   };

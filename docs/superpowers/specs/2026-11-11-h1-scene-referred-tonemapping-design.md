@@ -66,18 +66,35 @@ also nicht. Der Gewinn kommt aus:
 
 ## Datenmodell (meine Entscheidung)
 
-- Neues Feld `processVersion` in `Adjustments` (Frontend-Typ, Backend-
-  Pydantic `Literal[1, 2]`, `backend/schemas/adjustments.schema.json`).
-- **Fehlt das Feld beim Lesen, gilt 1.** Das gilt für Backend-Default,
-  Frontend-Parser (Edit-State, Presets, YAML-Profile, Marketplace).
+Lightroom-Semantik (Nachtrag 2026-11-11, ersetzt die erste Fassung „fehlt = 1
+überall"): Eine Prozessversion hat immer das **Bild**, ein **Preset** nur,
+wenn es sie ausdrücklich trägt.
+
+- Neues Feld `processVersion` in `Adjustments`: Frontend-Typ, Backend-
+  Pydantic `Literal[1, 2] | None = None`, `backend/schemas/adjustments.schema.json`
+  (`null` oder `1`/`2`, Default `null`). `null`/fehlend heißt „nicht gesetzt".
+- **Edit-State** (Bearbeitungsstand eines Bildes): fehlt die Version oder ist
+  sie `null`, gilt **1** — exakt der alte Look. Backend: `ImageEditState`
+  füllt `None` mit 1 (Validator), also liefern `GET /images/{id}/edit` und
+  Batch-Apply immer eine konkrete Version. Frontend: `normalizeProcessVersion`.
+- **Presets** (eigene, Default-, Marketplace-Presets, YAML-Profile): fehlt die
+  Version, bleibt sie ungesetzt. Das Backend setzt keinen Default ein; `null`
+  bzw. fehlend übersteht den Roundtrip (`model_dump` liefert `null`). Die 20
+  Default-Presets und alle Alt-Presets tragen keine Version.
+- **Anwenden** (Einzel-Apply aus dem Preset-Dialog, Batch-Apply,
+  Marketplace-Apply, Smart-Suggestion): Nur ein Preset mit expliziter Version
+  setzt sie — beim Teil-Anwenden nur, wenn die Gruppe `tone` angehakt ist
+  (`processVersion` gehört zu `tone` in `edit-groups.json`). Ohne Version
+  bleibt die Version des Bildes unangetastet (`merge_edit_state` /
+  `mergeGroups` kopieren nur nicht-`null`; `applyAdjustments` behält die
+  aktuelle Version).
+- Neue Presets aus dem Editor speichern die aktuelle Version explizit.
 - `defaultAdjustments()` liefert 2 — neue Bilder und „Alles zurücksetzen"
-  landen auf PV2.
+  landen auf PV2. Batch-Apply auf ein Bild ohne gespeicherten Stand startet
+  ebenfalls auf 2 (das Bild gilt als frisch).
 - Kein Alembic-Schritt: Adjustments liegen als JSONB vor.
-- `processVersion` gehört zur Gruppe `tone` in `edit-groups.json`. Wer ein
-  Preset mit Ton-Gruppe anwendet, übernimmt dessen Version (damit das Preset
-  so aussieht, wie der Ersteller es sah). Ohne Ton-Gruppe bleibt die
-  Version des Bildes.
-- YAML-Profil-Format bleibt `lumenProfile: 1`; Feld optional.
+- YAML-Profil-Format bleibt `lumenProfile: 1`; Feld optional (fehlt/`null` =
+  ungesetzt, andere Werte werden abgelehnt).
 
 ## Pipeline PV2 (Shader)
 
@@ -136,11 +153,15 @@ nicht in den Reglern.
 
 ## Tests
 
-- Backend: fehlendes Feld → 1; `2` gültig; `3` → 422; Preset-Roundtrip;
-  Edit-State-Roundtrip; `merge_edit_state` mit/ohne Ton-Gruppe.
+- Backend: Edit-State ohne Feld → 1; Preset ohne Feld → `null` (auch nach
+  DB-Roundtrip, Default-Presets, Marketplace-Apply); `2` gültig; `3` → 422;
+  `merge_edit_state` mit/ohne Ton-Gruppe und mit/ohne Preset-Version;
+  Batch-Apply: explizite Version setzt, fehlende lässt das Bild unangetastet.
 - Frontend Unit: `tonemap.ts`-Referenz gegen alle Abnahmekriterien;
-  Parser-Default 1; `defaultAdjustments().processVersion === 2`;
-  `mergeGroups` übernimmt Version nur mit Ton-Gruppe; YAML-Roundtrip.
+  Edit-State-Default 1, Preset ohne Feld lässt Version unangetastet
+  (inkl. Smart-Suggestion auf frischem PV2-Bild); `defaultAdjustments().processVersion === 2`;
+  `mergeGroups` übernimmt Version nur mit Ton-Gruppe und nur explizit;
+  neue Presets tragen die Version; YAML-Roundtrip.
 - Sync-Test: neue GLSL-Konstanten, `u_processVersion` vorhanden, PV1-Block
   textgleich zum heutigen (Snapshot des Code-Abschnitts).
 - Component: Upgrade-Button nur bei PV1 sichtbar, setzt Version, Undo

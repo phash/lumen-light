@@ -18,6 +18,7 @@ import {
   defaultToneCurve,
   isHslNeutral,
   isToneCurveIdentity,
+  explicitProcessVersion,
   normalizeProcessVersion,
 } from "./adjustments";
 import {
@@ -63,6 +64,12 @@ export const MAX_STRAIGHTEN_RADIANS = (10 * Math.PI) / 180; // ±10°
 
 export type LensSource = "manual" | "auto";
 
+/** Eingang fuer applyAdjustments: Presets/Marketplace liefern
+ *  processVersion ggf. als null/fehlend (= nicht gesetzt). */
+export type AdjustmentsInput = Partial<Omit<Adjustments, "processVersion">> & {
+  readonly processVersion?: ProcessVersion | null;
+};
+
 export interface EditorState {
   adjustments: Adjustments;
   bypass: boolean;
@@ -75,7 +82,7 @@ export interface EditorState {
   selectedMaskId: string | null;
   setAdjustment: (key: AdjustmentKey, value: number) => void;
   resetAll: () => void;
-  applyAdjustments: (adj: Partial<Adjustments>) => void;
+  applyAdjustments: (adj: AdjustmentsInput) => void;
   /** H1: Prozessversion setzen ("Auf Version 2 aktualisieren"). Regler
    *  bleiben unveraendert; ein Undo-Schritt. */
   setProcessVersion: (version: ProcessVersion) => void;
@@ -111,7 +118,7 @@ export interface EditorState {
    *  wiederherstellen). Ersetzt adjustments/masks/Geometrie/Lens in einem
    *  Schritt und leert die History (frischer Start fuer dieses Bild). */
   applyEditState: (state: {
-    adjustments: Partial<Adjustments>;
+    adjustments: AdjustmentsInput;
     masks: ReadonlyArray<MaskInstance>;
     cropRect: CropRect;
     straightenAngle: number;
@@ -202,7 +209,7 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   },
   applyAdjustments: (incoming) => {
     _snapshotBefore(get());
-    set(() => {
+    set((state) => {
       const base = defaultAdjustments();
       const merged: Record<AdjustmentKey, number> & {
         processVersion: ProcessVersion;
@@ -214,9 +221,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
         const key = k as AdjustmentKey;
         merged[key] = clampAdjustment(key, v as number);
       }
-      // Gespeicherte Adjustments (Preset, Marketplace) ohne Feld stammen
-      // von vor H1 -> PV1, damit sie aussehen wie beim Ersteller.
-      merged.processVersion = normalizeProcessVersion(incoming.processVersion);
+      // H1 (Lightroom-Semantik): nur eine explizite Version setzt sie.
+      // Presets ohne Version (Default-, Alt-, Marketplace-Presets) lassen
+      // die Version des Bildes unangetastet.
+      merged.processVersion =
+        explicitProcessVersion(incoming.processVersion) ??
+        state.adjustments.processVersion;
       if ("hsl" in incoming) merged.hsl = incoming.hsl ?? null;
       if ("toneCurve" in incoming) merged.toneCurve = incoming.toneCurve ?? null;
       return { adjustments: merged };

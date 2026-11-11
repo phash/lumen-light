@@ -9,7 +9,7 @@ Versionierung an [SemVer](https://semver.org/lang/de/).
 ### H1 · Szenenbezogene Tonabbildung (2026-11-11)
 
 - **Prozessversion 2**: Lichter/Tiefen/Weiss/Schwarz wirken als Belichtungs-Gains auf linearem Licht, Kontrast dreht um Mittelgrau, am Ende komprimiert eine weiche Schulter auf `max(r,g,b)` mit Entsaettigung Richtung Weiss. Ueberbelichtete Farben behalten ihren Farbton statt nach Gelb/Cyan zu kippen.
-- **Kompatibel**: `processVersion` in den Adjustments (fehlt = 1). Bestehende Edits und Presets inkl. der 20 Default-Presets bleiben auf Version 1 und sehen unveraendert aus; neue Bilder und „Alles zuruecksetzen" starten auf Version 2. Button „Auf Version 2 aktualisieren" im Abschnitt Licht (undobar).
+- **Kompatibel**: `processVersion` in den Adjustments. Bestehende Bearbeitungen ohne Feld bleiben auf Version 1 und sehen unveraendert aus; neue Bilder und „Alles zuruecksetzen" starten auf Version 2. Presets setzen die Version nur, wenn sie sie ausdruecklich tragen — Default- und Alt-Presets lassen die Version des Bildes unangetastet (Lightroom-Semantik). Button „Auf Version 2 aktualisieren" im Abschnitt Licht (undobar).
 
 ### Review-Fixes Runde 2 (2026-11-10)
 
