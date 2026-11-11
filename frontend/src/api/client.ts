@@ -184,6 +184,8 @@ export interface Image {
 
 /** H2b: Farblabels (Backend-CHECK in Migration 014). */
 export type ColorLabel = "red" | "yellow" | "green" | "blue" | "purple";
+/** H2d: Filterwert fuer GET /images; "none" = Bilder ohne Farblabel. */
+export type ColorLabelFilter = ColorLabel | "none";
 /** H2b: Markierung eines Bildes. */
 export type ImageFlag = "none" | "pick" | "reject";
 
@@ -200,7 +202,7 @@ export type ImageSort = "created_desc" | "created_asc" | "rating_desc" | "name_a
 /** H2b: serverseitige Filter/Sortierung fuer GET /images. */
 export interface ImageListQuery {
   minRating?: number;
-  colorLabels?: readonly ColorLabel[];
+  colorLabels?: readonly ColorLabelFilter[];
   flag?: ImageFlag;
   sort?: ImageSort;
 }

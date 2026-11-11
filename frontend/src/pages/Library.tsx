@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { useNavigate } from "react-router-dom";
+import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent } from "react";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { useApi } from "../api/use-api";
 import type { Image, ImageMetaPatch } from "../api/client";
@@ -20,6 +20,7 @@ import FilterBar, {
 import ImageActions from "../library/ImageActions";
 import ImageThumb from "../library/ImageThumb";
 import LibraryGrid from "../library/LibraryGrid";
+import { filterFromParams, filterToParams } from "../library/filterUrl";
 import Loupe from "../library/Loupe";
 import { ColorLabelPicker, FlagButtons, StarRating } from "../library/MetaControls";
 import { isShortcutBlocked, libraryKeyAction } from "../library/libraryKeys";
@@ -63,8 +64,15 @@ export default function Library() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   // Nur Ladefehler bieten „Erneut versuchen" an (Upload/Delete nicht).
   const [loadFailed, setLoadFailed] = useState(false);
-  // H2b: Filter/Sortierung (serverseitig) und Ansicht (gemerkt).
-  const [filter, setFilter] = useState<LibraryFilter>(DEFAULT_FILTER);
+  // H2b/H2d: Filter/Sortierung (serverseitig) leben in der URL, damit
+  // Neuladen und Zurueck aus dem Editor sie behalten; Ansicht (gemerkt) nicht.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const paramsKey = searchParams.toString();
+  const filter = useMemo(() => filterFromParams(new URLSearchParams(paramsKey)), [paramsKey]);
+  // replace: Filterklicks fuellen den Verlauf nicht; die URL des Eintrags
+  // traegt den Stand trotzdem (Zurueck aus dem Editor landet darauf).
+  const setFilter = (next: LibraryFilter) =>
+    setSearchParams((prev) => filterToParams(next, prev), { replace: true });
   const [view, setView] = useState<LibraryView>(() => getLibraryView());
   // aria-live-Ansage; `n` erzwingt eine neue Ansage bei gleichem Text.
   const [announcement, setAnnouncement] = useState<{ text: string; n: number }>({
