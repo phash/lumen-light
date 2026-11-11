@@ -27,6 +27,8 @@ Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Anna
 | D1/D2/D4/D6 | Editor-Refactor + Wireformat camelCase + Tests | ✓ abgeschlossen |
 | P1 | Bearbeitungs-Profile: YAML-Export/Import, Schritt-Checkboxen, Batch-Anwendung | ✓ abgeschlossen |
 | SEO1 | Bilingual DE+EN + GEO/SEO/AEO-Politur (2026-06-09) | ✓ abgeschlossen |
+| H1 | Szenenbezogene Tonabbildung (Sigmoid/AgX) | ⏳ geplant |
+| H2 | Lighttable: Sterne, Farblabels, Aussortieren | ⏳ geplant |
 
 ## Phase 1 · Bildverarbeitung im Browser ✓
 
@@ -81,6 +83,21 @@ Recherche-Output siehe `docs/superpowers/specs/2026-04-28-phase-g-pro-correction
 | G2 | Local Contrast / Clarity (Unsharp-Mask im Y-Kanal, 5x5-Gauss) | ✓ |
 | G3 | TCA-Korrektur (per-Channel-Distortion fuer R/B) | ✓ |
 | G4 | Lensfun-DB-Migration mit Stuetzstellen-Interpolation | ⏸ Backlog |
+
+## Phase H · Pipeline & Workflow (darktable-/REAPER-inspiriert, geplant)
+
+Ergebnis der Recherche vom 2026-11-11. darktable steht unter GPL-3.0: Wir übernehmen nur Ideen und veröffentlichte Algorithmen, keinen Code.
+
+| Item | Aufgabe | Aufwand | Status |
+|---|---|---|---|
+| H1 | Szenenbezogene Tonabbildung: Belichtung, Weißabgleich und Kontrast rechnen auf linearem Licht, erst am Ende bildet eine Sigmoid-/AgX-Kurve auf den Bildschirm ab. Ziel: Lightroom-artiges Verhalten, keine Farbverschiebung in hellen Lichtern. Bestehende Presets brauchen einen Kompatibilitätspfad (Pipeline-Version im Edit-State). | M | ⏳ geplant |
+| H2 | Lighttable in der Bibliothek: Sterne (0–5), Farblabels, Filter danach, Tastatur-Aussortieren (Vorschau groß, Taste vergeben, nächstes Bild), Vergleichsansicht. Braucht Migration für Bewertung/Label pro Bild und `GET /images`-Filter. | M | ⏳ geplant |
+
+Weitere Kandidaten aus derselben Recherche (Backlog):
+- Zentrale Aktionsliste mit frei belegbaren Tasten, Befehlspalette und beschrifteter Undo-Historie (REAPER) (M)
+- Virtuelle Kopien/Snapshots pro Bild + Export-Warteschlange mit Dateinamen-Vorlagen und ZIP (M)
+- Tone Equalizer mit kantenerhaltender Maske, Masken-Verfeinerung an Motivkanten (M)
+- Klein (S): „Inpaint opposed“ für die Lichter-Rekonstruktion, Vektorskop, Fokus-Peaking, Warnung für Überbelichtung/Farbraum, Shift-Feinjustierung und Mausrad an Reglern, neutralgraues Theme
 
 ## Phase P · Bearbeitungs-Profile ✓
 
