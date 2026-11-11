@@ -29,6 +29,7 @@ vi.mock("../src/editor/Canvas", async (importOriginal) => {
     useImperativeHandle(ref, () => ({
       loadFile: (file: File) => canvasState.loadFile(file),
       loadBitmap: () => undefined,
+      loadRgb16: () => undefined,
       render: () => undefined,
       takeBypassSnapshot: () => null,
       exportFullResCanvas: () => null,

@@ -36,14 +36,24 @@ export const FILE_PICKER_ACCEPT = [
   ".tiff",
 ].join(",");
 
+/** RGB-Pixel (nicht RGBA), Laenge = width × height × 3. 16 bit (H1b) hat
+ *  dieselbe sRGB-Kodierung wie 8 bit: 8 bit = 16 bit >> 8. */
+export type RawPixels =
+  | { readonly bits: 8; readonly rgb: Uint8Array }
+  | { readonly bits: 16; readonly rgb: Uint16Array };
+
 export interface DecodedRaw {
   readonly width: number;
   readonly height: number;
   readonly focalLen: number | null;
-  /** RGB-Pixel-Buffer (nicht RGBA). Laenge = width × height × 3. */
-  readonly rgb: Uint8Array;
+  readonly pixels: RawPixels;
   readonly cameraMake: string | null;
   readonly cameraModel: string | null;
+}
+
+export interface DecodeRawOptions {
+  /** Ausgabe-Bittiefe; Default 16 (H1b). */
+  readonly bits?: 8 | 16;
 }
 
 /**
@@ -92,48 +102,54 @@ export async function isRawFile(file: File): Promise<boolean> {
 }
 
 /**
- * Decoded ein RAW als RGB-Pixel-Buffer. Standard-Settings: keine
- * automatische Helligkeit, sRGB-Output, 8-bit. Siehe libraw-Docs fuer
- * weitere Optionen — der Lumen-Editor uebernimmt anschliessend die
- * Adjustments selbst.
+ * Decoded ein RAW als RGB-Pixel-Buffer (Default 16 bit, H1b).
+ *
+ * Achtung Optionen: libraw-wasm liest NUR camelCase-Schluessel
+ * (`outputBps`, `useCameraWb`, `noAutoBright`, ...). Bis H1b standen hier
+ * snake_case-Schluessel (`use_camera_wb`, `no_auto_bright`, ...), die nie
+ * gewirkt haben — gemessen bitgleich zu `{}`. Effektiv laufen RAWs daher mit
+ * den libraw-Defaults: Tageslicht-WB (nicht Kamera-WB), Auto-Helligkeit an,
+ * sRGB. Das bleibt bewusst so (Look-Aenderung jedes RAWs, eigene Entscheidung,
+ * siehe Spec H1b); hier wird nur die Bittiefe gesetzt.
  */
-export async function decodeRaw(file: File): Promise<DecodedRaw> {
+export async function decodeRaw(
+  file: File,
+  options: DecodeRawOptions = {},
+): Promise<DecodedRaw> {
+  const bits = options.bits ?? 16;
   const buffer = new Uint8Array(await file.arrayBuffer());
   const raw = new LibRaw();
   try {
-    await raw.open(buffer, {
-      use_camera_wb: 1,
-      output_color: 1,           // sRGB
-      output_bps: 8,
-      no_auto_bright: 1,
-    });
+    await raw.open(buffer, { outputBps: bits });
 
     const meta = await raw.metadata(true);
     const result = await raw.imageData();
 
-    let rgb: Uint8Array;
+    let data: Uint8Array | Uint16Array;
     let width: number;
     let height: number;
     if (result instanceof Uint8Array) {
-      rgb = result;
+      data = result;
       width = meta.width ?? meta.iwidth ?? 0;
       height = meta.height ?? meta.iheight ?? 0;
     } else {
-      rgb = result.data ?? new Uint8Array();
+      data = result.data ?? new Uint8Array();
       width = result.width ?? meta.width ?? 0;
       height = result.height ?? meta.height ?? 0;
     }
 
-    if (rgb.length !== width * height * 3) {
+    if (data.length !== width * height * 3) {
       throw new Error(
-        `RAW-Decode lieferte ${rgb.length} Bytes, erwartet wurden ${width * height * 3} (= ${width}x${height}x3)`,
+        `RAW-Decode lieferte ${data.length} Werte, erwartet wurden ${width * height * 3} (= ${width}x${height}x3)`,
       );
     }
+    const pixels: RawPixels =
+      data instanceof Uint16Array ? { bits: 16, rgb: data } : { bits: 8, rgb: data };
 
     return {
       width,
       height,
-      rgb,
+      pixels,
       focalLen: pickNumber(meta, "focal_len"),
       cameraMake: pickString(meta, "camera_make", "make"),
       cameraModel: pickString(meta, "camera_model", "model"),

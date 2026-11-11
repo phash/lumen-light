@@ -37,6 +37,7 @@ import { analyze, computeAutoTone, computeAutoWb } from "../editor/autoAdjust";
 import { analyzeCanvasStraightenAngle } from "../editor/autoStraighten";
 import { detectFacesSafe } from "../editor/faceDetector";
 import { FILE_PICKER_ACCEPT, decodeRaw, isRawFile, rgbToImageBitmap } from "../editor/raw";
+import { chooseRawBitDepth } from "../editor/rawPixels";
 import { type Genre, suggestGenre } from "../editor/suggestPreset";
 import { selectedMask, useEditorStore } from "../editor/store";
 import { type AspectRatio, defaultCropRect } from "../editor/transform";
@@ -573,19 +574,34 @@ export default function Editor() {
         if (!isCurrent()) return false;
         if (isRaw) {
           setDecoding(true);
-          const decoded = await decodeRaw(file);
+          // H1b: 16 bit -> Half-Float-Textur; wenig Geraetespeicher -> 8 bit.
+          const decoded = await decodeRaw(file, {
+            bits: chooseRawBitDepth(typeof navigator === "undefined" ? undefined : navigator),
+          });
           if (!isCurrent()) return false;
-          const bitmap = await rgbToImageBitmap(decoded.rgb, decoded.width, decoded.height);
-          if (!isCurrent()) {
-            bitmap.close();
-            return false;
+          const { pixels } = decoded;
+          if (pixels.bits === 16) {
+            const handle = canvasHandleRef.current;
+            if (!handle) throw new Error("Renderer nicht initialisiert");
+            handle.loadRgb16({
+              kind: "rgb16",
+              data: pixels.rgb,
+              width: decoded.width,
+              height: decoded.height,
+            });
+          } else {
+            const bitmap = await rgbToImageBitmap(pixels.rgb, decoded.width, decoded.height);
+            if (!isCurrent()) {
+              bitmap.close();
+              return false;
+            }
+            const handle = canvasHandleRef.current;
+            if (!handle) {
+              bitmap.close();
+              throw new Error("Renderer nicht initialisiert");
+            }
+            handle.loadBitmap(bitmap, decoded.width, decoded.height);
           }
-          const handle = canvasHandleRef.current;
-          if (!handle) {
-            bitmap.close();
-            throw new Error("Renderer nicht initialisiert");
-          }
-          handle.loadBitmap(bitmap, decoded.width, decoded.height);
           setImageDims({ width: decoded.width, height: decoded.height });
           if (decoded.cameraMake || decoded.cameraModel) {
             setCameraInfo(

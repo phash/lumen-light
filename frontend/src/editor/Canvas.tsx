@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "rea
 
 
 import type { MaskInstance } from "./mask";
+import type { Rgb16Image } from "./rawPixels";
 import { useEditorStore, type EditorState } from "./store";
 import { fitLongEdge } from "./thumbnail";
 import {
@@ -12,6 +13,7 @@ import {
 } from "./transform";
 
 const IDENTITY_CROP: CropRect = defaultCropRect();
+const PREVIEW_MAX_WIDTH = 1600;
 import {
   type LinearMaskParams,
   type MasksUniforms,
@@ -97,7 +99,23 @@ function renderState(
   );
 }
 
-function closeIfBitmap(source: TexImageSource | undefined): void {
+/** Quelle fuer Live-Textur und Export: Browser-Bild/Bitmap (8 bit) oder
+ *  16-bit-RAW-Pixel (H1b). */
+type CanvasSource = TexImageSource | Rgb16Image;
+
+/** H1b: aktive Quell-Praezision am Canvas-Element (E2E/Debug, kein UI). */
+function markPrecision(canvas: HTMLCanvasElement | null, r: Renderer): void {
+  const p = (r as { sourcePrecision?: unknown }).sourcePrecision;
+  if (canvas && typeof p === "string") canvas.dataset.sourcePrecision = p;
+}
+
+/** Vorschaugroesse fuer die Live-Textur (Breite auf PREVIEW_MAX_WIDTH). */
+function previewSize(width: number, height: number): { width: number; height: number } {
+  const scale = Math.min(1, PREVIEW_MAX_WIDTH / width);
+  return { width: Math.round(width * scale), height: Math.round(height * scale) };
+}
+
+function closeIfBitmap(source: CanvasSource | undefined): void {
   if (typeof ImageBitmap !== "undefined" && source instanceof ImageBitmap) {
     source.close();
   }
@@ -123,6 +141,10 @@ export interface CanvasHandle {
   /** Laedt ein bereits dekodiertes Bild (z.B. aus RAW). Das Canvas
    *  uebernimmt die Bitmap (close() beim naechsten Bild bzw. Unmount). */
   loadBitmap(bitmap: ImageBitmap, width: number, height: number): void;
+  /** H1b: laedt 16-bit-RAW-Pixel. Das Canvas haelt den Puffer fuer Export
+   *  und Kontext-Wiederherstellung; die Live-Textur ist verkleinert und
+   *  liegt als Half-Float (Rueckfall 8 bit) auf der GPU. */
+  loadRgb16(image: Rgb16Image): void;
   /** Erzwingt einen Re-Render mit aktuellem Store-State. */
   render(): void;
   /** Rendert das Bild kurz mit bypass=true, liefert es als DataURL,
@@ -161,7 +183,6 @@ interface Props {
   readonly cropMode: boolean;
 }
 
-const PREVIEW_MAX_WIDTH = 1600;
 
 const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   { onTick, onError, onRecovered, onCanvasMount, cropMode },
@@ -172,7 +193,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   // Original-Vollaufloesungs-Quelle fuer den Full-Res-Export; die
   // Live-Textur ist auf PREVIEW_MAX_WIDTH heruntergerechnet.
   const fullSourceRef = useRef<{
-    source: TexImageSource;
+    source: CanvasSource;
     width: number;
     height: number;
   } | null>(null);
@@ -232,6 +253,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
         const preview = previewSizeRef.current;
         if (full && preview) {
           r.loadImage(full.source, preview.width, preview.height);
+          markPrecision(canvas, r);
           const st = useEditorStore.getState();
           renderState(r, st, cropModeRef.current ? IDENTITY_CROP : st.cropRect);
           onTick();
@@ -280,7 +302,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
   useImperativeHandle(
     ref,
     (): CanvasHandle => {
-      const setSource = (source: TexImageSource, width: number, height: number) => {
+      const setSource = (source: CanvasSource, width: number, height: number) => {
         const prev = fullSourceRef.current?.source;
         if (prev !== source) closeIfBitmap(prev);
         fullSourceRef.current = { source, width, height };
@@ -294,6 +316,7 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           const r = rendererRef.current;
           if (!r) throw new Error("Renderer nicht initialisiert");
           r.loadImage(image, width, height);
+          markPrecision(canvasRef.current, r);
           previewSizeRef.current = { width, height };
           // Original-Aufloesung fuer den Export merken (image ist die volle
           // Datei; width/height sind die Preview-Skalierung).
@@ -311,14 +334,25 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
             bitmap.close();
             throw new Error("Renderer nicht initialisiert");
           }
-          const scale = Math.min(1, PREVIEW_MAX_WIDTH / width);
-          const w = Math.round(width * scale);
-          const h = Math.round(height * scale);
-          r.loadImage(bitmap, w, h);
-          previewSizeRef.current = { width: w, height: h };
+          const preview = previewSize(width, height);
+          r.loadImage(bitmap, preview.width, preview.height);
+          markPrecision(canvasRef.current, r);
+          previewSizeRef.current = preview;
           // bitmap ist die volle RAW-Aufloesung; width/height sind die echten
           // Decoder-Dimensionen -> fuer den Export merken.
           setSource(bitmap, width, height);
+          const effCrop = cropMode ? IDENTITY_CROP : useEditorStore.getState().cropRect;
+          renderState(r, useEditorStore.getState(), effCrop);
+          onTick();
+        },
+        loadRgb16(image) {
+          const r = rendererRef.current;
+          if (!r) throw new Error("Renderer nicht initialisiert");
+          const preview = previewSize(image.width, image.height);
+          r.loadImage(image, preview.width, preview.height);
+          markPrecision(canvasRef.current, r);
+          previewSizeRef.current = preview;
+          setSource(image, image.width, image.height);
           const effCrop = cropMode ? IDENTITY_CROP : useEditorStore.getState().cropRect;
           renderState(r, useEditorStore.getState(), effCrop);
           onTick();

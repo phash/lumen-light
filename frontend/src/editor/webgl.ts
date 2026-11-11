@@ -10,7 +10,9 @@ import {
   HSL_CHANNELS,
   normalizeProcessVersion,
 } from "./adjustments";
+import { unorm16ToHalf } from "./float16";
 import { MAX_LINEAR_MASKS, MAX_RADIAL_MASKS } from "./mask";
+import { type Rgb16Image, boxDownscaleRgb16, isRgb16Image, rgb16ToRgb8 } from "./rawPixels";
 import { FRAG_SRC, VERT_SRC } from "./shaders";
 import { TONE_CURVE_LUT_SIZE, computeToneCurveLut } from "./toneCurve";
 
@@ -230,6 +232,115 @@ function downscaleSource(
   return canvas;
 }
 
+/** Praezision der aktuell geladenen Quelltextur. */
+export type SourcePrecision = "float16" | "8bit";
+
+/** Teilmenge von WebGL2, die der 16-bit-Upload braucht (Fake-GL in Tests). */
+export type Rgb16UploadGl = Pick<
+  WebGL2RenderingContext,
+  | "createTexture"
+  | "deleteTexture"
+  | "bindTexture"
+  | "texParameteri"
+  | "pixelStorei"
+  | "texStorage2D"
+  | "texSubImage2D"
+  | "getError"
+  | "NO_ERROR"
+  | "TEXTURE_2D"
+  | "TEXTURE_WRAP_S"
+  | "TEXTURE_WRAP_T"
+  | "TEXTURE_MIN_FILTER"
+  | "TEXTURE_MAG_FILTER"
+  | "CLAMP_TO_EDGE"
+  | "LINEAR"
+  | "UNPACK_ALIGNMENT"
+  | "RGB"
+  | "RGB8"
+  | "RGB16F"
+  | "HALF_FLOAT"
+  | "UNSIGNED_BYTE"
+>;
+
+/** Zeilen pro texSubImage2D-Streifen: haelt den Konvertierungspuffer klein
+ *  (6000 px Breite -> ~9 MB) statt einer zweiten Vollbild-Kopie. */
+export const UPLOAD_STRIPE_ROWS = 256;
+
+/** Liest aufgelaufene GL-Fehler aus (begrenzt: bei Kontextverlust kommt
+ *  sonst evtl. kein NO_ERROR). */
+function drainGlErrors(gl: Rgb16UploadGl): void {
+  for (let i = 0; i < 8 && gl.getError() !== gl.NO_ERROR; i++) {
+    // nur leeren
+  }
+}
+
+function tryUploadRgb16(
+  gl: Rgb16UploadGl,
+  src: Rgb16Image,
+  precision: SourcePrecision,
+  stripeRows: number,
+): WebGLTexture | null {
+  const { width, height, data } = src;
+  const half = precision === "float16";
+  drainGlErrors(gl);
+  const tex = gl.createTexture();
+  if (!tex) return null;
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  // RGB-Zeilen sind 3 bzw. 6 Byte × Breite -> nicht 4-Byte-ausgerichtet.
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  try {
+    gl.texStorage2D(gl.TEXTURE_2D, 1, half ? gl.RGB16F : gl.RGB8, width, height);
+    if (gl.getError() !== gl.NO_ERROR) throw new Error("texStorage2D");
+    const rows = Math.max(1, Math.min(stripeRows, height));
+    const rowLen = width * 3;
+    const buf = half ? new Uint16Array(rows * rowLen) : new Uint8Array(rows * rowLen);
+    for (let y = 0; y < height; y += rows) {
+      const n = Math.min(rows, height - y);
+      const chunk = data.subarray(y * rowLen, (y + n) * rowLen);
+      const out = buf.subarray(0, n * rowLen);
+      if (out instanceof Uint16Array) unorm16ToHalf(chunk, out);
+      else rgb16ToRgb8(chunk, out);
+      gl.texSubImage2D(
+        gl.TEXTURE_2D, 0, 0, y, width, n, gl.RGB,
+        half ? gl.HALF_FLOAT : gl.UNSIGNED_BYTE, out,
+      );
+    }
+    if (gl.getError() !== gl.NO_ERROR) throw new Error("texSubImage2D");
+    return tex;
+  } catch {
+    gl.deleteTexture(tex);
+    return null;
+  } finally {
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+  }
+}
+
+/**
+ * H1b: laedt eine 16-bit-RGB-Quelle als Textur. Bevorzugt RGB16F
+ * (Half-Float, in WebGL2 filterbar); schlaegt das fehl (OUT_OF_MEMORY,
+ * Exception), wird dieselbe Quelle als RGB8 (oberes Byte) geladen.
+ * Wirft, wenn beides scheitert. Die Textur bleibt gebunden.
+ */
+export function uploadRgb16Texture(
+  gl: Rgb16UploadGl,
+  src: Rgb16Image,
+  options: { readonly preferHalf: boolean; readonly stripeRows?: number },
+): { texture: WebGLTexture; precision: SourcePrecision } {
+  const stripeRows = options.stripeRows ?? UPLOAD_STRIPE_ROWS;
+  const attempts: SourcePrecision[] = options.preferHalf ? ["float16", "8bit"] : ["8bit"];
+  for (const precision of attempts) {
+    const texture = tryUploadRgb16(gl, src, precision, stripeRows);
+    if (texture) return { texture, precision };
+  }
+  throw new WebGLRendererError(
+    "Bild konnte nicht in den Grafikspeicher geladen werden.",
+  );
+}
+
 export class Renderer {
   private readonly gl: WebGL2RenderingContext;
   private readonly program: WebGLProgram;
@@ -239,6 +350,7 @@ export class Renderer {
   private toneCurveLutCache = new Uint8Array(TONE_CURVE_LUT_SIZE);
   private _imageWidth = 0;
   private _imageHeight = 0;
+  private _sourcePrecision: SourcePrecision = "8bit";
   private readonly vao: WebGLVertexArrayObject | null;
   private readonly vbo: WebGLBuffer | null;
   /** Groesste Kantenlaenge, die Textur, Renderbuffer UND Viewport
@@ -410,13 +522,18 @@ export class Renderer {
 
   /** Laedt die Quelle als Textur in der Zielgroesse width × height. Ist die
    *  Quelle groesser (Full-Res-Bitmap fuer die Vorschau), wird sie vorher
-   *  per 2D-Canvas heruntergerechnet — spart GPU-Speicher und Upload-Zeit.
+   *  per 2D-Canvas heruntergerechnet — spart GPU-Speicher und Upload-Zeit
+   *  (H1b: 16-bit-RAW-Quellen per CPU-Box-Filter, Upload als RGB16F).
    *  Zielgroessen ueber `maxDimension` werden proportional begrenzt
    *  (sonst bleibt das Bild schwarz). Die effektive Groesse steht danach
    *  in imageWidth/imageHeight. */
-  loadImage(image: TexImageSource, width: number, height: number): void {
+  loadImage(image: TexImageSource | Rgb16Image, width: number, height: number): void {
     const gl = this.gl;
     const target = fitWithin(width, height, this.maxDimension);
+    if (isRgb16Image(image)) {
+      this.loadRgb16(image, target.width, target.height);
+      return;
+    }
     const srcSize = texSourceSize(image);
     let upload: TexImageSource = image;
     if (srcSize.width > target.width || srcSize.height > target.height) {
@@ -441,10 +558,36 @@ export class Renderer {
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, upload);
     this.texture = tex;
+    this._sourcePrecision = "8bit";
+    this.setImageSize(width, height);
+  }
+
+  /** H1b: 16-bit-Quelle — CPU-Box-Verkleinerung (das 2D-Canvas kann nur
+   *  8 bit), dann Half-Float-Upload mit RGB8-Rueckfall. */
+  private loadRgb16(image: Rgb16Image, width: number, height: number): void {
+    const gl = this.gl;
+    const src =
+      image.width > width || image.height > height
+        ? boxDownscaleRgb16(image, Math.min(width, image.width), Math.min(height, image.height))
+        : image;
+    if (this.texture) gl.deleteTexture(this.texture);
+    this.texture = null;
+    const { texture, precision } = uploadRgb16Texture(gl, src, { preferHalf: true });
+    this.texture = texture;
+    this._sourcePrecision = precision;
+    this.setImageSize(src.width, src.height);
+  }
+
+  private setImageSize(width: number, height: number): void {
     this._imageWidth = width;
     this._imageHeight = height;
-    gl.canvas.width = width;
-    gl.canvas.height = height;
+    this.gl.canvas.width = width;
+    this.gl.canvas.height = height;
+  }
+
+  /** "float16", wenn die aktuelle Quelle als RGB16F geladen ist. */
+  get sourcePrecision(): SourcePrecision {
+    return this._sourcePrecision;
   }
 
   hasImage(): boolean {
