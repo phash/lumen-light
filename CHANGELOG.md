@@ -6,6 +6,14 @@ Versionierung an [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased] — Pre-Beta
 
+### H2b Raster und Metadaten (2026-11-11)
+
+- **Raster-Ansicht** als Default der Bibliothek (Umschalter zurück zur Liste, pro Browser gemerkt): Kachel mit unbeschnittenem Vorschaubild auf dunklem Passepartout (sonst Platzhalter mit Dateityp), Dateiname, Sterne, Markierung, Farblabel (Punkt + Leiste am Bildrand); abgelehnte Bilder erscheinen abgedunkelt.
+- **Sterne 0–5, Farblabel (Rot/Gelb/Grün/Blau/Lila), Markierung (ausgewählt/abgelehnt)** pro Kachel/Zeile und als Aktion für die Mehrfachauswahl. Optimistisch mit Rollback und Fehlermeldung; Änderungen werden per `aria-live` angesagt („3 Sterne", „Label Rot", „Als ausgewählt markiert").
+- **Filter/Sortierung** serverseitig: Mindestbewertung, Farblabels (mehrfach), Markierung, Sortierung (neueste/älteste/Bewertung/Dateiname); leerer Treffer mit „Filter zurücksetzen".
+- **Tastatur**: Raster ist ein Tab-Stopp (Roving-Tabindex), Pfeiltasten/Pos1/Ende bewegen den Fokus, Leertaste wählt aus.
+- API: `PATCH /api/v1/images/{id}` (120/min) und `PATCH /api/v1/images` (Batch, max. 500 IDs, alles oder nichts, 30/min); `GET /images` mit `minRating`, `colorLabel` (mehrfach), `flag`, `sort` (`created_desc`|`created_asc`|`rating_desc`|`name_asc`, alte Werte bleiben gültig). `ImageOut` und `/me/export` enthalten `rating`, `colorLabel`, `flag`. Migration 014.
+
 ### H2a Vorschaubilder (2026-11-11)
 
 - **Vorschaubilder pro Bild**: der Browser erzeugt nach dem Upload (JPEG/PNG per `createImageBitmap`, RAW ueber die eingebettete Kamera-Vorschau aus libraw-wasm `thumbnailData()`) und im Editor nach erfolgreichem Autosave (max. 1x pro 10 s pro Bild) sowie beim Verlassen ein 1600-px-JPEG mit Bearbeitung. `PUT /api/v1/images/{id}/thumbnail` (Multipart `file`, nur JPEG, max. 1 MB und 2048×2048 px vor dem Dekodieren, 30/min) kodiert serverseitig neu in 400 und 1600 px ohne Metadaten (gleiche Dekodier-Grenzen und Build-Slots wie die Marketplace-Vorschau), Keys `{uid}/thumbs/{id}-{hex}-{400|1600}.jpg`, alter Satz wird nach dem Commit geloescht.

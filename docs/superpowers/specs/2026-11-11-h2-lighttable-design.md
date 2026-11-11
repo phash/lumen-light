@@ -151,3 +151,52 @@ dekodieren; der Browser kann es (libraw-wasm) und kennt die Bearbeitung.
 - `GET /images` signiert bis zu 1000 URLs pro 500er-Seite: lokal, gemessen
   ~0.18 ms pro URL (~180 ms CPU pro voller Seite). Falls das stört:
   eigenes SigV4-Query-Signing statt botocore (Backlog).
+
+## Umsetzung H2b (2026-11-11)
+
+- **Migration `014_h2b_ratings`**: `rating smallint not null default 0`
+  (CHECK 0..5), `color_label text null` (CHECK rot/gelb/grün/blau/lila als
+  `red|yellow|green|blue|purple`), `flag text not null default 'none'`
+  (CHECK `none|pick|reject`), Index `ix_images_user_rating (user_id, rating)`.
+- **PATCH-Semantik**: nur gesendete Felder ändern sich; `colorLabel: null`
+  löscht das Label, `rating`/`flag: null` → 422; leerer Body → 422.
+  Einzeln 120/min (wie Autosave, schnelles Durchklicken), Batch 30/min.
+  Batch: `ids` 1..500, eindeutig (sonst 422); Zeilen werden mit
+  `FOR UPDATE` geladen, fehlt auch nur eine (fremd/unbekannt) → 404 ohne
+  Änderung. Antwort = `ImageOut[]` in der Reihenfolge der `ids`.
+- **Sortierung**: `created_desc` (Default), `created_asc`, `rating_desc`
+  (Zweitschlüssel `created_at desc`), `name_asc`; immer `id` als letzter
+  Tiebreaker. Die alten Werte (`-created_at`, `original_filename`, …)
+  bleiben gültig. `minRating=0` filtert nicht. Unbekannte Werte → 422.
+- **Gefiltert wird nur beim Laden**: ändert man die Bewertung eines Bildes
+  so, dass es nicht mehr zum Filter passt, bleibt die Kachel bis zum
+  nächsten Laden stehen (kein Wegspringen unter dem Cursor, Lightroom-nah).
+- **Auswahl ⊆ Sichtbares**: nach jedem Laden wird die Checkbox-Auswahl auf
+  die sichtbaren Bilder beschnitten, damit Batch-Aktionen (Sterne, Preset,
+  …) keine weggefilterten Bilder treffen.
+- **Optimistisch mit Rollback**: Rollback-Ziel ist der letzte vom Server
+  bestätigte Stand pro Bild; eine ältere Antwort/ein älterer Fehler
+  überschreibt keine neuere Änderung desselben Bildes.
+- **Kachel**: Bild unbeschnitten (`object-contain`) auf dunklem
+  Passepartout 4:3 — Hoch-/Querformat bleiben beim Sichten erkennbar.
+  Farblabel als Leiste am unteren Bildrand plus Punkt im Bedienfeld,
+  „abgelehnt" dunkelt das Bild ab (Graustufen, 35 %). Sterne: erneuter
+  Klick auf den aktuellen Stern setzt auf 0.
+- **Tastatur**: Raster = ein Tab-Stopp (Roving-Tabindex auf der Kachel,
+  `role=group` mit Name „Datei, n Sterne, Label X, Ausgewählt"). Pfeile,
+  Pos1/Ende bewegen; Leertaste schaltet die Auswahl. Bedienelemente nicht
+  aktiver Kacheln haben `tabindex=-1` (per Maus/Touch erreichbar). Spalten
+  werden aus dem Layout gelesen (`offsetTop`). H2c hängt Einzeltasten über
+  `LibraryGrid.onTileKey` an — der Handler sieht nur Tasten direkt auf der
+  Kachel, nicht in deren Buttons.
+- **Ansicht gemerkt** in `localStorage.lumen.library.view` mit Modul-Cache
+  (`library/viewPrefs.ts`, Muster wie `consent.ts`).
+- **testids**: Aktionen (`image-select-*`, `image-edit-*`, `image-delete-*`,
+  `image-thumb-*`) sind in beiden Ansichten gleich (immer nur eine
+  gerendert); neu sind `image-grid`, `image-tile-*`, `tile-<id>-star-N`,
+  `-pick`, `-reject`, `-label`, `-label-<farbe>`, `-label-none`, Zeilen
+  `row-<id>-…`, Mehrfachauswahl `batch-…`, Filter `filter-*`,
+  `library-view-grid|list`, `library-filter-empty(-reset)`,
+  `library-announce`.
+- **Nicht in H2b**: Filter „ohne Label", Filter-Zustand in der URL,
+  Lupe/Vergleich/Einzeltasten (H2c).

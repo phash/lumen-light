@@ -92,12 +92,13 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `backend/app/auth.py` | JWT-Verify (PyJWT, RS256-Whitelist), JIT-User-Provisioning + 20 Default-Presets (4 Looks + 6 Genre + 10 Motiv: Macro/Astro/Food/Hochzeit/Innen/Konzert/Strand/Schnee/Herbst/Architektur). `current_admin`-Dep prueft Realm-Role `admin`. |
 | `backend/app/schemas.py` | Adjustments, Mask-Discriminated-Union (`MAX_LINEAR_MASKS=4`, `MAX_RADIAL_MASKS=4`), `extra="forbid"`. `CAMEL_BASE_CONFIG`/`CAMEL_OUT_CONFIG` mit `serialize_by_alias=True` → Wire-Keys camelCase, Eingang akzeptiert beide via `populate_by_name=True`. |
 | `backend/app/rate_limit.py` | slowapi-Limiter (SHA-256-Token-Hash-Key, IP-Fallback). `LUMEN_RATELIMIT_STORAGE` ueber env auf Redis-URI fuer Multi-Worker-Setups |
-| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) → 010_purges_tombstones (`storage_purges`: Janitor-Retry fehlgeschlagener S3-Prefix-Purges aus DELETE /me; `account_tombstones`: SHA-256(sub)+deleted_at gegen JIT-Wiederbelebung) → 011_review_2026_11 (`presets.preview_key`, `preset_applies` fuer Apply-Dedupe pro User/Tag, `storage_purges.not_before`) → 012_review_2026_11_r2 (`keycloak_deletions`-Retry-Tabelle, `users.publish_blocked_until`, Index `preset_applies(preset_id)`) → 013_h2a_thumbnails (`images.thumb_key`/`images.preview_key`, nullable; H2b bekommt 014) |
+| `backend/alembic/versions/` | 001_initial → 002_keycloak → 003_images → 004_preset_masks → 005_marketplace → 006_preset_reports_set_null → 007_admin_feedback → 008_image_edits (C1: `image_edits`-Tabelle, Edit-State pro Bild als JSONB) → 009_preset_geometry (nullable `geometry` JSONB auf `presets`) → 010_purges_tombstones (`storage_purges`: Janitor-Retry fehlgeschlagener S3-Prefix-Purges aus DELETE /me; `account_tombstones`: SHA-256(sub)+deleted_at gegen JIT-Wiederbelebung) → 011_review_2026_11 (`presets.preview_key`, `preset_applies` fuer Apply-Dedupe pro User/Tag, `storage_purges.not_before`) → 012_review_2026_11_r2 (`keycloak_deletions`-Retry-Tabelle, `users.publish_blocked_until`, Index `preset_applies(preset_id)`) → 013_h2a_thumbnails (`images.thumb_key`/`images.preview_key`, nullable) → 014_h2b_ratings (`images.rating` 0..5, `images.color_label` red/yellow/green/blue/purple\|NULL, `images.flag` none/pick/reject, Index `(user_id, rating)`) |
 | `backend/schemas/edit-groups.json` | Single Source fuer das Gruppen->Feld-Mapping (8 Gruppen: tone/color/hsl/curve/detail/masks/crop/lens). Backend liest zur Laufzeit, Frontend importiert beim Build (Vite-Repo-Root-Context). |
 | `backend/app/profile_groups.py` | Laedt die JSON, stellt `GROUPS`, `KNOWN_GROUP_KEYS`, `merge_edit_state(...)` bereit. Batch-Apply-Endpoint nutzt `merge_edit_state` fuer nicht-destruktiven Merge. |
 | `frontend/src/editor/profileGroups.ts` | Importiert `backend/schemas/edit-groups.json`, exportiert `GROUPS`, `defaultEnabledGroups()`, `mergeGroups(base, profile, enabled)`. Gleicher Repo-Root-Build-Context wie `lensProfile.ts`. |
 | `frontend/src/editor/profileYaml.ts` | `serializeProfileYaml` / `parseProfileYaml` (yaml-npm). YAML-Format-Version 1 (`lumenProfile: 1`). Import schickt geparste Struktur an `POST /presets` — Pydantic validiert. |
 | `frontend/src/editor/StepCheckboxes.tsx` | Geteilte Schritt-Checkbox-Gruppe (8 Gruppen, crop/lens default aus mit bildspezifisch-Hinweis). Genutzt in PresetDialog + BatchApplyModal. |
+| `frontend/src/library/` | H2b-Lighttable: `LibraryGrid.tsx` (Raster, Roving-Tabindex, Erweiterungspunkt `onTileKey` fuer H2c), `MetaControls.tsx` (Sterne/Farblabel/Markierung, auch Batch), `FilterBar.tsx` (serverseitige Filter + Raster/Liste-Umschalter), `meta.ts` (Labels, Ansagetexte, `nextGridIndex`), `viewPrefs.ts` (Ansicht, Modul-Cache), `ImageThumb.tsx`, `ImageActions.tsx` (Editor/Loeschen, testids in beiden Ansichten gleich). Optimistische Updates + Rollback in `pages/Library.tsx`. |
 | `frontend/src/pages/BatchApplyModal.tsx` | Library-Batch-Modal: Preset-Auswahl + StepCheckboxes + `POST /presets/{id}/apply` → `onApplied(applied, total)`. Triggerbar per `batch-apply-open`-Button wenn ≥1 Bild selektiert. |
 | `backend/app/routers/admin.py` | Admin-Endpoints (Users-Liste/Disable, Stats, Feedback-Inbox + PATCH). Gating via `current_admin` Dep |
 | `backend/app/routers/feedback.py` | User-Feedback-Submit. Honeypot `website` (silent drop), Rate-Limit 5/h |
@@ -298,6 +299,13 @@ gesetzt — pytest läuft sonst gegen 429er.
   `keepalive` bei Unmount/`pagehide`/Tab-Hidden; jede Bild-Ladung bekommt
   eine Generation (`beginLoad`) und setzt den Store via `resetForNewImage()`
   komplett zurueck.
+- **Bibliothek-Ansicht in Tests**: Default ist das Raster (H2b). Tests fuer die
+  Listenansicht (`image-row-*`) setzen `setLibraryView("list")` im
+  `beforeEach` (Modul-Cache, nicht localStorage); E2E loescht
+  `lumen.library.view` per `addInitScript`. Aktions-testids
+  (`image-select/edit/delete-*`) sind in beiden Ansichten gleich.
+- **PATCH /images vs. /images/{id}**: Batch-Route ist `PATCH ""` — `colorLabel:
+  null` loescht, weggelassen laesst unveraendert (Pydantic `model_fields_set`).
 - **Port 5173 belegt** (anderes Dev-Projekt): Vite weicht auf 5174 aus —
   KC-Client-Redirects, Backend-`CORS_ORIGIN` und S3-Bucket-CORS kennen nur
   5173. Fuer lokale E2E entweder den anderen Server stoppen oder 5174 zur
