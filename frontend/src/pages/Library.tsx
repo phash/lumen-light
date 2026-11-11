@@ -217,6 +217,11 @@ export default function Library() {
     setConfirmDeleteId(null);
     requestFocus(`image-delete-${id}`);
   };
+  // H2d: Original fuer den 1:1-Zoom der Lupe (signierte URL, nur bei Bedarf).
+  const loadOriginalUrl = useCallback(
+    async (id: string) => (await api.getImageUrl(id)).url,
+    [api],
+  );
   const openInEditor = (id: string) => void navigate(`/editor?image=${id}`);
 
   /** H2c/H2d: Lupe oeffnen; `fromKey` = per Enter auf Kachel/Zeile. */
@@ -519,6 +524,7 @@ export default function Library() {
           onMetaChange={(id, p) => void changeMeta([id], p)}
           onOpenEditor={openInEditor}
           announce={announce}
+          loadOriginalUrl={loadOriginalUrl}
           liveRegion={liveRegion}
         />
       )}
