@@ -15,6 +15,7 @@ from botocore.client import Config
 from botocore.exceptions import ClientError
 
 from app.config import Settings
+from app.s3_presign import S3GetPresigner
 
 
 class ObjectNotFound(Exception):
@@ -48,6 +49,15 @@ class StorageService:
             self._client
             if public == settings.garage_s3_endpoint
             else self._make_client(public)
+        )
+        # GET-URLs (Listen mit bis zu 2 x 500 Vorschauen) signiert ein
+        # schlanker SigV4-Presigner statt boto3 — gleiche URLs, ~20x schneller.
+        self._get_presigner = S3GetPresigner(
+            endpoint=public,
+            region=settings.garage_s3_region,
+            bucket=settings.garage_s3_bucket,
+            access_key=settings.garage_s3_access_key_id,
+            secret_key=settings.garage_s3_secret_access_key,
         )
 
     def _make_client(self, endpoint: str):
@@ -132,15 +142,13 @@ class StorageService:
         (Originale): selbst wenn ein Objekt doch aktiven Inhalt enthielte,
         rendert der Browser es bei direkter Navigation nicht same-origin.
         fetch()/<img> ignorieren die Disposition, der Editor laedt weiter."""
-        params: dict[str, str] = {"Bucket": self.bucket, "Key": key}
-        if attachment:
-            params["ResponseContentDisposition"] = "attachment"
-        url = self._presign_client.generate_presigned_url(
-            "get_object",
-            Params=params,
-            ExpiresIn=self._settings.presigned_url_expires_in,
+        expires_in = self._settings.presigned_url_expires_in
+        url = self._get_presigner.presign_get(
+            key,
+            expires_in,
+            response_content_disposition="attachment" if attachment else None,
         )
-        return url, self._settings.presigned_url_expires_in
+        return url, expires_in
 
     def get_bytes(self, key: str, max_bytes: int) -> bytes:
         """Liest ein ganzes Objekt (bis max_bytes) in den Speicher. Wirft

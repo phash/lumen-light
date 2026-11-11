@@ -120,6 +120,10 @@ def _ensure_owns_key(image: Image, user: User) -> None:
         )
 
 
+# Ab so vielen Bildern signiert GET /images ausserhalb des Event-Loops.
+_SIGN_OFFLOAD_THRESHOLD = 100
+
+
 def image_out(image: Image, storage: StorageService) -> ImageOut:
     """ImageOut inkl. signierter Vorschau-URLs (H2a). Kein attachment:
     die Objekte sind serverseitig erzeugte JPEGs und werden per <img>
@@ -405,10 +409,15 @@ async def list_images(
         .limit(limit)
     )
     result = await db.execute(stmt)
+    images = result.scalars().all()
     # Bis zu 2 x 500 Signaturen pro Seite: presign_get ist reine lokale
-    # HMAC-Rechnung (kein S3-Roundtrip); gemessen ~0.18 ms pro URL, also
-    # ~180 ms CPU fuer eine volle 500er-Seite mit Vorschauen.
-    return [image_out(i, storage) for i in result.scalars().all()]
+    # HMAC-Rechnung (app/s3_presign.py, ~15 us pro URL). Grosse Seiten
+    # (Signieren + Pydantic, einige ms) laufen im Threadpool, damit der
+    # Event-Loop frei bleibt; die ORM-Objekte sind fertig geladen (kein
+    # Lazy-Load im Thread).
+    if len(images) >= _SIGN_OFFLOAD_THRESHOLD:
+        return await run_in_threadpool(lambda: [image_out(i, storage) for i in images])
+    return [image_out(i, storage) for i in images]
 
 
 @router.patch("", response_model=list[ImageOut])
