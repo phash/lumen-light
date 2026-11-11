@@ -32,6 +32,7 @@ import {
 import PresetDialog from "../editor/PresetDialog";
 import ShortcutCheatsheet from "../editor/ShortcutCheatsheet";
 import { CURRENT_PROCESS_VERSION } from "../editor/adjustments";
+import { THUMBNAIL_MAX_EDGE } from "../editor/thumbnail";
 import { analyze, computeAutoTone, computeAutoWb } from "../editor/autoAdjust";
 import { analyzeCanvasStraightenAngle } from "../editor/autoStraighten";
 import { detectFacesSafe } from "../editor/faceDetector";
@@ -40,6 +41,7 @@ import { type Genre, suggestGenre } from "../editor/suggestPreset";
 import { selectedMask, useEditorStore } from "../editor/store";
 import { type AspectRatio, defaultCropRect } from "../editor/transform";
 import { useKeyboardShortcuts } from "../editor/useKeyboardShortcuts";
+import { useThumbnailUploader } from "../editor/useThumbnailUploader";
 import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
 
 function countByType(
@@ -107,11 +109,16 @@ export function useEditAutosave(
   api: Pick<ApiClient, "putImageEdit">,
   imageId: string | null,
   state: ImageEditState | null,
+  /** H2a: nach jedem erfolgreichen (nicht-keepalive) Save — Ausloeser fuer
+   *  das gedrosselte Vorschaubild. */
+  onSaved?: (id: string) => void,
 ): { status: AutosaveStatus; reason: string | null; flush: () => void } {
   const [view, setView] = useState<AutosaveView>({ id: null, status: "idle", reason: null });
   const apiRef = useRef(api);
+  const onSavedRef = useRef(onSaved);
   useLayoutEffect(() => {
     apiRef.current = api;
+    onSavedRef.current = onSaved;
   });
   const pendingRef = useRef<PendingSave | null>(null);
   const inFlightRef = useRef<PendingSave | null>(null);
@@ -159,6 +166,7 @@ export function useEditAutosave(
           attemptRef.current = 0;
           if (pendingRef.current === entry) pendingRef.current = null;
           if (!mountedRef.current) return;
+          onSavedRef.current?.(entry.id);
           const done = pendingRef.current === null;
           setView({ id: entry.id, status: done ? "saved" : "saving", reason: null });
           sendNext();
@@ -512,7 +520,16 @@ export default function Editor() {
       manualLensOverride,
     ],
   );
-  const autosave = useEditAutosave(api, storedImageId, editState);
+  // H2a: Vorschaubild mit Bearbeitung nach erfolgreichem Autosave
+  // (gedrosselt) und beim Verlassen/Bildwechsel.
+  const thumbnails = useThumbnailUploader(
+    api,
+    () => canvasHandleRef.current?.renderThumbnail(THUMBNAIL_MAX_EDGE) ?? null,
+    storedImageId,
+  );
+  const flushThumbnail = thumbnails.flushCurrent;
+  const markThumbnailDirty = thumbnails.markDirty;
+  const autosave = useEditAutosave(api, storedImageId, editState, thumbnails.notifySaved);
   const flushAutosave = autosave.flush;
 
   /** Startet einen neuen Ladevorgang: neue Generation, ausstehenden
@@ -521,6 +538,8 @@ export default function Editor() {
   const beginLoad = useCallback(
     (filename: string): number => {
       const gen = ++loadGenRef.current;
+      // Vor dem Reset: das Canvas zeigt noch das bisherige Bild.
+      flushThumbnail();
       flushAutosave();
       setStoredImageId(null);
       clearSuggestionTimer();
@@ -541,7 +560,7 @@ export default function Editor() {
       setLibraryLoading(false);
       return gen;
     },
-    [flushAutosave, clearSuggestionTimer],
+    [flushAutosave, flushThumbnail, clearSuggestionTimer],
   );
 
   /** Dekodiert die Datei und laedt sie ins Canvas. Liefert true, wenn das
@@ -1154,6 +1173,9 @@ export default function Editor() {
           });
         }
         setStoredImageId(id);
+        // Beim Verlassen in jedem Fall ein Vorschaubild hochladen — auch
+        // ohne Aenderung (RAW-/TIFF-Bestand hat sonst keins).
+        markThumbnailDirty(id);
       } catch (err) {
         if (!isCurrent()) return;
         setError(
@@ -1163,7 +1185,7 @@ export default function Editor() {
         if (isCurrent()) setLibraryLoading(false);
       }
     },
-    [api, beginLoad, loadIntoCanvas],
+    [api, beginLoad, loadIntoCanvas, markThumbnailDirty],
   );
 
   // Ref-Guard laedt jedes Bild nur einmal. Ohne ?image wird der Guard

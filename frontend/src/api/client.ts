@@ -170,6 +170,10 @@ export interface Image {
   uploadState: UploadState;
   createdAt: string;
   confirmedAt: string | null;
+  /** H2a: signierte URL des 400-px-Vorschaubilds; null = noch keins. */
+  thumbUrl?: string | null;
+  /** H2a: signierte URL des 1600-px-Vorschaubilds; null = noch keins. */
+  previewUrl?: string | null;
 }
 
 export interface ImageInit {
@@ -319,6 +323,9 @@ export interface ApiClient {
     state: ImageEditState,
     options?: { keepalive?: boolean },
   ): Promise<void>;
+  /** H2a: Vorschaubild (JPEG, max. 1 MB) hochladen; der Server kodiert es
+   *  neu (400/1600 px) und ersetzt den bisherigen Satz. */
+  putImageThumbnail(id: string, jpeg: Blob): Promise<Image>;
 
   listMarketplacePresets(query?: MarketplaceListQuery): Promise<MarketplaceList>;
   getMarketplacePreset(id: string): Promise<MarketplaceDetail>;
@@ -433,7 +440,8 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
     if (user?.access_token) {
       headers.set("Authorization", `Bearer ${user.access_token}`);
     }
-    if (init.body && !headers.has("Content-Type")) {
+    // FormData: Browser setzt Content-Type samt Multipart-Boundary selbst.
+    if (init.body && !(init.body instanceof FormData) && !headers.has("Content-Type")) {
       headers.set("Content-Type", "application/json");
     }
 
@@ -525,6 +533,14 @@ export function createApiClient(options: ApiClientOptions): ApiClient {
         body: JSON.stringify(state),
         ...(opts?.keepalive ? { keepalive: true } : {}),
       }),
+    putImageThumbnail: (id, jpeg) => {
+      const form = new FormData();
+      form.append("file", jpeg, "thumbnail.jpg");
+      return request<Image>(`/images/${encodeURIComponent(id)}/thumbnail`, {
+        method: "PUT",
+        body: form,
+      });
+    },
 
     listMarketplacePresets: (query = {}) => {
       const p = new URLSearchParams();

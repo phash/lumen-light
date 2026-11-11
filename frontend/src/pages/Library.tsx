@@ -6,6 +6,7 @@ import type { Image } from "../api/client";
 import { uploadImage } from "../api/upload";
 import AutoFocusButton from "../components/AutoFocusButton";
 import { FILE_PICKER_ACCEPT } from "../editor/raw";
+import { thumbnailFromFile } from "../editor/thumbnail";
 import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
 import { useFocusRequest } from "../hooks/useFocusRequest";
 import BatchApplyModal from "./BatchApplyModal";
@@ -20,6 +21,55 @@ function formatSize(bytes: number | null): string {
     i += 1;
   }
   return `${n.toFixed(n >= 10 ? 0 : 1)} ${units[i]}`;
+}
+
+/** Kurzes Typ-Kuerzel fuer den Platzhalter (JPG, PNG, TIFF, RAW). */
+function typeBadge(contentType: string): string {
+  if (contentType === "image/jpeg") return "JPG";
+  if (contentType === "image/png") return "PNG";
+  if (contentType === "image/tiff") return "TIFF";
+  if (contentType.startsWith("image/x-")) return "RAW";
+  return "BILD";
+}
+
+/** H2a: 48-px-Vorschau links vom Dateinamen. Dekorativ (alt=""), der
+ *  Dateiname steht daneben. Platzhalter, wenn keine Vorschau existiert
+ *  oder die signierte URL nicht (mehr) laedt. */
+function ImageThumb({
+  id,
+  url,
+  contentType,
+}: {
+  readonly id: string;
+  readonly url: string | null;
+  readonly contentType: string;
+}) {
+  const [broken, setBroken] = useState(false);
+  const box = "h-12 w-12 shrink-0 border border-stone-800 bg-stone-900";
+  if (!url || broken) {
+    return (
+      <div
+        data-testid={`image-thumb-placeholder-${id}`}
+        aria-hidden="true"
+        className={`${box} flex items-center justify-center text-[10px] tracking-[0.15em] text-stone-500`}
+      >
+        {typeBadge(contentType)}
+      </div>
+    );
+  }
+  return (
+    <img
+      data-testid={`image-thumb-${id}`}
+      src={url}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      width={48}
+      height={48}
+      onError={() => setBroken(true)}
+      className={`${box} object-cover`}
+    />
+  );
 }
 
 export default function Library() {
@@ -77,7 +127,15 @@ export default function Library() {
     setUploading(true);
     setError(null);
     try {
-      await uploadImage(api, file, { stripExif });
+      const uploaded = await uploadImage(api, file, { stripExif });
+      // H2a: Vorschaubild best effort — ein Fehler hier laesst den Upload
+      // gelingen, die Zeile zeigt dann den Platzhalter.
+      try {
+        const thumb = await thumbnailFromFile(file);
+        if (thumb) await api.putImageThumbnail(uploaded.id, thumb);
+      } catch {
+        // Platzhalter bis zum ersten Oeffnen im Editor.
+      }
       await refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Upload fehlgeschlagen");
@@ -122,8 +180,9 @@ export default function Library() {
       </h1>
       <p className="mt-2 text-stone-400">
         Optionaler Cloud-Speicher: Bilder hier hochladen, um sie auf einem zweiten
-        Gerät weiterzubearbeiten. Pixel laufen direkt vom Browser zum Storage —
-        nichts geht ungefragt zum Server.
+        Gerät weiterzubearbeiten. Originale laufen direkt vom Browser zum
+        Storage; nur kleine Vorschaubilder gehen zum Neu-Kodieren (ohne
+        Metadaten) über den Server.
       </p>
 
       <div
@@ -212,18 +271,26 @@ export default function Library() {
             data-testid={`image-row-${img.id}`}
             className="flex items-center justify-between py-3"
           >
-            <input
-              type="checkbox"
-              data-testid={`image-select-${img.id}`}
-              checked={selected.has(img.id)}
-              onChange={() => toggleSelected(img.id)}
-              aria-label={`„${img.originalFilename}“ auswählen`}
-              className="accent-amber-300 mr-3"
-            />
-            <div>
-              <div className="text-stone-200">{img.originalFilename}</div>
-              <div className="text-xs text-stone-400">
-                {formatSize(img.sizeBytes)} · {img.contentType}
+            <div className="flex min-w-0 items-center gap-3">
+              <input
+                type="checkbox"
+                data-testid={`image-select-${img.id}`}
+                checked={selected.has(img.id)}
+                onChange={() => toggleSelected(img.id)}
+                aria-label={`„${img.originalFilename}“ auswählen`}
+                className="accent-amber-300"
+              />
+              <ImageThumb
+                key={img.thumbUrl ?? "none"}
+                id={img.id}
+                url={img.thumbUrl ?? null}
+                contentType={img.contentType}
+              />
+              <div className="min-w-0">
+                <div className="truncate text-stone-200">{img.originalFilename}</div>
+                <div className="text-xs text-stone-400">
+                  {formatSize(img.sizeBytes)} · {img.contentType}
+                </div>
               </div>
             </div>
             <div className="flex items-center gap-4">

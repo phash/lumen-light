@@ -227,6 +227,20 @@ describe("createApiClient", () => {
     );
     expect(calls[0]!.init.keepalive).toBe(true);
   });
+
+  it("putImageThumbnail schickt Multipart mit Feld file ohne JSON-Content-Type", async () => {
+    const { fetchImpl, calls } = makeFetchMock(200, { id: "img-1", thumbUrl: "u" });
+    const client = createApiClient({ baseUrl: "http://x", getUser: () => null, fetch: fetchImpl });
+    const jpeg = new Blob([new Uint8Array([0xff, 0xd8, 0xff])], { type: "image/jpeg" });
+    const out = await client.putImageThumbnail("img 1", jpeg);
+    expect(out.thumbUrl).toBe("u");
+    expect(calls[0]!.url).toBe("http://x/images/img%201/thumbnail");
+    expect(calls[0]!.init.method).toBe("PUT");
+    const body = calls[0]!.init.body;
+    expect(body).toBeInstanceOf(FormData);
+    expect((body as FormData).get("file")).toBeInstanceOf(Blob);
+    expect(new Headers(calls[0]!.init.headers).has("Content-Type")).toBe(false);
+  });
 });
 
 describe("listImages Paginierung", () => {
