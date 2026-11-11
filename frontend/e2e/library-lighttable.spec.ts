@@ -9,7 +9,7 @@ import { apiTokenFor, cleanupUser, loginAsNewUser } from "./auth-helper";
 /**
  * E2E fuer H2b (Lighttable-Raster): Upload ueber die UI erzeugt eine Kachel
  * mit Vorschaubild, Sterne ueberleben einen Reload, der minRating-Filter
- * blendet unbewertete Bilder aus.
+ * blendet unbewertete Bilder aus. H2c: Lupe per Tastatur.
  */
 const HERE = dirname(fileURLToPath(import.meta.url));
 const JPG_PATH = join(HERE, "..", "..", "tests-fixtures", "test-samples", "gradient.jpg");
@@ -80,3 +80,61 @@ test.describe("Bibliothek Raster", () => {
     }
   });
 });
+
+test.describe("Bibliothek Lupe (H2c)", () => {
+  test("Enter oeffnet die Lupe, Taste 4 bewertet, Pfeil blaettert, Esc gibt Fokus zurueck", async ({
+    page,
+  }) => {
+    const user = await loginAsNewUser(page);
+    try {
+      const token = await apiTokenFor(user);
+      await uploadTinyImage(token, "lupe-1.jpg");
+      await uploadTinyImage(token, "lupe-2.jpg");
+      await uploadTinyImage(token, "lupe-3.jpg");
+
+      await page.goto("/library");
+      const tiles = page.locator('[data-testid^="image-tile-"]');
+      await expect(tiles).toHaveCount(3, { timeout: 10_000 });
+      const ids = (await tiles.evaluateAll((els) =>
+        els.map((el) => el.getAttribute("data-testid") ?? ""),
+      )).map((t) => t.replace("image-tile-", ""));
+      const [firstId, secondId] = ids;
+
+      // Erste Kachel fokussieren (ein Tab-Stopp im Raster) und Lupe oeffnen.
+      await page.getByTestId(`image-tile-${firstId}`).focus();
+      await page.keyboard.press("Enter");
+      const loupe = page.getByTestId("loupe-dialog");
+      await expect(loupe).toBeVisible();
+      await expect(page.getByTestId("loupe-position")).toHaveText("1 / 3");
+
+      // Taste 4 -> 4 Sterne, Ansage im Dialog, Server-Stand bleibt.
+      await page.keyboard.press("4");
+      await expect(page.getByTestId("loupe-star-4")).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByTestId("library-announce")).toHaveText("4 Sterne");
+
+      // Pfeil rechts -> zweites Bild.
+      await page.keyboard.press("ArrowRight");
+      await expect(page.getByTestId("loupe-position")).toHaveText("2 / 3");
+
+      // Esc schliesst, Fokus auf der Kachel des zuletzt gezeigten Bildes.
+      await page.keyboard.press("Escape");
+      await expect(loupe).toBeHidden();
+      await expect(page.getByTestId(`image-tile-${secondId}`)).toBeFocused();
+      await expect(page.getByTestId(`tile-${firstId}-star-4`)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+
+      // Bewertung ist gespeichert.
+      await page.reload();
+      await expect(page.getByTestId(`tile-${firstId}-star-4`)).toHaveAttribute(
+        "aria-pressed",
+        "true",
+        { timeout: 10_000 },
+      );
+    } finally {
+      await cleanupUser(user);
+    }
+  });
+});
+

@@ -1,5 +1,6 @@
 /**
- * Nutzer-Einstellung fuer Einzeltasten-Shortcuts (0, R, P, \, +, -, ?).
+ * Nutzer-Einstellung fuer Einzeltasten-Shortcuts (Editor: 0, R, P, \, +, -, ?;
+ * Bibliothek/Lupe, H2c: 0-9, P, X, U, E, C, Enter, ?).
  *
  * WCAG 2.1.4 (Character Key Shortcuts, Level A): Shortcuts aus einem
  * einzelnen Zeichen muessen abschaltbar sein. Kombinationen mit

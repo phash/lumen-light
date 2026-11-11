@@ -14,6 +14,7 @@ export default function ImageActions({
   onAskDelete,
   onConfirmDelete,
   onCancelDelete,
+  onLoupe,
   tabbable = true,
   compact = false,
 }: {
@@ -23,6 +24,8 @@ export default function ImageActions({
   readonly onAskDelete: () => void;
   readonly onConfirmDelete: () => void;
   readonly onCancelDelete: () => void;
+  /** H2c: Lupe oeffnen (sichtbarer Weg zur Enter-Taste). */
+  readonly onLoupe?: () => void;
   readonly tabbable?: boolean;
   readonly compact?: boolean;
 }) {
@@ -52,7 +55,19 @@ export default function ImageActions({
     );
   }
   return (
-    <div className={`flex items-center ${gap}`}>
+    <div className={`flex flex-wrap items-center ${gap}`}>
+      {onLoupe && (
+        <button
+          type="button"
+          data-testid={`image-loupe-${image.id}`}
+          tabIndex={tab}
+          onClick={onLoupe}
+          aria-label={`„${image.originalFilename}“ in der Lupe ansehen`}
+          className="text-stone-300 hover:text-amber-200 hover:underline"
+        >
+          Lupe
+        </button>
+      )}
       <button
         type="button"
         data-testid={`image-edit-${image.id}`}

@@ -10,6 +10,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 
 import type { ColorLabel, ImageFlag, ImageMetaPatch } from "../api/client";
+import { POPUP_OPEN_ATTR } from "./libraryKeys";
 import { COLOR_LABELS, MAX_RATING, colorLabelDef, ratingText } from "./meta";
 
 interface CommonProps {
@@ -113,6 +114,8 @@ export function ColorLabelPicker({
     <div
       ref={wrapRef}
       className="relative"
+      // H2c: offenes Menue sperrt Einzeltasten und das Esc des Dialogs.
+      {...(open ? { [POPUP_OPEN_ATTR]: "" } : {})}
       onKeyDown={(e) => {
         if (e.key === "Escape" && open) {
           e.stopPropagation();

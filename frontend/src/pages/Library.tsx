@@ -1,13 +1,16 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/use-api";
 import type { Image, ImageMetaPatch } from "../api/client";
 import { uploadImage } from "../api/upload";
+import ShortcutCheatsheet from "../editor/ShortcutCheatsheet";
 import { FILE_PICKER_ACCEPT } from "../editor/raw";
+import { getSingleKeyShortcutsEnabled } from "../editor/shortcutPrefs";
 import { thumbnailFromFile } from "../editor/thumbnail";
 import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
 import { useFocusRequest } from "../hooks/useFocusRequest";
+import CompareView from "../library/CompareView";
 import FilterBar, {
   DEFAULT_FILTER,
   isFilterActive,
@@ -17,7 +20,9 @@ import FilterBar, {
 import ImageActions from "../library/ImageActions";
 import ImageThumb from "../library/ImageThumb";
 import LibraryGrid from "../library/LibraryGrid";
+import Loupe from "../library/Loupe";
 import { ColorLabelPicker, FlagButtons, StarRating } from "../library/MetaControls";
+import { isShortcutBlocked, libraryKeyAction } from "../library/libraryKeys";
 import { announcePatch, metaOf, type ImageMeta } from "../library/meta";
 import { getLibraryView, setLibraryView, type LibraryView } from "../library/viewPrefs";
 import BatchApplyModal from "./BatchApplyModal";
@@ -66,6 +71,10 @@ export default function Library() {
     text: "",
     n: 0,
   });
+  // H2c: Lupe (Start-Bild), Vergleich und Tastenkuerzel-Hilfe.
+  const [loupeId, setLoupeId] = useState<string | null>(null);
+  const [compareOpen, setCompareOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
 
   // Nur die juengste Liste gewinnt (schnelles Umschalten der Filter).
   const loadSeq = useRef(0);
@@ -213,6 +222,47 @@ export default function Library() {
   };
   const openInEditor = (id: string) => void navigate(`/editor?image=${id}`);
 
+  /** H2c: Lupe schliessen — Fokus auf die Kachel (Raster) bzw. den
+   *  Lupen-Button (Liste) des zuletzt gezeigten Bildes. */
+  const closeLoupe = (currentId: string) => {
+    setLoupeId(null);
+    requestFocus(view === "grid" ? `image-tile-${currentId}` : `image-loupe-${currentId}`);
+  };
+
+  // Vergleich: genau zwei ausgewaehlte Bilder in Anzeige-Reihenfolge.
+  const comparePair = images.filter((i) => selected.has(i.id));
+  const pair: readonly [Image, Image] | null =
+    comparePair.length === 2 && comparePair[0] && comparePair[1]
+      ? [comparePair[0], comparePair[1]]
+      : null;
+
+  /** H2c: Einzeltasten auf einer Raster-Kachel. true = verarbeitet. */
+  const onTileKey = (image: Image, event: KeyboardEvent<HTMLElement>): boolean => {
+    if (!getSingleKeyShortcutsEnabled()) return false;
+    if (isShortcutBlocked(event.target, document)) return false;
+    const action = libraryKeyAction(event);
+    switch (action?.kind) {
+      case "meta":
+        void changeMeta([image.id], action.patch);
+        return true;
+      case "loupe":
+        setLoupeId(image.id);
+        return true;
+      case "editor":
+        openInEditor(image.id);
+        return true;
+      case "compare":
+        if (pair) setCompareOpen(true);
+        else announce("Zum Vergleichen genau zwei Bilder auswählen");
+        return true;
+      case "help":
+        setHelpOpen(true);
+        return true;
+      default:
+        return false;
+    }
+  };
+
   const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
@@ -225,15 +275,45 @@ export default function Library() {
     event.target.value = "";
   };
 
+  const overlayOpen = loupeId !== null || (compareOpen && pair !== null);
+  const liveRegion = (
+    <div
+      data-testid="library-announce"
+      role="status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="sr-only"
+    >
+      <span key={announcement.n}>{announcement.text}</span>
+    </div>
+  );
+
   const filtered = isFilterActive(filter);
   const showFilterBar = loaded && (images.length > 0 || filtered);
   const selectedIds = [...selected];
 
   return (
     <section data-testid="page-library" className="px-4 py-8 sm:p-8">
-      <h1 data-testid="library-heading" tabIndex={-1} className="text-3xl outline-none">
-        Bibliothek
-      </h1>
+      <div className="flex flex-wrap items-baseline justify-between gap-3">
+        <h1 data-testid="library-heading" tabIndex={-1} className="text-3xl outline-none">
+          Bibliothek
+        </h1>
+        {/* H2c: Tastenkuerzel-Hilfe (auch per „?" auf einer Kachel). */}
+        <button
+          type="button"
+          data-testid="library-shortcuts-open"
+          onClick={() => setHelpOpen(true)}
+          className="flex items-center gap-2 text-xs text-stone-400 hover:text-amber-200"
+        >
+          <kbd
+            aria-hidden="true"
+            className="border border-stone-700 bg-stone-950 px-1.5 font-mono text-stone-300"
+          >
+            ?
+          </kbd>
+          Tastenkürzel
+        </button>
+      </div>
       <p className="mt-2 max-w-prose text-stone-400">
         Optionaler Cloud-Speicher: Bilder hier hochladen, um sie auf einem zweiten
         Gerät weiterzubearbeiten. Originale laufen direkt vom Browser zum
@@ -295,16 +375,10 @@ export default function Library() {
         </div>
       )}
 
-      {/* H2b: Ansage fuer Bewertungs-/Label-/Markierungs-Aenderungen. */}
-      <div
-        data-testid="library-announce"
-        role="status"
-        aria-live="polite"
-        aria-atomic="true"
-        className="sr-only"
-      >
-        <span key={announcement.n}>{announcement.text}</span>
-      </div>
+      {/* H2b: Ansage fuer Bewertungs-/Label-/Markierungs-Aenderungen.
+          Waehrend Lupe/Vergleich offen sind, lebt sie im Dialog (aria-modal
+          blendet den Rest der Seite fuer Screenreader aus). */}
+      {!overlayOpen && liveRegion}
 
       {showFilterBar && (
         <FilterBar filter={filter} onChange={setFilter} view={view} onViewChange={changeView} />
@@ -320,6 +394,16 @@ export default function Library() {
             className="text-amber-200 hover:underline disabled:opacity-40 disabled:no-underline"
           >
             Preset anwenden ({selected.size})
+          </button>
+          <button
+            type="button"
+            data-testid="compare-open"
+            onClick={() => setCompareOpen(true)}
+            disabled={pair === null}
+            title={pair ? "Die zwei ausgewählten Bilder vergleichen (C)" : "Genau zwei Bilder auswählen"}
+            className="text-amber-200 hover:underline disabled:opacity-40 disabled:no-underline"
+          >
+            Vergleichen
           </button>
           {selected.size > 0 && (
             <div
@@ -396,6 +480,8 @@ export default function Library() {
             onToggleSelect={toggleSelected}
             onMetaChange={(id, p) => void changeMeta([id], p)}
             onOpen={openInEditor}
+            onLoupe={setLoupeId}
+            onTileKey={onTileKey}
             onAskDelete={askDelete}
             onConfirmDelete={(id) => void onDelete(id)}
             onCancelDelete={cancelDelete}
@@ -456,6 +542,7 @@ export default function Library() {
                   image={img}
                   confirming={confirmDeleteId === img.id}
                   onOpen={() => openInEditor(img.id)}
+                  onLoupe={() => setLoupeId(img.id)}
                   onAskDelete={() => askDelete(img.id)}
                   onConfirmDelete={() => void onDelete(img.id)}
                   onCancelDelete={() => cancelDelete(img.id)}
@@ -466,6 +553,27 @@ export default function Library() {
         </ul>
       )}
 
+      {loupeId !== null && (
+        <Loupe
+          images={images}
+          startId={loupeId}
+          onClose={closeLoupe}
+          onMetaChange={(id, p) => void changeMeta([id], p)}
+          onOpenEditor={openInEditor}
+          announce={announce}
+          liveRegion={liveRegion}
+        />
+      )}
+      {compareOpen && pair && (
+        <CompareView
+          images={pair}
+          onClose={() => setCompareOpen(false)}
+          onMetaChange={(id, p) => void changeMeta([id], p)}
+          onOpenEditor={openInEditor}
+          liveRegion={liveRegion}
+        />
+      )}
+      <ShortcutCheatsheet open={helpOpen} onClose={() => setHelpOpen(false)} context="library" />
       {batchOpen && (
         <BatchApplyModal
           imageIds={selectedIds}

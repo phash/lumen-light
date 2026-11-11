@@ -3,6 +3,10 @@ import Modal from "../components/Modal";
 interface Props {
   readonly open: boolean;
   readonly onClose: () => void;
+  /** Wo die Hilfe geoeffnet wird: im Editor liegt sie im (relativen)
+   *  Editor-Container, in der Bibliothek ueber der ganzen Seite und mit
+   *  dem Abschnitt „Bibliothek" zuerst. */
+  readonly context?: "editor" | "library";
 }
 
 interface Shortcut {
@@ -10,10 +14,32 @@ interface Shortcut {
   readonly desc: string;
 }
 
-const SHORTCUTS: ReadonlyArray<{
-  group: string;
-  items: ReadonlyArray<Shortcut>;
-}> = [
+interface ShortcutGroup {
+  readonly group: string;
+  readonly items: ReadonlyArray<Shortcut>;
+}
+
+/** H2c: Lighttable (Raster + Lupe). Einzeltasten nur bei aktiven
+ *  Einzeltasten-Kuerzeln; jede Aktion hat auch einen Button. */
+const LIBRARY_SHORTCUTS: ShortcutGroup = {
+  group: "Bibliothek",
+  items: [
+    { keys: "← → ↑ ↓", desc: "Im Raster bewegen" },
+    { keys: "Leertaste", desc: "Bild auswählen (Raster)" },
+    { keys: "Enter", desc: "Lupe öffnen" },
+    { keys: "← / →", desc: "In der Lupe blättern" },
+    { keys: "0 – 5", desc: "Sterne setzen (0 = keine)" },
+    { keys: "6 / 7 / 8 / 9", desc: "Label Rot / Gelb / Grün / Blau" },
+    { keys: "P", desc: "Als ausgewählt markieren" },
+    { keys: "X", desc: "Als abgelehnt markieren" },
+    { keys: "U", desc: "Markierung entfernen" },
+    { keys: "E", desc: "Im Editor öffnen" },
+    { keys: "C", desc: "Zwei ausgewählte Bilder vergleichen" },
+    { keys: "Esc", desc: "Lupe / Vergleich schließen" },
+  ],
+};
+
+const EDITOR_SHORTCUTS: ReadonlyArray<ShortcutGroup> = [
   {
     group: "Bild",
     items: [
@@ -61,14 +87,18 @@ const SHORTCUTS: ReadonlyArray<{
   },
 ];
 
-export default function ShortcutCheatsheet({ open, onClose }: Props) {
+export default function ShortcutCheatsheet({ open, onClose, context = "editor" }: Props) {
   if (!open) return null;
+  const groups =
+    context === "library"
+      ? [LIBRARY_SHORTCUTS, ...EDITOR_SHORTCUTS]
+      : [...EDITOR_SHORTCUTS, LIBRARY_SHORTCUTS];
   return (
     <Modal
       onClose={onClose}
       testId="shortcut-cheatsheet"
       labelledBy="shortcut-cheatsheet-title"
-      backdropClassName="absolute inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      backdropClassName={`${context === "library" ? "fixed" : "absolute"} inset-0 z-50 flex items-center justify-center bg-black/60 p-4`}
       cardClassName="w-full max-w-[420px] max-h-[80vh] overflow-y-auto bg-stone-900 border border-stone-700 text-sm"
     >
       <div className="px-4 py-3 border-b border-stone-800 flex items-center justify-between">
@@ -88,10 +118,10 @@ export default function ShortcutCheatsheet({ open, onClose }: Props) {
           data-testid="shortcut-single-key-hint"
           className="text-xs text-stone-400"
         >
-          Einzeltasten-Kürzel (0, R, P, \, +, −, ?) kannst du im Account
+          Einzeltasten-Kürzel (Ziffern, Buchstaben, \, +, −, ?) kannst du im Account
           unter „Tastenkürzel“ abschalten.
         </p>
-        {SHORTCUTS.map((group) => (
+        {groups.map((group) => (
           <section key={group.group}>
             <h3 className="text-[10px] uppercase tracking-[0.2em] text-stone-400 mb-2">
               {group.group}
