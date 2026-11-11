@@ -57,6 +57,8 @@ const fakeApi = {
   getImageEdit: vi.fn(),
   putImageEdit: vi.fn(),
   putImageThumbnail: vi.fn(),
+  updateImage: vi.fn(),
+  updateImages: vi.fn(),
   listPresets: vi.fn(),
 };
 

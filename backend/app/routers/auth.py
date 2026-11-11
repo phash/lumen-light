@@ -230,6 +230,10 @@ class ImageExport(BaseModel):
     confirmed_at: datetime | None
     download_url: str
     download_url_expires_in: int
+    # H2b: Lighttable-Metadaten (vom User vergeben).
+    rating: int = 0
+    color_label: str | None = None
+    flag: str = "none"
     # Persistierter Editor-Bearbeitungsstand (C1) — User-erzeugter Inhalt,
     # gehoert in einen vollstaendigen Art.-15/20-Export. None, wenn das Bild
     # nie im Editor bearbeitet/gespeichert wurde.
@@ -352,6 +356,9 @@ async def export_me(
             confirmed_at=img.confirmed_at,
             download_url=url,
             download_url_expires_in=expires,
+            rating=img.rating,
+            color_label=img.color_label,
+            flag=img.flag,
             edit_state=edits_by_image.get(img.id),
         ))
 

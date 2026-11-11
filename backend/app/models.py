@@ -11,6 +11,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    SmallInteger,
     String,
     Text,
     UniqueConstraint,
@@ -124,6 +125,14 @@ class Image(Base):
         # In Migration 003 angelegt — hier gespiegelt (Modell == Schema).
         Index("idx_images_user_id", "user_id"),
         Index("idx_images_state", "upload_state"),
+        # H2b (Migration 014)
+        CheckConstraint("rating BETWEEN 0 AND 5", name="ck_images_rating"),
+        CheckConstraint(
+            "color_label IN ('red','yellow','green','blue','purple')",
+            name="ck_images_color_label",
+        ),
+        CheckConstraint("flag IN ('none','pick','reject')", name="ck_images_flag"),
+        Index("ix_images_user_rating", "user_id", "rating"),
     )
 
     id: Mapped[UUID] = mapped_column(
@@ -149,6 +158,15 @@ class Image(Base):
     # unter <uid>/thumbs/. None = noch keine Vorschau vorhanden.
     thumb_key: Mapped[str | None] = mapped_column(Text, nullable=True)
     preview_key: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # H2b: Lighttable-Metadaten (Migration 014). rating 0 = unbewertet,
+    # color_label None = kein Label, flag 'none' = keine Markierung.
+    rating: Mapped[int] = mapped_column(
+        SmallInteger, nullable=False, default=0, server_default="0"
+    )
+    color_label: Mapped[str | None] = mapped_column(Text, nullable=True)
+    flag: Mapped[str] = mapped_column(
+        Text, nullable=False, default="none", server_default="none"
+    )
 
     user: Mapped[User] = relationship(back_populates="images")
 

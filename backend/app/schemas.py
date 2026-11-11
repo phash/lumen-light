@@ -432,6 +432,13 @@ class ImageInitOut(BaseModel):
     expires_in: int
 
 
+# H2b: Lighttable-Metadaten (CHECKs in Migration 014).
+ColorLabel = Literal["red", "yellow", "green", "blue", "purple"]
+ImageFlag = Literal["none", "pick", "reject"]
+IMAGE_META_FIELDS = frozenset({"rating", "color_label", "flag"})
+IMAGE_META_BATCH_MAX = 500
+
+
 class ImageOut(BaseModel):
     id: UUID
     original_filename: str
@@ -445,7 +452,52 @@ class ImageOut(BaseModel):
     # Attributen befuellt, sondern im Router (routers.images.image_out).
     thumb_url: str | None = None
     preview_url: str | None = None
+    # H2b: Lighttable-Metadaten.
+    rating: int = 0
+    color_label: ColorLabel | None = None
+    flag: ImageFlag = "none"
     model_config = CAMEL_OUT_CONFIG
+
+
+class ImageMetaPatch(BaseModel):
+    """H2b: PATCH /images/{id} — Bewertung, Farblabel, Markierung.
+
+    Mindestens ein Feld. `colorLabel: null` loescht das Label (explizit
+    gesetzt != weggelassen, siehe model_fields_set); `rating`/`flag`
+    duerfen nicht null sein (Spalten sind NOT NULL)."""
+    model_config = CAMEL_BASE_CONFIG
+    rating: int | None = Field(default=None, ge=0, le=5)
+    color_label: ColorLabel | None = None
+    flag: ImageFlag | None = None
+
+    @model_validator(mode="after")
+    def _check_fields(self) -> Self:
+        fields = self.model_fields_set & IMAGE_META_FIELDS
+        if not fields:
+            raise ValueError("Mindestens eines von rating, colorLabel, flag angeben.")
+        if "rating" in fields and self.rating is None:
+            raise ValueError("rating darf nicht null sein.")
+        if "flag" in fields and self.flag is None:
+            raise ValueError("flag darf nicht null sein.")
+        return self
+
+    def changes(self) -> dict[str, object]:
+        """Nur die explizit gesetzten Felder (Attributname -> Wert)."""
+        return {
+            name: getattr(self, name)
+            for name in self.model_fields_set & IMAGE_META_FIELDS
+        }
+
+
+class ImageMetaBatchPatch(ImageMetaPatch):
+    """H2b: PATCH /images — gleiche Felder fuer bis zu 500 eigene Bilder."""
+    ids: list[UUID] = Field(min_length=1, max_length=IMAGE_META_BATCH_MAX)
+
+    @model_validator(mode="after")
+    def _check_unique(self) -> Self:
+        if len(set(self.ids)) != len(self.ids):
+            raise ValueError("ids muessen eindeutig sein.")
+        return self
 
 
 class ImageUrlOut(BaseModel):

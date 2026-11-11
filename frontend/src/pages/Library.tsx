@@ -1,14 +1,25 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { useApi } from "../api/use-api";
-import type { Image } from "../api/client";
+import type { Image, ImageMetaPatch } from "../api/client";
 import { uploadImage } from "../api/upload";
-import AutoFocusButton from "../components/AutoFocusButton";
 import { FILE_PICKER_ACCEPT } from "../editor/raw";
 import { thumbnailFromFile } from "../editor/thumbnail";
 import { TITLE_SUFFIX, usePageMeta } from "../hooks/usePageMeta";
 import { useFocusRequest } from "../hooks/useFocusRequest";
+import FilterBar, {
+  DEFAULT_FILTER,
+  isFilterActive,
+  toListQuery,
+  type LibraryFilter,
+} from "../library/FilterBar";
+import ImageActions from "../library/ImageActions";
+import ImageThumb from "../library/ImageThumb";
+import LibraryGrid from "../library/LibraryGrid";
+import { ColorLabelPicker, FlagButtons, StarRating } from "../library/MetaControls";
+import { announcePatch, metaOf, type ImageMeta } from "../library/meta";
+import { getLibraryView, setLibraryView, type LibraryView } from "../library/viewPrefs";
 import BatchApplyModal from "./BatchApplyModal";
 
 function formatSize(bytes: number | null): string {
@@ -23,53 +34,8 @@ function formatSize(bytes: number | null): string {
   return `${n.toFixed(n >= 10 ? 0 : 1)} ${units[i]}`;
 }
 
-/** Kurzes Typ-Kuerzel fuer den Platzhalter (JPG, PNG, TIFF, RAW). */
-function typeBadge(contentType: string): string {
-  if (contentType === "image/jpeg") return "JPG";
-  if (contentType === "image/png") return "PNG";
-  if (contentType === "image/tiff") return "TIFF";
-  if (contentType.startsWith("image/x-")) return "RAW";
-  return "BILD";
-}
-
-/** H2a: 48-px-Vorschau links vom Dateinamen. Dekorativ (alt=""), der
- *  Dateiname steht daneben. Platzhalter, wenn keine Vorschau existiert
- *  oder die signierte URL nicht (mehr) laedt. */
-function ImageThumb({
-  id,
-  url,
-  contentType,
-}: {
-  readonly id: string;
-  readonly url: string | null;
-  readonly contentType: string;
-}) {
-  const [broken, setBroken] = useState(false);
-  const box = "h-12 w-12 shrink-0 border border-stone-800 bg-stone-900";
-  if (!url || broken) {
-    return (
-      <div
-        data-testid={`image-thumb-placeholder-${id}`}
-        aria-hidden="true"
-        className={`${box} flex items-center justify-center text-[10px] tracking-[0.15em] text-stone-500`}
-      >
-        {typeBadge(contentType)}
-      </div>
-    );
-  }
-  return (
-    <img
-      data-testid={`image-thumb-${id}`}
-      src={url}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      width={48}
-      height={48}
-      onError={() => setBroken(true)}
-      className={`${box} object-cover`}
-    />
-  );
+function withMeta(image: Image, meta: Partial<ImageMeta>): Image {
+  return { ...image, ...meta };
 }
 
 export default function Library() {
@@ -92,6 +58,25 @@ export default function Library() {
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   // Nur Ladefehler bieten „Erneut versuchen" an (Upload/Delete nicht).
   const [loadFailed, setLoadFailed] = useState(false);
+  // H2b: Filter/Sortierung (serverseitig) und Ansicht (gemerkt).
+  const [filter, setFilter] = useState<LibraryFilter>(DEFAULT_FILTER);
+  const [view, setView] = useState<LibraryView>(() => getLibraryView());
+  // aria-live-Ansage; `n` erzwingt eine neue Ansage bei gleichem Text.
+  const [announcement, setAnnouncement] = useState<{ text: string; n: number }>({
+    text: "",
+    n: 0,
+  });
+
+  // Nur die juengste Liste gewinnt (schnelles Umschalten der Filter).
+  const loadSeq = useRef(0);
+  // Optimistische Updates: letzter vom Server bestaetigter Stand pro Bild
+  // (Ziel eines Rollbacks) und die juengste laufende Aenderung pro Bild —
+  // aeltere Antworten/Fehler duerfen eine neuere Aenderung nicht ueberschreiben.
+  const confirmedMeta = useRef(new Map<string, ImageMeta>());
+  const latestChange = useRef(new Map<string, number>());
+  const changeSeq = useRef(0);
+
+  const announce = (text: string) => setAnnouncement((a) => ({ text, n: a.n + 1 }));
 
   const toggleSelected = (id: string) => {
     setToast(null);
@@ -104,24 +89,81 @@ export default function Library() {
   };
 
   const refresh = useCallback(async () => {
+    const seq = ++loadSeq.current;
     try {
-      setImages(await api.listImages("ready"));
+      const list = await api.listImages("ready", toListQuery(filter));
+      if (seq !== loadSeq.current) return;
+      for (const img of list) confirmedMeta.current.set(img.id, metaOf(img));
+      setImages(list);
+      // Auswahl bleibt eine Teilmenge des Sichtbaren: Batch-Aktionen sollen
+      // keine weggefilterten Bilder treffen.
+      const visible = new Set(list.map((i) => i.id));
+      setSelected((prev) => {
+        const next = new Set([...prev].filter((id) => visible.has(id)));
+        return next.size === prev.size ? prev : next;
+      });
       setError(null);
       setLoadFailed(false);
     } catch (err) {
+      if (seq !== loadSeq.current) return;
       setError(err instanceof Error ? err.message : "Liste laden fehlgeschlagen");
       setLoadFailed(true);
     } finally {
-      setLoaded(true);
+      if (seq === loadSeq.current) setLoaded(true);
     }
-  }, [api]);
+  }, [api, filter]);
 
   useEffect(() => {
-    // Daten beim Mount laden — set-state-in-effect ist hier explizit
-    // beabsichtigt (Datenfetch). Spaeter ggf. via TanStack Query.
+    // Daten beim Mount und bei Filterwechsel laden — set-state-in-effect
+    // ist hier explizit beabsichtigt (Datenfetch).
     // eslint-disable-next-line react-hooks/set-state-in-effect
     void refresh();
   }, [refresh]);
+
+  const changeView = (next: LibraryView) => {
+    setLibraryView(next);
+    setView(next);
+  };
+
+  /** H2b: Bewertung/Label/Markierung optimistisch setzen; bei Fehler auf
+   *  den letzten bestaetigten Stand zurueck. Bilder, die nach der Aenderung
+   *  nicht mehr zum Filter passen, bleiben bis zum naechsten Laden sichtbar
+   *  (kein Wegspringen unter dem Cursor). */
+  const changeMeta = async (ids: readonly string[], patch: ImageMetaPatch) => {
+    if (ids.length === 0) return;
+    const seq = ++changeSeq.current;
+    const idSet = new Set(ids);
+    for (const id of ids) latestChange.current.set(id, seq);
+    const isLatest = (id: string) => latestChange.current.get(id) === seq;
+    setError(null);
+    setImages((prev) => prev.map((img) => (idSet.has(img.id) ? withMeta(img, patch) : img)));
+    announce(announcePatch(patch, ids.length));
+    try {
+      const [first] = ids;
+      const updated =
+        ids.length === 1 && first !== undefined
+          ? [await api.updateImage(first, patch)]
+          : await api.updateImages(ids, patch);
+      const byId = new Map(updated.map((u) => [u.id, metaOf(u)]));
+      for (const [id, meta] of byId) confirmedMeta.current.set(id, meta);
+      setImages((prev) =>
+        prev.map((img) => {
+          const meta = byId.get(img.id);
+          return meta && isLatest(img.id) ? withMeta(img, meta) : img;
+        }),
+      );
+    } catch (err) {
+      setImages((prev) =>
+        prev.map((img) => {
+          const old = confirmedMeta.current.get(img.id);
+          return idSet.has(img.id) && old && isLatest(img.id) ? withMeta(img, old) : img;
+        }),
+      );
+      const reason = err instanceof Error ? err.message : "Unbekannter Fehler";
+      setError(`Änderung nicht gespeichert: ${reason}`);
+      announce("Änderung nicht gespeichert");
+    }
+  };
 
   const onFile = async (file: File) => {
     setUploading(true);
@@ -147,8 +189,8 @@ export default function Library() {
   const onDelete = async (id: string) => {
     setError(null);
     setConfirmDeleteId(null);
-    // Fokus-Ziel nach dem Entfernen der Zeile: naechste Zeile, sonst
-    // vorherige, sonst die Ueberschrift — sonst landet der Fokus im Body.
+    // Fokus-Ziel nach dem Entfernen: naechstes Bild, sonst vorheriges,
+    // sonst die Ueberschrift — sonst landet der Fokus im Body.
     const idx = images.findIndex((i) => i.id === id);
     const neighbor = images[idx + 1] ?? images[idx - 1];
     try {
@@ -160,6 +202,16 @@ export default function Library() {
       setError(err instanceof Error ? err.message : "Löschen fehlgeschlagen");
     }
   };
+
+  const askDelete = (id: string) => {
+    setError(null);
+    setConfirmDeleteId(id);
+  };
+  const cancelDelete = (id: string) => {
+    setConfirmDeleteId(null);
+    requestFocus(`image-delete-${id}`);
+  };
+  const openInEditor = (id: string) => void navigate(`/editor?image=${id}`);
 
   const onDrop = (event: React.DragEvent<HTMLDivElement>) => {
     event.preventDefault();
@@ -173,12 +225,16 @@ export default function Library() {
     event.target.value = "";
   };
 
+  const filtered = isFilterActive(filter);
+  const showFilterBar = loaded && (images.length > 0 || filtered);
+  const selectedIds = [...selected];
+
   return (
-    <section data-testid="page-library" className="p-8">
+    <section data-testid="page-library" className="px-4 py-8 sm:p-8">
       <h1 data-testid="library-heading" tabIndex={-1} className="text-3xl outline-none">
         Bibliothek
       </h1>
-      <p className="mt-2 text-stone-400">
+      <p className="mt-2 max-w-prose text-stone-400">
         Optionaler Cloud-Speicher: Bilder hier hochladen, um sie auf einem zweiten
         Gerät weiterzubearbeiten. Originale laufen direkt vom Browser zum
         Storage; nur kleine Vorschaubilder gehen zum Neu-Kodieren (ohne
@@ -188,7 +244,7 @@ export default function Library() {
       <div
         onDrop={onDrop}
         onDragOver={(e) => e.preventDefault()}
-        className="mt-6 border border-dashed border-stone-700 p-8 text-stone-500"
+        className="mt-6 border border-dashed border-stone-700 p-6 text-stone-500 sm:p-8"
         data-testid="upload-dropzone"
       >
         <p>Bild hierhin ziehen oder</p>
@@ -239,8 +295,23 @@ export default function Library() {
         </div>
       )}
 
+      {/* H2b: Ansage fuer Bewertungs-/Label-/Markierungs-Aenderungen. */}
+      <div
+        data-testid="library-announce"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        <span key={announcement.n}>{announcement.text}</span>
+      </div>
+
+      {showFilterBar && (
+        <FilterBar filter={filter} onChange={setFilter} view={view} onViewChange={changeView} />
+      )}
+
       {images.length > 0 && (
-        <div className="mt-6 flex items-center gap-4 text-sm">
+        <div className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
           <button
             type="button"
             data-testid="batch-apply-open"
@@ -250,100 +321,154 @@ export default function Library() {
           >
             Preset anwenden ({selected.size})
           </button>
+          {selected.size > 0 && (
+            <div
+              role="group"
+              aria-label={`Auswahl (${selected.size}) bewerten`}
+              data-testid="batch-meta"
+              className="flex flex-wrap items-center gap-x-3 gap-y-1 border-l border-stone-700 pl-4"
+            >
+              <span className="text-xs text-stone-400">Auswahl:</span>
+              <StarRating
+                value={null}
+                testId="batch"
+                showClear
+                onChange={(p) => void changeMeta(selectedIds, p)}
+              />
+              <FlagButtons
+                value={null}
+                testId="batch"
+                showNone
+                onChange={(p) => void changeMeta(selectedIds, p)}
+              />
+              <ColorLabelPicker
+                value={undefined}
+                testId="batch"
+                menuBelow
+                triggerLabel="Farblabel für Auswahl"
+                onChange={(p) => void changeMeta(selectedIds, p)}
+              />
+              <button
+                type="button"
+                data-testid="batch-clear-selection"
+                onClick={() => setSelected(new Set())}
+                className="text-xs text-stone-400 hover:text-stone-200"
+              >
+                Auswahl aufheben
+              </button>
+            </div>
+          )}
           <span role="status" className="text-stone-400">
             {toast && <span data-testid="batch-toast">{toast}</span>}
           </span>
         </div>
       )}
 
-      <ul className="mt-6 divide-y divide-stone-800" data-testid="image-list">
-        {!loaded && (
-          <li data-testid="library-loading" role="status" className="py-3 text-stone-400 italic">
-            Lädt …
-          </li>
-        )}
-        {loaded && images.length === 0 && !error && (
-          <li className="py-3 text-stone-400 italic">Noch keine Bilder hochgeladen.</li>
-        )}
-        {images.map((img) => (
-          <li
-            key={img.id}
-            data-testid={`image-row-${img.id}`}
-            className="flex items-center justify-between py-3"
-          >
-            <div className="flex min-w-0 items-center gap-3">
-              <input
-                type="checkbox"
-                data-testid={`image-select-${img.id}`}
-                checked={selected.has(img.id)}
-                onChange={() => toggleSelected(img.id)}
-                aria-label={`„${img.originalFilename}“ auswählen`}
-                className="accent-amber-300"
-              />
-              <ImageThumb
-                key={img.thumbUrl ?? "none"}
-                id={img.id}
-                url={img.thumbUrl ?? null}
-                contentType={img.contentType}
-              />
-              <div className="min-w-0">
-                <div className="truncate text-stone-200">{img.originalFilename}</div>
-                <div className="text-xs text-stone-400">
-                  {formatSize(img.sizeBytes)} · {img.contentType}
-                </div>
-              </div>
-            </div>
-            <div className="flex items-center gap-4">
-              <button
-                type="button"
-                data-testid={`image-edit-${img.id}`}
-                onClick={() => void navigate(`/editor?image=${img.id}`)}
-                className="text-amber-200 hover:underline"
+      {!loaded && (
+        <p data-testid="library-loading" role="status" className="mt-6 py-3 text-stone-400 italic">
+          Lädt …
+        </p>
+      )}
+      {loaded && images.length === 0 && !error && (
+        filtered ? (
+          <div data-testid="library-filter-empty" className="mt-6 py-6 text-stone-400">
+            <p>Keine Bilder passen zu diesem Filter.</p>
+            <button
+              type="button"
+              data-testid="library-filter-empty-reset"
+              onClick={() => setFilter({ ...DEFAULT_FILTER, sort: filter.sort })}
+              className="mt-2 text-amber-200 hover:underline"
+            >
+              Filter zurücksetzen
+            </button>
+          </div>
+        ) : (
+          <p className="mt-6 py-3 text-stone-400 italic">Noch keine Bilder hochgeladen.</p>
+        )
+      )}
+
+      {view === "grid" ? (
+        images.length > 0 && (
+          <LibraryGrid
+            images={images}
+            selected={selected}
+            confirmDeleteId={confirmDeleteId}
+            onToggleSelect={toggleSelected}
+            onMetaChange={(id, p) => void changeMeta([id], p)}
+            onOpen={openInEditor}
+            onAskDelete={askDelete}
+            onConfirmDelete={(id) => void onDelete(id)}
+            onCancelDelete={cancelDelete}
+          />
+        )
+      ) : (
+        <ul className="mt-6 divide-y divide-stone-800" data-testid="image-list">
+          {images.map((img) => {
+            const meta = metaOf(img);
+            const tid = `row-${img.id}`;
+            return (
+              <li
+                key={img.id}
+                data-testid={`image-row-${img.id}`}
+                className="flex flex-wrap items-center justify-between gap-x-4 gap-y-2 py-3"
               >
-                Im Editor öffnen
-              </button>
-              {confirmDeleteId === img.id ? (
-                <span className="flex items-center gap-2">
-                  <span className="text-xs text-stone-300">Endgültig löschen?</span>
-                  <AutoFocusButton
-                    data-testid={`image-delete-confirm-${img.id}`}
-                    onClick={() => void onDelete(img.id)}
-                    aria-label={`„${img.originalFilename}“ endgültig löschen`}
-                    className="text-red-400 hover:text-red-300"
-                  >
-                    Löschen
-                  </AutoFocusButton>
-                  <button
-                    type="button"
-                    data-testid={`image-delete-cancel-${img.id}`}
-                    onClick={() => {
-                      setConfirmDeleteId(null);
-                      requestFocus(`image-delete-${img.id}`);
-                    }}
-                    className="text-stone-400 hover:text-stone-200"
-                  >
-                    Abbrechen
-                  </button>
-                </span>
-              ) : (
-                <button
-                  type="button"
-                  data-testid={`image-delete-${img.id}`}
-                  aria-label={`„${img.originalFilename}“ löschen`}
-                  onClick={() => { setError(null); setConfirmDeleteId(img.id); }}
-                  className="text-stone-400 hover:text-red-400"
-                >
-                  Löschen
-                </button>
-              )}
-            </div>
-          </li>
-        ))}
-      </ul>
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    data-testid={`image-select-${img.id}`}
+                    checked={selected.has(img.id)}
+                    onChange={() => toggleSelected(img.id)}
+                    aria-label={`„${img.originalFilename}“ auswählen`}
+                    className="accent-amber-300"
+                  />
+                  <ImageThumb
+                    key={img.thumbUrl ?? "none"}
+                    id={img.id}
+                    url={img.thumbUrl ?? null}
+                    contentType={img.contentType}
+                    dimmed={meta.flag === "reject"}
+                  />
+                  <div className="min-w-0">
+                    <div className="truncate text-stone-200">{img.originalFilename}</div>
+                    <div className="text-xs text-stone-400">
+                      {formatSize(img.sizeBytes)} · {img.contentType}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center">
+                  <StarRating
+                    value={meta.rating}
+                    testId={tid}
+                    onChange={(p) => void changeMeta([img.id], p)}
+                  />
+                  <FlagButtons
+                    value={meta.flag}
+                    testId={tid}
+                    onChange={(p) => void changeMeta([img.id], p)}
+                  />
+                  <ColorLabelPicker
+                    value={meta.colorLabel}
+                    testId={tid}
+                    onChange={(p) => void changeMeta([img.id], p)}
+                  />
+                </div>
+                <ImageActions
+                  image={img}
+                  confirming={confirmDeleteId === img.id}
+                  onOpen={() => openInEditor(img.id)}
+                  onAskDelete={() => askDelete(img.id)}
+                  onConfirmDelete={() => void onDelete(img.id)}
+                  onCancelDelete={() => cancelDelete(img.id)}
+                />
+              </li>
+            );
+          })}
+        </ul>
+      )}
 
       {batchOpen && (
         <BatchApplyModal
-          imageIds={[...selected]}
+          imageIds={selectedIds}
           onClose={() => setBatchOpen(false)}
           onApplied={(applied, total) => {
             setToast(`${applied} von ${total} angewendet`);

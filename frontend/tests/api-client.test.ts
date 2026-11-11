@@ -276,3 +276,82 @@ describe("listImages Paginierung", () => {
     ]);
   });
 });
+
+describe("H2b Bewertung und Filter", () => {
+  function pagedFetch(total: number, urls: string[]): typeof fetch {
+    return (input) => {
+      const url = new URL(urlString(input));
+      urls.push(url.pathname + url.search);
+      const limit = Number(url.searchParams.get("limit"));
+      const offset = Number(url.searchParams.get("offset"));
+      const count = Math.max(0, Math.min(limit, total - offset));
+      const page = Array.from({ length: count }, (_, i) => ({ id: `img-${offset + i}` }));
+      return Promise.resolve(
+        new Response(JSON.stringify(page), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    };
+  }
+
+  it("listImages reicht Filter und Sortierung an jede Seite weiter", async () => {
+    const urls: string[] = [];
+    const client = createApiClient({
+      baseUrl: "http://api.test/api/v1",
+      getUser: () => null,
+      fetch: pagedFetch(600, urls),
+    });
+    await client.listImages("ready", {
+      minRating: 3,
+      colorLabels: ["red", "blue"],
+      flag: "pick",
+      sort: "rating_desc",
+    });
+    const filter = "minRating=3&colorLabel=red&colorLabel=blue&flag=pick&sort=rating_desc";
+    expect(urls).toEqual([
+      `/api/v1/images?${filter}&state=ready&limit=500&offset=0`,
+      `/api/v1/images?${filter}&state=ready&limit=500&offset=500`,
+    ]);
+  });
+
+  it("Default-Werte landen nicht in der URL", async () => {
+    const urls: string[] = [];
+    const client = createApiClient({
+      baseUrl: "http://api.test/api/v1",
+      getUser: () => null,
+      fetch: pagedFetch(1, urls),
+    });
+    await client.listImages("ready", { minRating: 0, colorLabels: [], sort: "created_desc" });
+    expect(urls).toEqual(["/api/v1/images?state=ready&limit=500&offset=0"]);
+  });
+
+  it("updateImage schickt PATCH mit den gesetzten Feldern", async () => {
+    const { fetchImpl, calls } = makeFetchMock(200, { id: "i-1", rating: 3 });
+    const client = createApiClient({
+      baseUrl: "http://api.test/api/v1",
+      getUser: () => null,
+      fetch: fetchImpl,
+    });
+    await client.updateImage("i-1", { rating: 3, colorLabel: null });
+    expect(calls[0]!.url).toBe("http://api.test/api/v1/images/i-1");
+    expect(calls[0]!.init.method).toBe("PATCH");
+    expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ rating: 3, colorLabel: null });
+  });
+
+  it("updateImages schickt Batch-PATCH mit ids", async () => {
+    const { fetchImpl, calls } = makeFetchMock(200, []);
+    const client = createApiClient({
+      baseUrl: "http://api.test/api/v1",
+      getUser: () => null,
+      fetch: fetchImpl,
+    });
+    await client.updateImages(["a", "b"], { flag: "reject" });
+    expect(calls[0]!.url).toBe("http://api.test/api/v1/images");
+    expect(calls[0]!.init.method).toBe("PATCH");
+    expect(JSON.parse(calls[0]!.init.body as string)).toEqual({
+      ids: ["a", "b"],
+      flag: "reject",
+    });
+  });
+});
