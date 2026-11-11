@@ -16,8 +16,12 @@ declare module "libraw-wasm" {
     [key: string]: unknown;
   }
 
+  /** `data` ist bei `outputBps: 16` ein Uint16Array (native Byte-
+   *  Reihenfolge, width × height × colors Elemente), sonst Uint8Array. */
   export interface LibRawImageData {
-    data?: Uint8Array;
+    data?: Uint8Array | Uint16Array;
+    bits?: number;
+    colors?: number;
     width?: number;
     height?: number;
     [key: string]: unknown;
@@ -32,6 +36,8 @@ declare module "libraw-wasm" {
     format: "jpeg" | "bitmap" | "unknown";
   }
 
+  /** Achtung: libraw-wasm liest nur camelCase-Schluessel (`outputBps`,
+   *  `useCameraWb`, `noAutoBright`, ...); snake_case wird still ignoriert. */
   export type LibRawSettings = Record<string, number | boolean | string>;
 
   export default class LibRaw {

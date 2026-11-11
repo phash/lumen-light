@@ -115,6 +115,7 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `frontend/src/editor/mask.ts` | Linear-/Radial-Typen, Limits-Konstanten — Single Source |
 | `frontend/src/editor/Canvas.tsx` | Renderer-Mount, `takeBypassSnapshot()` für Compare-Split, `exportFullResCanvas()` für Full-Res-Export (C2, offscreen-Renderer auf Original-Quelle). `loadFile()` liefert Natural-Dims zurück |
 | `backend/app/routers/images.py` | Upload (init/confirm mit Magic-Byte-Check)/list/url/delete + `GET`/`PUT /{id}/edit` (C1: Edit-State, Ownership übers Bild, Upsert). Blockierendes boto3 via `run_in_threadpool` |
+| `frontend/src/editor/rawPixels.ts` + `float16.ts` | H1b: `Rgb16Image` (16-bit-RAW-Quelle), CPU-Box-Verkleinerung, `chooseRawBitDepth` (`deviceMemory` < 4 → 8 bit), unorm16→Half-LUT. Upload in `webgl.ts:uploadRgb16Texture` (RGB16F in Streifen, Rueckfall RGB8). |
 | `frontend/src/editor/lensProfile.ts` | 18 Lens-Profile aus `infra/lensfun/profiles.json` |
 | `frontend/src/editor/EditorToolbar.tsx` | Untere Action-Bar (Bypass/Crop/Auto-Tone/Auto-WB/Compare/WB-Picker/Zoom/Undo/Redo + Mask + Help/Presets/Marketplace/Export) |
 | `frontend/src/editor/EditorBanners.tsx` | 4 absolute Banners: Fehler, Decoding, Smart-Suggestion, Camera-Info |
@@ -295,6 +296,17 @@ gesetzt — pytest läuft sonst gegen 429er.
 - **Preview-Builds** gedrosselt: max 2 parallel pro Prozess, 25 MB Quelle, 10/min pro User; versionierte Keys `{uid}/previews/{preset_id}-{hex}.jpg`.
 - **Bild-Vorschaubilder (H2a)**: Browser rendert (Library-Upload bzw. Editor via `Canvas.renderThumbnail`, gedrosselt in `useThumbnailUploader`), Server re-encodet in `PUT /images/{id}/thumbnail` (Multipart, max 1 MB = unter dem globalen 1-MiB-Body-Limit, 30/min) — bewusste Ausnahme von „Pixel nicht durch FastAPI". Dekodieren laeuft ueber `previews._decode_clean` und teilt `_BUILD_SEMAPHORE` mit der Marketplace-Vorschau. Keys `{uid}/thumbs/{id}-{hex}-{400|1600}.jpg`; `ImageOut.thumbUrl/previewUrl` werden pro Liste signiert (eigener SigV4-GET-Presigner `app/s3_presign.py`, ~15 µs/URL statt ~0.2 ms mit boto3, byte-identisch per Test; ab 100 Bildern im Threadpool). Braucht `python-multipart`. FormData-Bodies im `request()` des ApiClient bekommen KEINEN JSON-Content-Type.
 - **Web-Container unprivilegiert**: `nginx-unprivileged` auf Port 8080.
+- **libraw-wasm liest nur camelCase-Optionen** (`outputBps`, `useCameraWb`,
+  `noAutoBright`): snake_case wird still ignoriert. Bis H1b standen dort
+  snake_case-Keys → RAWs laufen seit jeher mit libraw-Defaults (Tageslicht-WB,
+  Auto-Helligkeit an). Das ist bewusst so geblieben (Look-Aenderung, offen in
+  der Roadmap H1b). `imageData()` mit `outputBps: 16` = `Uint16Array`,
+  `w×h×3`, 8 bit = 16 bit >> 8.
+- **RAW-Quelle 16 bit (H1b)**: Canvas haelt `Rgb16Image` (nicht ImageBitmap),
+  Live-Vorschau per CPU-Box-Filter verkleinert, Textur `RGB16F` (Half,
+  `UNPACK_ALIGNMENT` 1). Welche Praezision aktiv ist: `data-source-precision`
+  am `editor-canvas`. Shader sieht weiter sRGB 0..1 — nichts am Shader aendern,
+  um „mehr Headroom" zu bekommen, libraw klemmt bei Weiss.
 - **Editor-Autosave**: `useEditAutosave` (in `Editor.tsx`) flusht per
   `keepalive` bei Unmount/`pagehide`/Tab-Hidden; jede Bild-Ladung bekommt
   eine Generation (`beginLoad`) und setzt den Store via `resetForNewImage()`
@@ -379,7 +391,7 @@ backend pytest. E2E nicht in PR-Pipeline (Stack-Compose dauert).
 
 ## Aktueller Stand
 
-- **Phase H**: H1 Prozessversion 2 und H2 Lighttable komplett (H2a Vorschaubilder, H2b Raster/Sterne/Labels/Filter, H2c Lupe/Vergleich/Einzeltasten, H2d Zoom 1:1/Listen-Tasten/„Ohne Label"/Filter in der URL).
+- **Phase H**: H1 Prozessversion 2, H1b 16-bit-RAW/Half-Float-Textur und H2 Lighttable komplett (H2a Vorschaubilder, H2b Raster/Sterne/Labels/Filter, H2c Lupe/Vergleich/Einzeltasten, H2d Zoom 1:1/Listen-Tasten/„Ohne Label"/Filter in der URL).
 - **Phase E komplett**: HSL (E1), Tonkurve (E2), Sharpening + Noise (E3), Face-Detection (E4, opt-in), Auto-Straighten (E5).
 - **Phase F1 komplett**: Preset-Marketplace mit Backend (Migration 005, 7 Endpunkte, Auto-Hide), Frontend (Marketplace-Page, Detail-Modal, PresetDialog-Publish-Toggle, Account-Profil + veroeffentlichte Presets).
 - **Phase G komplett**: G1 Highlight-Recovery, G2 Local-Contrast/Clarity, G3 TCA-Korrektur (RawTherapee-inspiriert). G4 (Lensfun-DB-Stuetzstellen-Interpolation) bleibt Backlog.

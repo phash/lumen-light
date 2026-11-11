@@ -28,6 +28,7 @@ Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Anna
 | P1 | Bearbeitungs-Profile: YAML-Export/Import, Schritt-Checkboxen, Batch-Anwendung | ✓ abgeschlossen |
 | SEO1 | Bilingual DE+EN + GEO/SEO/AEO-Politur (2026-06-09) | ✓ abgeschlossen |
 | H1 | Szenenbezogene Tonabbildung (Prozessversion 2, Schulter + Path-to-White) | ✓ abgeschlossen |
+| H1b | 16-bit-RAW-Dekodierung in Half-Float-Textur (weniger Banding, kein Headroom) | ✓ abgeschlossen |
 | H2 | Lighttable: Sterne, Farblabels, Aussortieren | ✓ abgeschlossen (H2a, H2b, H2c, H2d) |
 
 ## Phase 1 · Bildverarbeitung im Browser ✓
@@ -90,7 +91,8 @@ Ergebnis der Recherche vom 2026-11-11. darktable steht unter GPL-3.0: Wir übern
 
 | Item | Aufgabe | Aufwand | Status |
 |---|---|---|---|
-| H1 | Szenenbezogene Tonabbildung: Belichtung, Weißabgleich und Kontrast rechnen auf linearem Licht, erst am Ende bildet eine Sigmoid-/AgX-Kurve auf den Bildschirm ab. Ziel: Lightroom-artiges Verhalten, keine Farbverschiebung in hellen Lichtern. Bestehende Presets brauchen einen Kompatibilitätspfad (Pipeline-Version im Edit-State). Umgesetzt als `processVersion` 1/2 (fehlt = 1), Spec `docs/superpowers/specs/2026-11-11-h1-scene-referred-tonemapping-design.md`. Follow-up H1b: 16-bit-Dekodierung in Float-Textur für echten Headroom. | M | ✓ abgeschlossen |
+| H1 | Szenenbezogene Tonabbildung: Belichtung, Weißabgleich und Kontrast rechnen auf linearem Licht, erst am Ende bildet eine Sigmoid-/AgX-Kurve auf den Bildschirm ab. Ziel: Lightroom-artiges Verhalten, keine Farbverschiebung in hellen Lichtern. Bestehende Presets brauchen einen Kompatibilitätspfad (Pipeline-Version im Edit-State). Umgesetzt als `processVersion` 1/2 (fehlt = 1), Spec `docs/superpowers/specs/2026-11-11-h1-scene-referred-tonemapping-design.md`. Follow-up H1b siehe nächste Zeile. | M | ✓ abgeschlossen |
+| H1b | 16-bit-RAW-Dekodierung (`outputBps: 16`) in eine `RGB16F`-Half-Float-Textur für Live-Vorschau, Vorschaubild und Full-Res-Export; JPEG/PNG bleiben 8 bit. Gewinn ist Präzision (weniger Banding in gepushten Tiefen), **kein** Headroom — libraw klemmt bei Weiß. Fallback auf 8 bit bei `deviceMemory` < 4 oder fehlgeschlagenem Upload. Spec `docs/superpowers/specs/2026-11-11-h1b-float-pipeline-design.md`. **Offen:** die libraw-Optionen `use_camera_wb`/`no_auto_bright` waren als snake_case wirkungslos (libraw-wasm liest camelCase) — RAWs laufen seit jeher mit Tageslicht-WB und Auto-Helligkeit; Korrektur ändert den Look und braucht eine eigene Entscheidung (z. B. neue Prozessversion). | M | ✓ abgeschlossen |
 | H2 | Lighttable in der Bibliothek: Sterne (0–5), Farblabels, Filter danach, Tastatur-Aussortieren (Vorschau groß, Taste vergeben, nächstes Bild), Vergleichsansicht. Braucht Migration für Bewertung/Label pro Bild und `GET /images`-Filter. Spec: `docs/superpowers/specs/2026-11-11-h2-lighttable-design.md`. **H2a ✓** Vorschaubilder pro Bild (Migration 013, `PUT /images/{id}/thumbnail`, Backfill, Listen-Vorschau). **H2b ✓** Raster/Sterne/Labels/Markierung/Filter (Migration 014, `PATCH /images[/{id}]`, Filter-/Sortier-Parameter an `GET /images`). **H2c ✓** Lupe (Vollbild, Blättern, Auto-Weiter), Vergleich zweier Bilder, Lightroom-Einzeltasten (abschaltbar), Cheatsheet-Abschnitt „Bibliothek". **H2d ✓** Nacharbeiten: Lupe mit Zoom 1:1 (Z/Klick, Original bei JPEG/PNG, Vorschau bei RAW), Einzeltasten in der Listenansicht, Filter „Ohne Label" (`colorLabel=none`), Filterzustand in der URL. | M | ✓ fertig |
 
 Weitere Kandidaten aus derselben Recherche (Backlog):
