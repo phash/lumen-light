@@ -34,9 +34,13 @@ from app.previews import (
 from app.rate_limit import limiter
 from app.schemas import (
     ALLOWED_IMAGE_CONTENT_TYPES,
+    ColorLabel,
     ImageEditState,
+    ImageFlag,
     ImageInitIn,
     ImageInitOut,
+    ImageMetaBatchPatch,
+    ImageMetaPatch,
     ImageOut,
     ImageUrlOut,
 )
@@ -90,11 +94,19 @@ LIST_LIMIT_DEFAULT = 200
 LIST_LIMIT_MAX = 500
 
 
+# Sortierungen fuer GET /images. Image.id haengt der Router immer als
+# letzten Tiebreaker an (deterministische Pagination). H2b-Namen sind die
+# dokumentierten; die alten Feldnamen bleiben fuer bestehende Clients.
 SORT_FIELDS = {
-    "created_at": Image.created_at.asc(),
-    "-created_at": Image.created_at.desc(),
-    "original_filename": Image.original_filename.asc(),
-    "-original_filename": Image.original_filename.desc(),
+    "created_desc": (Image.created_at.desc(),),
+    "created_asc": (Image.created_at.asc(),),
+    "rating_desc": (Image.rating.desc(), Image.created_at.desc()),
+    "name_asc": (Image.original_filename.asc(),),
+    # Legacy (vor H2b)
+    "created_at": (Image.created_at.asc(),),
+    "-created_at": (Image.created_at.desc(),),
+    "original_filename": (Image.original_filename.asc(),),
+    "-original_filename": (Image.original_filename.desc(),),
 }
 
 
@@ -355,9 +367,13 @@ async def confirm_upload(
 async def list_images(
     response: Response,
     state: str = Query(default="ready", pattern="^(ready|pending|all)$"),
-    sort: str = Query(default="-created_at"),
+    sort: str = Query(default="created_desc"),
     limit: int = Query(default=LIST_LIMIT_DEFAULT, ge=1, le=LIST_LIMIT_MAX),
     offset: int = Query(default=0, ge=0),
+    # H2b-Filter (camelCase wie das restliche Wireformat).
+    min_rating: int | None = Query(default=None, ge=0, le=5, alias="minRating"),
+    color_label: list[ColorLabel] | None = Query(default=None, alias="colorLabel"),
+    flag: ImageFlag | None = Query(default=None),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
     storage: StorageService = Depends(get_storage),
@@ -370,6 +386,12 @@ async def list_images(
     cond = [Image.user_id == user.id]
     if state != "all":
         cond.append(Image.upload_state == state)
+    if min_rating:
+        cond.append(Image.rating >= min_rating)
+    if color_label:
+        cond.append(Image.color_label.in_(set(color_label)))
+    if flag is not None:
+        cond.append(Image.flag == flag)
     total = (
         await db.execute(select(func.count()).select_from(Image).where(*cond))
     ).scalar_one()
@@ -378,7 +400,7 @@ async def list_images(
     stmt = (
         select(Image)
         .where(*cond)
-        .order_by(SORT_FIELDS[sort], Image.id)
+        .order_by(*SORT_FIELDS[sort], Image.id)
         .offset(offset)
         .limit(limit)
     )
@@ -387,6 +409,59 @@ async def list_images(
     # HMAC-Rechnung (kein S3-Roundtrip); gemessen ~0.18 ms pro URL, also
     # ~180 ms CPU fuer eine volle 500er-Seite mit Vorschauen.
     return [image_out(i, storage) for i in result.scalars().all()]
+
+
+@router.patch("", response_model=list[ImageOut])
+@limiter.limit("30/minute")
+async def patch_images(
+    request: Request,
+    payload: ImageMetaBatchPatch,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
+) -> list[ImageOut]:
+    """H2b: Bewertung/Label/Markierung fuer eine Mehrfachauswahl setzen.
+
+    Alles oder nichts: ist auch nur eine ID fremd oder unbekannt, gibt es
+    404 ohne Teil-Update (keine Auskunft, welche). Antwort in der
+    Reihenfolge der angefragten IDs."""
+    rows = (
+        await db.execute(
+            select(Image)
+            .where(Image.id.in_(payload.ids), Image.user_id == user.id)
+            .with_for_update()
+        )
+    ).scalars().all()
+    if len(rows) != len(payload.ids):
+        raise HTTPException(status_code=404, detail="Image nicht gefunden.")
+    changes = payload.changes()
+    for image in rows:
+        _ensure_owns_key(image, user)
+        for name, value in changes.items():
+            setattr(image, name, value)
+    await db.commit()
+    by_id = {image.id: image for image in rows}
+    return [image_out(by_id[i], storage) for i in payload.ids]
+
+
+@router.patch("/{image_id}", response_model=ImageOut)
+@limiter.limit("120/minute")
+async def patch_image(
+    request: Request,
+    image_id: UUID,
+    payload: ImageMetaPatch,
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
+) -> ImageOut:
+    """H2b: Bewertung/Label/Markierung eines Bildes setzen. Nur explizit
+    gesendete Felder aendern sich; `colorLabel: null` loescht das Label.
+    120/min wie der Autosave — schnelles Durchklicken beim Sichten."""
+    image = await _load_owned_image(db, user, image_id)
+    for name, value in payload.changes().items():
+        setattr(image, name, value)
+    await db.commit()
+    return image_out(image, storage)
 
 
 @router.get("/{image_id}/url", response_model=ImageUrlOut)
