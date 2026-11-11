@@ -83,6 +83,8 @@ services:
       - ../backend/scripts/garage_init.py:/garage_init.py:ro
 
   # Browser (Vite :5173) laedt per Pre-Signed POST/GET direkt nach :9000 -> CORS.
+  # Eine Regel pro Origin: Garage gibt bei mehreren Origins in EINER Regel alle
+  # komma-getrennt in Access-Control-Allow-Origin zurueck -> Browser blockt.
   s3-cors:
     image: amazon/aws-cli:2.38.5
     depends_on:
@@ -94,7 +96,7 @@ services:
       AWS_DEFAULT_REGION: garage
     entrypoint: >
       /bin/sh -c "
-        aws --endpoint-url http://s3:3900 s3api put-bucket-cors --bucket lumen-images --cors-configuration '{\"CORSRules\":[{\"AllowedOrigins\":[\"http://localhost:5173\",\"http://127.0.0.1:5173\"],\"AllowedMethods\":[\"GET\",\"POST\",\"HEAD\"],\"AllowedHeaders\":[\"*\"],\"MaxAgeSeconds\":3600}]}' &&
+        aws --endpoint-url http://s3:3900 s3api put-bucket-cors --bucket lumen-images --cors-configuration '{\"CORSRules\":[{\"AllowedOrigins\":[\"http://localhost:5173\"],\"AllowedMethods\":[\"GET\",\"POST\",\"HEAD\"],\"AllowedHeaders\":[\"*\"],\"MaxAgeSeconds\":3600},{\"AllowedOrigins\":[\"http://127.0.0.1:5173\"],\"AllowedMethods\":[\"GET\",\"POST\",\"HEAD\"],\"AllowedHeaders\":[\"*\"],\"MaxAgeSeconds\":3600}]}' &&
         echo 'Bucket lumen-images bereit (CORS gesetzt).';
       "
 
