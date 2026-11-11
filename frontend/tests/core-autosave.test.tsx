@@ -10,7 +10,7 @@ function editState(exposure: number): ImageEditState {
       exposure, contrast: 0, highlights: 0, shadows: 0, whites: 0,
       blacks: 0, temperature: 0, tint: 0, vibrance: 0, saturation: 0,
       sharpness: 0, noiseReduction: 0, highlightRecovery: 0, localContrast: 0,
-      hsl: null, toneCurve: null,
+      processVersion: 2, hsl: null, toneCurve: null,
     },
     masks: [],
     crop: null,

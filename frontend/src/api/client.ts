@@ -77,6 +77,10 @@ export interface Adjustments {
   // tests/adjustments-wire-sync.test.ts).
   highlightRecovery: number;
   localContrast: number;
+  // H1: 1 = Display-Raum-Pipeline, 2 = szenenbezogen. Das Backend liefert
+  // das Feld immer (fehlt es in der DB, Default 1); Parser fuer Fremd-
+  // daten (YAML) normalisieren via normalizeProcessVersion.
+  processVersion: 1 | 2;
   hsl: HslAdjustmentsWire | null;
   toneCurve: ToneCurveWire | null;
 }

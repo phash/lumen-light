@@ -72,7 +72,25 @@ export interface ToneCurve {
 export const TONE_CURVE_MIN_POINTS = 2;
 export const TONE_CURVE_MAX_POINTS = 8;
 
+// H1: Prozessversion der Ton-Pipeline. 1 = Display-Raum (bis Phase G),
+// 2 = szenenbezogen (linear + Schulter). Kein Slider — eigenes Feld wie
+// hsl/toneCurve, damit es nicht in ADJUSTMENTS auftaucht.
+export type ProcessVersion = 1 | 2;
+
+/** Version fuer neue Bilder und "Alles zuruecksetzen". */
+export const CURRENT_PROCESS_VERSION: ProcessVersion = 2;
+/** Version gespeicherter Daten ohne Feld (vor H1). */
+export const LEGACY_PROCESS_VERSION: ProcessVersion = 1;
+
+/** Gelesene Rohwerte normalisieren: fehlt das Feld (oder ist es
+ *  unbekannt), gilt PV1 — bestehende Edits/Presets aendern ihr Aussehen
+ *  nicht. */
+export function normalizeProcessVersion(value: unknown): ProcessVersion {
+  return value === 2 ? 2 : LEGACY_PROCESS_VERSION;
+}
+
 export type Adjustments = ScalarAdjustments & {
+  readonly processVersion: ProcessVersion;
   // null = HSL inaktiv (Speicher-Optimierung im Backend-JSONB).
   readonly hsl: HslAdjustments | null;
   // null = Tonkurve = Identitaet.
@@ -140,7 +158,12 @@ export function defaultAdjustments(): Adjustments {
   for (const a of ADJUSTMENTS) {
     result[a.key] = a.default;
   }
-  return { ...result, hsl: null, toneCurve: null };
+  return {
+    ...result,
+    processVersion: CURRENT_PROCESS_VERSION,
+    hsl: null,
+    toneCurve: null,
+  };
 }
 
 export function defaultToneCurve(): ToneCurve {

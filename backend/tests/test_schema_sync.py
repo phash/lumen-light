@@ -2,6 +2,7 @@
 identisch sind — Single Source of Truth fuer Frontend, Backend, Shader."""
 import json
 from pathlib import Path
+from typing import get_args
 
 from app.schemas import (
     HSL_CHANNEL_NAMES,
@@ -96,3 +97,13 @@ def test_tone_curve_schema_matches_pydantic():
         bounds = _bounds_from_pydantic(ToneCurvePoint.model_fields[axis])
         assert bounds["min"] == point_def["properties"][axis]["minimum"]
         assert bounds["max"] == point_def["properties"][axis]["maximum"]
+
+
+def test_process_version_schema_matches_pydantic():
+    # H1: Literal[1, 2] mit Default 1 (fehlendes Feld = vor H1 = PV1).
+    schema = json.loads(SCHEMA_PATH.read_text(encoding="utf-8"))
+    prop = schema["properties"]["processVersion"]
+    field = Adjustments.model_fields["processVersion"]
+    assert sorted(prop["enum"]) == sorted(get_args(field.annotation))
+    assert prop["default"] == field.default == 1
+    assert "processVersion" not in schema["required"]

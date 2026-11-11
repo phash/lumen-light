@@ -66,6 +66,10 @@ def merge_edit_state(
                 state["masks"] = preset_masks
             elif field in _TOPLEVEL_GEOMETRY_FIELDS:
                 state[field] = geo.get(field, _DEFAULT_GEOMETRY[field])
+            elif field == "processVersion":
+                # H1: Preset ohne Feld stammt von vor H1 -> PV1. Mit Ton-
+                # Gruppe uebernimmt das Bild die Version des Presets.
+                state["adjustments"][field] = preset_adjustments.get(field, 1)
             else:  # Adjustment-Skalar, hsl oder toneCurve
                 state["adjustments"][field] = preset_adjustments.get(field)
     return state

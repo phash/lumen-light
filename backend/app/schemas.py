@@ -116,6 +116,11 @@ class Adjustments(BaseModel):
     # 5x5-Gauss-Kernel. Negative Werte = Soften. Inspiriert von
     # RawTherapee's iplocalcontrast.cc.
     localContrast: float = Field(default=0, ge=-1, le=1)  # noqa: N815
+    # H1: Prozessversion der Ton-Pipeline. 1 = Display-Raum (bis Phase G),
+    # 2 = szenenbezogen. Fehlt das Feld (Daten von vor H1), gilt 1 — so
+    # aendert kein bestehender Edit / kein Preset sein Aussehen. Neue Bilder
+    # setzt das Frontend auf 2.
+    processVersion: Literal[1, 2] = 1  # noqa: N815
     # null = HSL inaktiv. Spart 24 Felder im JSONB fuer alte Presets.
     hsl: HslAdjustments | None = None
     # null = Tonkurve inaktiv (Identitaet). Wireformat camelCase wie

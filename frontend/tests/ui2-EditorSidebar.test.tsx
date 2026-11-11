@@ -36,6 +36,7 @@ function renderSidebar(overrides: Partial<Parameters<typeof EditorSidebar>[0]> =
     onToneCurveAddPoint: vi.fn().mockReturnValue(null),
     onToneCurveRemovePoint: vi.fn(),
     onToneCurveReset: vi.fn(),
+    onUpgradeProcessVersion: vi.fn(),
     onResetAll: vi.fn(),
     ...overrides,
   };

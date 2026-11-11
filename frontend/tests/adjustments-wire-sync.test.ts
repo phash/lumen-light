@@ -18,7 +18,10 @@ const schema = JSON.parse(
 ) as { properties: Record<string, unknown> };
 
 const SCHEMA_KEYS = Object.keys(schema.properties);
-const SCHEMA_SCALARS = SCHEMA_KEYS.filter((k) => k !== "hsl" && k !== "toneCurve");
+// processVersion (H1) ist kein Slider, sondern Pipeline-Wahl — wie hsl/
+// toneCurve nicht in ADJUSTMENTS.
+const NON_SLIDER_KEYS = new Set(["hsl", "toneCurve", "processVersion"]);
+const SCHEMA_SCALARS = SCHEMA_KEYS.filter((k) => !NON_SLIDER_KEYS.has(k));
 
 // Vollstaendiges Adjustments-Objekt, getypt als API-Wire-`Adjustments`.
 // Fehlt in client.ts ein Schema-Feld (oder eins zu viel), schlaegt schon
@@ -39,6 +42,7 @@ const WIRE_SAMPLE: Adjustments = {
   noiseReduction: 0,
   highlightRecovery: 0,
   localContrast: 0,
+  processVersion: 2,
   hsl: null,
   toneCurve: null,
 };

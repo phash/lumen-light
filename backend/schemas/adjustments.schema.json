@@ -27,6 +27,7 @@
     "noiseReduction": { "type": "number", "minimum": 0, "maximum": 1, "default": 0, "description": "Bilateral-3x3 Light" },
     "highlightRecovery": { "type": "number", "minimum": 0, "maximum": 1, "default": 0, "description": "Pull-Down geclippter Channels auf das Mittel der unclipped Channels (RawTherapee Blend-Modus)" },
     "localContrast":     { "type": "number", "minimum": -1, "maximum": 1, "default": 0, "description": "Mid-Frequenz-Kontrast (Clarity). Negativ = Soften" },
+    "processVersion":    { "type": "integer", "enum": [1, 2], "default": 1, "description": "Prozessversion der Ton-Pipeline (H1). 1 = Display-Raum, 2 = szenenbezogen. Fehlt das Feld, gilt 1." },
     "hsl": {
       "description": "8 Farbtonbereiche × 3 Achsen. null = HSL inaktiv (spart Speicher in JSONB für Pre-E1-Presets).",
       "oneOf": [

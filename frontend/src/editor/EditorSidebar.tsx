@@ -96,6 +96,8 @@ interface Props {
   readonly onToneCurveAddPoint: (x: number, y: number) => number | null;
   readonly onToneCurveRemovePoint: (index: number) => void;
   readonly onToneCurveReset: () => void;
+  /** H1: PV1-Bearbeitung auf Prozessversion 2 heben (ein Undo-Schritt). */
+  readonly onUpgradeProcessVersion: () => void;
   readonly onResetAll: () => void;
 }
 
@@ -134,6 +136,7 @@ export default function EditorSidebar({
   onToneCurveAddPoint,
   onToneCurveRemovePoint,
   onToneCurveReset,
+  onUpgradeProcessVersion,
   onResetAll,
 }: Props) {
   // Seitentitel der Editor-Route: die Sidebar ist immer gemountet, solange
@@ -223,6 +226,23 @@ export default function EditorSidebar({
             defaultOpen={group === "Licht"}
             testId={`editor-section-${group.toLowerCase()}`}
           >
+            {group === "Licht" && adjustments.processVersion === 1 && (
+              <div
+                className="mb-4 border-l-2 border-amber-300/40 bg-stone-900/60 px-3 py-2 text-xs text-stone-300"
+                data-testid="process-version-notice"
+              >
+                <p className="mb-2">Bearbeitet mit Prozessversion 1</p>
+                <button
+                  type="button"
+                  data-testid="process-version-upgrade"
+                  onClick={onUpgradeProcessVersion}
+                  title="Neue Tonabbildung: weichere Lichter, stabile Farben. Mit Rückgängig umkehrbar."
+                  className="px-2 py-1 text-[10px] uppercase tracking-[0.15em] border border-stone-700 text-stone-200 hover:border-amber-300/40 hover:text-amber-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+                >
+                  Auf Version 2 aktualisieren
+                </button>
+              </div>
+            )}
             {items.map((a: AdjustmentDefinition) => (
               <Slider
                 key={a.key}

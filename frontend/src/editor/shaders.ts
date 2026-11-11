@@ -39,6 +39,8 @@ uniform float u_noiseReduction;
 uniform float u_highlightRecovery;
 uniform float u_localContrast;
 uniform float u_bypass;
+// H1: 1 = Display-Raum-Pipeline, 2 = szenenbezogen (siehe tonemap.ts).
+uniform int u_processVersion;
 uniform float u_lensDistortion;
 uniform float u_lensVignette;
 uniform float u_lensTcaR;
@@ -142,6 +144,93 @@ vec3 hslToRgb(vec3 hsl) {
   return vec3(h2r(p, q, h + 1.0/3.0), h2r(p, q, h), h2r(p, q, h - 1.0/3.0));
 }
 
+// ----- Prozessversion 1 (bis Phase G): Tonwertarbeit im Display-Raum. -----
+// Der Funktionskoerper ist textgleich zum frueheren Inline-Block in main()
+// (Snapshot-Test in shader-limits-sync.test.ts). NICHT aendern — sonst
+// sehen bestehende Edits/Presets anders aus.
+vec3 toneProcessV1(vec3 lin, float effContrast) {
+  // 4. Linear -> sRGB fuer perzeptive Tonwertarbeit
+  vec3 c = linearToSrgb(lin);
+  c = clamp(c, 0.0, 2.0);
+
+  // 5. Tonwertbereiche via Luminanz-Masken
+  float L = luminance(c);
+  float shadowMask    = smoothstep(0.55, 0.0, L);
+  float highlightMask = smoothstep(0.45, 1.0, L);
+  float blackMask     = smoothstep(0.25, 0.0, L);
+  float whiteMask     = smoothstep(0.75, 1.0, L);
+  c += u_shadows    * 0.30 * shadowMask;
+  c += u_highlights * 0.30 * highlightMask;
+  c += u_blacks     * 0.25 * blackMask;
+  c += u_whites     * 0.25 * whiteMask;
+
+  // 6. Kontrast um 0.5
+  c = (c - 0.5) * (1.0 + effContrast) + 0.5;
+  c = clamp(c, 0.0, 1.0);
+  return c;
+}
+
+// ----- Prozessversion 2 (H1): szenenbezogene Tonabbildung. -----
+// Referenz-Implementierung + Tests: tonemap.ts. Konstanten dort und hier
+// synchron halten (Sync-Test).
+const float TM_PIVOT = 0.18;
+const float TM_EPS = 0.00001;
+const float TM_KNEE = 0.955;
+const float TM_TAIL = 0.3;
+const float TM_PTW_EV = 5.0;
+const float TM_SHADOWS_GAIN = 2.5;
+const float TM_SHADOWS_LO = -3.0;
+const float TM_SHADOWS_HI = 0.5;
+const float TM_HIGHLIGHTS_GAIN = 1.5;
+const float TM_HIGHLIGHTS_LO = -0.5;
+const float TM_HIGHLIGHTS_HI = 2.5;
+const float TM_BLACKS_GAIN = 2.0;
+const float TM_BLACKS_LO = -4.5;
+const float TM_BLACKS_HI = -1.5;
+const float TM_WHITES_GAIN = 1.0;
+const float TM_WHITES_LO = 1.0;
+const float TM_WHITES_HI = 3.0;
+
+// Log-Belichtung relativ zu Mittelgrau.
+float tmEv(vec3 lin) {
+  return log2(max(luminance(lin), TM_EPS) / TM_PIVOT);
+}
+
+// Schulter f: Identitaet bis zum Knie, danach C1-stetiger Potenz-Auslauf
+// gegen 1 (siehe tonemap.ts:shoulder).
+float tmShoulder(float x) {
+  if (x <= TM_KNEE) return x;
+  float w = 1.0 - TM_KNEE;
+  return 1.0 - w * pow(1.0 + (x - TM_KNEE) / (TM_TAIL * w), -TM_TAIL);
+}
+
+vec3 toneProcessV2(vec3 lin, float effContrast) {
+  // Tonbereiche als Belichtungs-Gains im Log-Raum. Ein gemeinsamer Faktor
+  // fuer alle drei Kanaele -> Kanalverhaeltnis (Farbton) bleibt.
+  float ev = tmEv(lin);
+  float toneEv =
+      u_shadows    * TM_SHADOWS_GAIN    * (1.0 - smoothstep(TM_SHADOWS_LO, TM_SHADOWS_HI, ev))
+    + u_highlights * TM_HIGHLIGHTS_GAIN * smoothstep(TM_HIGHLIGHTS_LO, TM_HIGHLIGHTS_HI, ev)
+    + u_blacks     * TM_BLACKS_GAIN     * (1.0 - smoothstep(TM_BLACKS_LO, TM_BLACKS_HI, ev))
+    + u_whites     * TM_WHITES_GAIN     * smoothstep(TM_WHITES_LO, TM_WHITES_HI, ev);
+  lin *= exp2(toneEv);
+
+  // Kontrast im Log-Raum um Mittelgrau, keine harte Begrenzung.
+  lin *= exp2(tmEv(lin) * effContrast);
+
+  // Display-Transform: Schulter auf max(r,g,b), als Verhaeltnis angewandt.
+  float n = max(lin.r, max(lin.g, lin.b));
+  if (n <= 1e-6) return vec3(0.0);
+  float fn = tmShoulder(n);
+  vec3 c = linearToSrgb(lin * (fn / n));
+  // Path to white: ab Sensor-Weiss Richtung Weiss entsaettigen. Mischen
+  // mit Grau im Display-Raum laesst den HSV-Farbton unveraendert.
+  float d = smoothstep(0.0, TM_PTW_EV, log2(n));
+  float white = linearToSrgb(vec3(fn)).r;
+  c = mix(c, vec3(white), d);
+  return clamp(c, 0.0, 1.0);
+}
+
 void main() {
   // Distortion (Brown-Conrady 1-Term) — vor Texture-Fetch.
   vec2 dc = v_uv - 0.5;
@@ -232,24 +321,11 @@ void main() {
   lin *= pow(2.0, effExposure);
   lin = max(lin, 0.0);
 
-  // 4. Linear -> sRGB fuer perzeptive Tonwertarbeit
-  vec3 c = linearToSrgb(lin);
-  c = clamp(c, 0.0, 2.0);
-
-  // 5. Tonwertbereiche via Luminanz-Masken
-  float L = luminance(c);
-  float shadowMask    = smoothstep(0.55, 0.0, L);
-  float highlightMask = smoothstep(0.45, 1.0, L);
-  float blackMask     = smoothstep(0.25, 0.0, L);
-  float whiteMask     = smoothstep(0.75, 1.0, L);
-  c += u_shadows    * 0.30 * shadowMask;
-  c += u_highlights * 0.30 * highlightMask;
-  c += u_blacks     * 0.25 * blackMask;
-  c += u_whites     * 0.25 * whiteMask;
-
-  // 6. Kontrast um 0.5
-  c = (c - 0.5) * (1.0 + effContrast) + 0.5;
-  c = clamp(c, 0.0, 1.0);
+  // 4.-6. Tonwertarbeit: Prozessversion 1 (Display-Raum) oder 2
+  // (szenenbezogen). Uniform-Branch, alle Fragmente nehmen denselben Pfad.
+  vec3 c = u_processVersion >= 2
+    ? toneProcessV2(lin, effContrast)
+    : toneProcessV1(lin, effContrast);
 
   // 7. Saettigung & Dynamik in HSL
   vec3 hsl = rgbToHsl(c);

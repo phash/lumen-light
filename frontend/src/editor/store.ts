@@ -7,6 +7,7 @@ import {
   type HslAdjustments,
   type HslAxis,
   type HslChannel,
+  type ProcessVersion,
   TONE_CURVE_MAX_POINTS,
   TONE_CURVE_MIN_POINTS,
   type ToneCurve,
@@ -17,6 +18,7 @@ import {
   defaultToneCurve,
   isHslNeutral,
   isToneCurveIdentity,
+  normalizeProcessVersion,
 } from "./adjustments";
 import {
   type DebounceContext,
@@ -74,6 +76,9 @@ export interface EditorState {
   setAdjustment: (key: AdjustmentKey, value: number) => void;
   resetAll: () => void;
   applyAdjustments: (adj: Partial<Adjustments>) => void;
+  /** H1: Prozessversion setzen ("Auf Version 2 aktualisieren"). Regler
+   *  bleiben unveraendert; ein Undo-Schritt. */
+  setProcessVersion: (version: ProcessVersion) => void;
   setHslChannel: (axis: HslAxis, channel: HslChannel, value: number) => void;
   resetHsl: () => void;
   setToneCurvePoint: (index: number, x: number, y: number) => void;
@@ -200,18 +205,29 @@ export const useEditorStore = create<EditorState>((set, get) => ({
     set(() => {
       const base = defaultAdjustments();
       const merged: Record<AdjustmentKey, number> & {
+        processVersion: ProcessVersion;
         hsl: HslAdjustments | null;
         toneCurve: ToneCurve | null;
       } = { ...base };
       for (const [k, v] of Object.entries(incoming)) {
-        if (k === "hsl" || k === "toneCurve") continue;
+        if (k === "hsl" || k === "toneCurve" || k === "processVersion") continue;
         const key = k as AdjustmentKey;
         merged[key] = clampAdjustment(key, v as number);
       }
+      // Gespeicherte Adjustments (Preset, Marketplace) ohne Feld stammen
+      // von vor H1 -> PV1, damit sie aussehen wie beim Ersteller.
+      merged.processVersion = normalizeProcessVersion(incoming.processVersion);
       if ("hsl" in incoming) merged.hsl = incoming.hsl ?? null;
       if ("toneCurve" in incoming) merged.toneCurve = incoming.toneCurve ?? null;
       return { adjustments: merged };
     });
+  },
+  setProcessVersion: (version) => {
+    if (get().adjustments.processVersion === version) return;
+    _snapshotBefore(get());
+    set((state) => ({
+      adjustments: { ...state.adjustments, processVersion: version },
+    }));
   },
   setHslChannel: (axis, channel, value) => {
     _snapshotBefore(get());
@@ -485,7 +501,12 @@ export const useEditorStore = create<EditorState>((set, get) => ({
   applyEditState: (s) => {
     _cancelPendingHistory();
     set({
-      adjustments: { ...defaultAdjustments(), ...s.adjustments },
+      adjustments: {
+        ...defaultAdjustments(),
+        ...s.adjustments,
+        // Gespeicherter Stand ohne Feld = vor H1 bearbeitet -> PV1.
+        processVersion: normalizeProcessVersion(s.adjustments.processVersion),
+      },
       masks: s.masks,
       selectedMaskId: null,
       cropRect: clampCropRect(s.cropRect),
@@ -530,7 +551,10 @@ export const useEditorStore = create<EditorState>((set, get) => ({
       };
       const merged = mergeGroups(base, profile, enabled);
       return {
-        adjustments: merged.adjustments,
+        adjustments: {
+          ...merged.adjustments,
+          processVersion: normalizeProcessVersion(merged.adjustments.processVersion),
+        },
         masks: wireToMasks(merged.masks),
         selectedMaskId: null,
         cropRect: clampCropRect(merged.crop ?? defaultCropRect()),

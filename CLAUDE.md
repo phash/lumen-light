@@ -149,6 +149,13 @@ gesetzt — pytest läuft sonst gegen 429er.
   `HSL_CHANNELS=8`, `DISTORTION_GAIN`, `VIGNETTE_GAIN` leben in
   TS-Modulen UND als GLSL-Literal. Sync-Test in
   `frontend/tests/shader-limits-sync.test.ts`.
+- **Prozessversion (H1)**: `adjustments.processVersion` 1|2, kein Slider.
+  Fehlt das Feld beim Lesen (Edit-State, Preset, YAML, Marketplace), gilt 1
+  (`normalizeProcessVersion`, Pydantic-Default 1); `defaultAdjustments()` und
+  frische Bilder im Batch-Apply = 2. PV1-Shaderblock (`toneProcessV1`) ist
+  per Snapshot-Test eingefroren. PV2-Konstanten leben in `tonemap.ts` UND als
+  GLSL-Literal (Sync-Test); `tonemap.ts:toneStage` ist die TS-Referenz der
+  Shader-Tonstufe (Tests laufen dagegen, jsdom hat kein WebGL).
 - **edit-groups.json ist Single Source** fuer das Gruppen->Feld-Mapping:
   `backend/schemas/edit-groups.json`. Das Backend liest sie zur Laufzeit aus
   `backend/schemas/` (Backend-Build-Context `../backend`, per `COPY . .` im
