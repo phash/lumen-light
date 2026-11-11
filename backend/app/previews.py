@@ -106,7 +106,10 @@ def _to_rgb(img: PILImage.Image) -> PILImage.Image:
 
 
 def _decode_clean(
-    data: bytes, formats: tuple[str, ...], max_edge: int
+    data: bytes,
+    formats: tuple[str, ...],
+    max_edge: int,
+    max_pixels: int | None = None,
 ) -> PILImage.Image:
     """Gemeinsamer, abgesicherter Dekodierpfad fuer Marketplace-Vorschau
     (M3) und Bild-Vorschaubilder (H2a): nur die angegebenen Pillow-Opener,
@@ -122,8 +125,10 @@ def _decode_clean(
         with PILImage.open(io.BytesIO(data), formats=list(formats)) as src:
             if src.format not in accepted:
                 raise PreviewError("Quelle hat ein nicht erlaubtes Format.")
+            # None = Modul-Grenze zur Laufzeit lesen (Tests patchen sie).
+            limit = MAX_SOURCE_PIXELS if max_pixels is None else max_pixels
             width, height = src.size
-            if width <= 0 or height <= 0 or width * height > MAX_SOURCE_PIXELS:
+            if width <= 0 or height <= 0 or width * height > limit:
                 raise PreviewError("Quelle hat unzulaessige Abmessungen.")
             # draft(): JPEG direkt in reduzierter Aufloesung dekodieren
             # (DCT-Skalierung) — spart Speicher bei grossen Quellen. Fuer
@@ -188,19 +193,25 @@ THUMB_PREVIEW_EDGE = PREVIEW_MAX_EDGE  # 1600
 # Body-Limit (1 MiB inkl. Multipart-Overhead), damit die eigene 413-Meldung
 # greift. Ein 1600-px-JPEG q0.85 liegt typischerweise bei 200-600 KB.
 THUMB_UPLOAD_MAX_BYTES = 1_000_000
-# Formate fuer den Browser-Upload (der Client schickt JPEG; PNG als
-# toleranter Fallback) und fuer den Bestands-Backfill aus Originalen.
-THUMB_UPLOAD_FORMATS: tuple[str, ...] = ("JPEG", "PNG")
+# Browser-Upload: nur JPEG. Der Client schickt immer JPEG (canvas.toBlob).
+# PNG bleibt draussen: ein 1-MB-PNG kann bis MAX_SOURCE_PIXELS aufblaehen,
+# draft() hilft dort nicht (Decompression-Bomb, Security-Review H2a).
+THUMB_UPLOAD_FORMATS: tuple[str, ...] = ("JPEG",)
+# Pixel-Grenze fuer den Browser-Upload VOR dem Dekodieren. Der Client
+# liefert hoechstens 1600 px lange Kante; 2048x2048 laesst Luft.
+THUMB_UPLOAD_MAX_PIXELS = 2048 * 2048
 THUMB_BACKFILL_FORMATS: tuple[str, ...] = ("JPEG", "PNG", "TIFF")
 
 
 def render_thumbnails(
-    data: bytes, formats: tuple[str, ...] = THUMB_UPLOAD_FORMATS
+    data: bytes,
+    formats: tuple[str, ...] = THUMB_UPLOAD_FORMATS,
+    max_pixels: int = THUMB_UPLOAD_MAX_PIXELS,
 ) -> tuple[bytes, bytes]:
     """Bild-Bytes -> (400-px-JPEG, 1600-px-JPEG), beide ohne Metadaten.
     Einmal dekodieren, die kleine Groesse aus der grossen ableiten. Kleine
     Quellen werden nicht hochskaliert. Wirft PreviewError."""
-    large = _decode_clean(data, formats, THUMB_PREVIEW_EDGE)
+    large = _decode_clean(data, formats, THUMB_PREVIEW_EDGE, max_pixels)
     small = large.copy()
     small.thumbnail((THUMB_EDGE, THUMB_EDGE), PILImage.Resampling.LANCZOS)
     return _encode_jpeg(small), _encode_jpeg(large)
@@ -213,7 +224,7 @@ def build_thumbnails(
     Slots mit der Marketplace-Vorschau). Blockierend -> Threadpool."""
     _acquire_build_slot()
     try:
-        return render_thumbnails(data, formats)
+        return render_thumbnails(data, formats, THUMB_UPLOAD_MAX_PIXELS)
     finally:
         _BUILD_SEMAPHORE.release()
 
@@ -232,7 +243,7 @@ def build_thumbnails_from_storage(
             data = storage.get_bytes(source_key, MAX_SOURCE_BYTES)
         except ValueError as exc:
             raise PreviewError(str(exc)) from exc
-        return render_thumbnails(data, formats)
+        return render_thumbnails(data, formats, MAX_SOURCE_PIXELS)
     finally:
         _BUILD_SEMAPHORE.release()
 

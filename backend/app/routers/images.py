@@ -471,7 +471,6 @@ async def put_image_edit(
 
 
 _JPEG_MAGIC = b"\xff\xd8\xff"
-_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
 
 @router.put("/{image_id}/thumbnail", response_model=ImageOut)
@@ -505,10 +504,10 @@ async def put_image_thumbnail(
             status_code=status.HTTP_413_CONTENT_TOO_LARGE,
             detail="Vorschaubild zu groß (max. 1 MB).",
         )
-    if not (data.startswith(_JPEG_MAGIC) or data.startswith(_PNG_MAGIC)):
+    if not data.startswith(_JPEG_MAGIC):
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Vorschaubild muss ein JPEG oder PNG sein.",
+            detail="Vorschaubild muss ein JPEG sein.",
         )
 
     try:

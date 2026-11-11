@@ -71,7 +71,9 @@ def _exists(key: str) -> bool:
 
 
 def test_render_thumbnails_liefert_zwei_groessen_mit_seitenverhaeltnis():
-    small, large = previews.render_thumbnails(make_jpeg(3200, 1600))
+    small, large = previews.render_thumbnails(
+        make_jpeg(3200, 1600), max_pixels=previews.MAX_SOURCE_PIXELS
+    )
     assert _open(small).size == (400, 200)
     assert _open(large).size == (1600, 800)
 
@@ -93,7 +95,9 @@ def test_render_thumbnails_entfernt_metadaten():
 
 
 def test_render_thumbnails_png_mit_transparenz_wird_rgb():
-    small, _ = previews.render_thumbnails(_png(50, 40))
+    small, _ = previews.render_thumbnails(
+        _png(50, 40), formats=previews.THUMB_BACKFILL_FORMATS
+    )
     img = _open(small)
     assert img.mode == "RGB"
     # Transparenz auf Weiss gelegt, nicht schwarz.
@@ -159,10 +163,25 @@ async def test_upload_speichert_zwei_reencodierte_groessen(client, user_a, db_se
     assert "icc_profile" not in large.info
 
 
-async def test_upload_akzeptiert_png(client, user_a):
+async def test_upload_lehnt_png_ab(client, user_a):
+    """PNG kann trotz 1 MB zu riesigen Pixelmengen aufblaehen -> nur JPEG."""
     image_id = await upload_image(client, user_a["headers"])
     r = await _put_thumb(client, user_a["headers"], image_id, _png(120, 80), "image/png")
-    assert r.status_code == 200, r.text
+    assert r.status_code == 415, r.text
+
+
+async def test_upload_mit_zu_vielen_pixeln_gibt_422(client, user_a):
+    """Pixel-Grenze greift vor dem Dekodieren (Decompression-Bomb)."""
+    image_id = await upload_image(client, user_a["headers"])
+    big = make_jpeg(4000, 1200)
+    assert len(big) < previews.THUMB_UPLOAD_MAX_BYTES
+    r = await _put_thumb(client, user_a["headers"], image_id, big, "image/jpeg")
+    assert r.status_code == 422, r.text
+
+
+def test_render_thumbnails_upload_grenze_vor_dekodieren():
+    with pytest.raises(previews.PreviewError):
+        previews.render_thumbnails(make_jpeg(2100, 2100))
 
 
 async def test_upload_kein_bild_gibt_415(client, user_a, db_session):
