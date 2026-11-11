@@ -17,7 +17,7 @@ import type { Image, ImageMetaPatch } from "../api/client";
 import ImageActions from "./ImageActions";
 import ImageThumb from "./ImageThumb";
 import { ColorLabelPicker, FlagButtons, StarRating } from "./MetaControls";
-import { FLAG_NAMES, colorLabelDef, isGridKey, metaOf, nextGridIndex, ratingText } from "./meta";
+import { colorLabelDef, imageAriaLabel, isGridKey, metaOf, nextGridIndex } from "./meta";
 
 export interface LibraryGridProps {
   readonly images: readonly Image[];
@@ -48,14 +48,6 @@ function columnsOf(list: HTMLElement | null): number {
     cols += 1;
   }
   return Math.max(1, cols);
-}
-
-function tileLabel(image: Image): string {
-  const meta = metaOf(image);
-  const parts = [image.originalFilename, ratingText(meta.rating)];
-  if (meta.colorLabel) parts.push(`Label ${colorLabelDef(meta.colorLabel).name}`);
-  if (meta.flag !== "none") parts.push(FLAG_NAMES[meta.flag]);
-  return parts.join(", ");
 }
 
 export default function LibraryGrid({
@@ -122,7 +114,7 @@ export default function LibraryGrid({
             <div
               role="group"
               data-testid={`image-tile-${img.id}`}
-              aria-label={tileLabel(img)}
+              aria-label={imageAriaLabel(img)}
               tabIndex={active ? 0 : -1}
               onFocus={() => setActiveId(img.id)}
               onKeyDown={(e) => onKeyDown(img, index, e)}

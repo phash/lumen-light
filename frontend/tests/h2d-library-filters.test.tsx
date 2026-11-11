@@ -1,95 +1,17 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from "vitest";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { beforeEach, describe, expect, it } from "vitest";
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
-import Library from "../src/pages/Library";
-import * as useApiModule from "../src/api/use-api";
-import { imageListParams, type ApiClient, type Image } from "../src/api/client";
+import { imageListParams } from "../src/api/client";
 import { DEFAULT_FILTER } from "../src/library/FilterBar";
 import { filterFromParams, filterToParams } from "../src/library/filterUrl";
 import { setLibraryView } from "../src/library/viewPrefs";
-import { makeFakeAuth, makeFakeUser, renderWithAuth } from "./test-utils";
-
-interface FakeApi extends ApiClient {
-  listImages: Mock;
-}
-
-function makeFakeApi(images: Image[] = []): FakeApi {
-  return {
-    me: vi.fn(),
-    deleteMe: vi.fn(),
-    exportMe: vi.fn(),
-    listPresets: vi.fn(),
-    createPreset: vi.fn(),
-    updatePreset: vi.fn(),
-    deletePreset: vi.fn(),
-    listImages: vi.fn().mockResolvedValue(images),
-    initUpload: vi.fn(),
-    confirmUpload: vi.fn(),
-    getImageUrl: vi.fn(),
-    deleteImage: vi.fn().mockResolvedValue(undefined),
-    getImageEdit: vi.fn(),
-    putImageEdit: vi.fn(),
-    putImageThumbnail: vi.fn(),
-    updateImage: vi.fn(),
-    updateImages: vi.fn(),
-    listMarketplacePresets: vi.fn(),
-    getMarketplacePreset: vi.fn(),
-    applyMarketplacePreset: vi.fn(),
-    forkMarketplacePreset: vi.fn(),
-    reportMarketplacePreset: vi.fn(),
-    getProfile: vi.fn(),
-    updateProfile: vi.fn(),
-    listPublishedPresets: vi.fn(),
-    submitFeedback: vi.fn(),
-    adminListUsers: vi.fn(),
-    adminPatchUser: vi.fn(),
-    adminStats: vi.fn(),
-    adminListFeedback: vi.fn(),
-    adminPatchFeedback: vi.fn(),
-    adminListReportedPresets: vi.fn(),
-    adminClearPresetReports: vi.fn(),
-    applyPresetBatch: vi.fn(),
-  };
-}
-
-/** Zeigt den aktuellen Query-String, damit Tests die URL pruefen koennen. */
-function LocationProbe() {
-  const location = useLocation();
-  return <output data-testid="location-search">{location.search}</output>;
-}
-
-function renderLibrary(api: FakeApi, url = "/library") {
-  vi.spyOn(useApiModule, "useApi").mockReturnValue(api);
-  return renderWithAuth(<Library />, {
-    auth: makeFakeAuth({ isAuthenticated: true, user: makeFakeUser() }),
-    wrapper: (c) => (
-      <MemoryRouter initialEntries={[url]}>
-        {c}
-        <LocationProbe />
-      </MemoryRouter>
-    ),
-  });
-}
-
-function search(): string {
-  return screen.getByTestId("location-search").textContent ?? "";
-}
-
-const IMG_A: Image = {
-  id: "i-a",
-  originalFilename: "a.jpg",
-  contentType: "image/jpeg",
-  sizeBytes: 100,
-  uploadState: "ready",
-  createdAt: "x",
-  confirmedAt: "x",
-  thumbUrl: null,
-  rating: 0,
-  colorLabel: null,
-  flag: "none",
-};
+import {
+  IMG_A,
+  locationSearch as search,
+  makeFakeLibraryApi as makeFakeApi,
+  renderLibraryAt as renderLibrary,
+} from "./library-fakes";
 
 beforeEach(() => setLibraryView("grid"));
 
