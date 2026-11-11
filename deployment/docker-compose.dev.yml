@@ -68,7 +68,7 @@ services:
   # Layout + Key + Bucket ueber die Admin-API (gleiches Script wie Prod/pytest).
   # Dev-Key bekommt Owner-Recht, damit s3-cors die Bucket-CORS setzen darf.
   s3-init:
-    image: python:3.12-alpine
+    image: python:3.15-alpine
     depends_on:
       - s3
     command: ["python", "/garage_init.py"]
