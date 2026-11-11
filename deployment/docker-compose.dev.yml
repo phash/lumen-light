@@ -86,7 +86,7 @@ services:
   # Eine Regel pro Origin: Garage gibt bei mehreren Origins in EINER Regel alle
   # komma-getrennt in Access-Control-Allow-Origin zurueck -> Browser blockt.
   s3-cors:
-    image: amazon/aws-cli:2.38.5
+    image: amazon/aws-cli:2.39.6
     depends_on:
       s3-init:
         condition: service_completed_successfully
