@@ -41,6 +41,9 @@ test.describe("RAW-Pipeline gegen echten Korpus", () => {
     (present ? test : test.skip)(
       `${sample.filename} (${sample.format}) decodiert + Camera-Info`,
       async ({ page }) => {
+        // X-Trans-RAF braucht headless allein ~25 s Decode; der 60-s-Decode-Wait
+        // unten greift nur, wenn das Test-Timeout ihn nicht vorher abschneidet.
+        test.setTimeout(120_000);
         const user = await loginAsNewUser(page);
         try {
           await page.goto("/editor");
