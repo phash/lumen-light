@@ -32,6 +32,7 @@ vi.mock("../src/editor/Canvas", async (importOriginal) => {
       render: () => undefined,
       takeBypassSnapshot: () => null,
       exportFullResCanvas: () => null,
+      renderThumbnail: () => null,
     }));
     return <canvas data-testid="editor-canvas" />;
   });
@@ -55,6 +56,7 @@ const fakeApi = {
   getImageUrl: vi.fn(),
   getImageEdit: vi.fn(),
   putImageEdit: vi.fn(),
+  putImageThumbnail: vi.fn(),
   listPresets: vi.fn(),
 };
 

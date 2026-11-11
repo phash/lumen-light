@@ -6,6 +6,13 @@ Versionierung an [SemVer](https://semver.org/lang/de/).
 
 ## [Unreleased] — Pre-Beta
 
+### H2a Vorschaubilder (2026-11-11)
+
+- **Vorschaubilder pro Bild**: der Browser erzeugt nach dem Upload (JPEG/PNG per `createImageBitmap`, RAW ueber die eingebettete Kamera-Vorschau aus libraw-wasm `thumbnailData()`) und im Editor nach erfolgreichem Autosave (max. 1x pro 10 s pro Bild) sowie beim Verlassen ein 1600-px-JPEG mit Bearbeitung. `PUT /api/v1/images/{id}/thumbnail` (Multipart `file`, nur JPEG, max. 1 MB und 2048×2048 px vor dem Dekodieren, 30/min) kodiert serverseitig neu in 400 und 1600 px ohne Metadaten (gleiche Dekodier-Grenzen und Build-Slots wie die Marketplace-Vorschau), Keys `{uid}/thumbs/{id}-{hex}-{400|1600}.jpg`, alter Satz wird nach dem Commit geloescht.
+- `GET /images` liefert `thumbUrl`/`previewUrl` (signiert, gleiche TTL wie `/url`, `null` ohne Vorschau); die Bibliothek zeigt die Vorschau links vom Dateinamen, sonst einen Platzhalter mit Dateityp.
+- Migration 013 (`images.thumb_key`, `images.preview_key`), Bestand per `scripts.backfill_thumbnails` (JPEG/PNG/TIFF, idempotent; `deploy.sh` Schritt 5d). Bild-Loeschen entfernt beide Objekte; `DELETE /me` erfasst sie ueber den Prefix-Purge.
+- Datenschutzerklaerung um Vorschaubilder ergaenzt.
+
 ### H1 · Szenenbezogene Tonabbildung (2026-11-11)
 
 - **Prozessversion 2**: Lichter/Tiefen/Weiss/Schwarz wirken als Belichtungs-Gains auf linearem Licht, Kontrast dreht um Mittelgrau, am Ende komprimiert eine weiche Schulter auf `max(r,g,b)` mit Entsaettigung Richtung Weiss. Ueberbelichtete Farben behalten ihren Farbton statt nach Gelb/Cyan zu kippen.

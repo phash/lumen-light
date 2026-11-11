@@ -1,8 +1,19 @@
 """Images-CRUD — Pre-Signed URLs gegen Garage S3 (siehe ADR-011)."""
+import logging
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    File,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -12,7 +23,14 @@ from app.auth import current_user
 from app.config import settings
 from app.database import get_db
 from app.models import Image, ImageEdit, Preset, User
-from app.previews import delete_preview_object
+from app.previews import (
+    BUSY_PREVIEW_DETAIL,
+    THUMB_UPLOAD_MAX_BYTES,
+    PreviewBusy,
+    PreviewError,
+    build_thumbnails,
+    delete_preview_object,
+)
 from app.rate_limit import limiter
 from app.schemas import (
     ALLOWED_IMAGE_CONTENT_TYPES,
@@ -26,6 +44,7 @@ from app.storage import ObjectNotFound, StorageService, get_storage
 
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 # Magic-Byte-Signaturen je deklariertem Content-Type. Der Pre-Signed POST
@@ -87,6 +106,25 @@ def _ensure_owns_key(image: Image, user: User) -> None:
             status_code=status.HTTP_403_FORBIDDEN,
             detail="bucket_key gehoert nicht zum eingeloggten User.",
         )
+
+
+def image_out(image: Image, storage: StorageService) -> ImageOut:
+    """ImageOut inkl. signierter Vorschau-URLs (H2a). Kein attachment:
+    die Objekte sind serverseitig erzeugte JPEGs und werden per <img>
+    eingebunden."""
+    out = ImageOut.model_validate(image)
+    if image.thumb_key:
+        out.thumb_url = storage.presign_get(image.thumb_key)[0]
+    if image.preview_key:
+        out.preview_url = storage.presign_get(image.preview_key)[0]
+    return out
+
+
+async def _delete_thumb_objects(storage: StorageService, *keys: str | None) -> None:
+    """Best-effort: Vorschau-Objekte loeschen (Reste verschwinden spaetestens
+    mit dem Prefix-Purge aus DELETE /me)."""
+    for key in keys:
+        await delete_preview_object(storage, key)
 
 
 async def _discard_pending(
@@ -236,7 +274,7 @@ async def confirm_upload(
     # Bereits bestaetigt -> idempotent zurueckgeben, ohne erneute S3-Roundtrips
     # (HEAD + Magic-Byte-Read) und ohne confirmed_at zu ueberschreiben.
     if image.upload_state == "ready":
-        return ImageOut.model_validate(image)
+        return image_out(image, storage)
 
     staging_key = storage.staging_key_for(image.bucket_key)
     not_found = HTTPException(
@@ -310,7 +348,7 @@ async def confirm_upload(
         await run_in_threadpool(storage.delete, staging_key)
     except Exception:  # noqa: BLE001
         pass
-    return ImageOut.model_validate(image)
+    return image_out(image, storage)
 
 
 @router.get("", response_model=list[ImageOut])
@@ -322,6 +360,7 @@ async def list_images(
     offset: int = Query(default=0, ge=0),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
 ) -> list[ImageOut]:
     if sort not in SORT_FIELDS:
         raise HTTPException(
@@ -344,7 +383,10 @@ async def list_images(
         .limit(limit)
     )
     result = await db.execute(stmt)
-    return [ImageOut.model_validate(i) for i in result.scalars().all()]
+    # Bis zu 2 x 500 Signaturen pro Seite: presign_get ist reine lokale
+    # HMAC-Rechnung (kein S3-Roundtrip); gemessen ~0.18 ms pro URL, also
+    # ~180 ms CPU fuer eine volle 500er-Seite mit Vorschauen.
+    return [image_out(i, storage) for i in result.scalars().all()]
 
 
 @router.get("/{image_id}/url", response_model=ImageUrlOut)
@@ -428,6 +470,103 @@ async def put_image_edit(
     await db.commit()
 
 
+_JPEG_MAGIC = b"\xff\xd8\xff"
+
+
+@router.put("/{image_id}/thumbnail", response_model=ImageOut)
+@limiter.limit("30/minute")
+async def put_image_thumbnail(
+    request: Request,
+    image_id: UUID,
+    file: UploadFile = File(...),
+    user: User = Depends(current_user),
+    db: AsyncSession = Depends(get_db),
+    storage: StorageService = Depends(get_storage),
+) -> ImageOut:
+    """H2a: Vorschaubild aus dem Browser (mit Bearbeitung) entgegennehmen.
+
+    Bewusste Ausnahme vom Grundsatz "Pixel nicht durch FastAPI": klein
+    (max. THUMB_UPLOAD_MAX_BYTES) und der Server muss ohnehin neu kodieren —
+    Pillow dekodiert unter denselben Grenzen wie die Marketplace-Vorschau
+    (Pixel-Limit, geteilter Build-Semaphore) und schreibt zwei metadatenfreie
+    JPEGs (400/1600 px) unter neuen, versionierten Keys. Der vorherige Satz
+    wird erst nach dem Commit geloescht."""
+    image = await _load_owned_image(db, user, image_id)
+    if image.upload_state != "ready":
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Bild ist noch nicht bestätigt.",
+        )
+
+    data = await file.read(THUMB_UPLOAD_MAX_BYTES + 1)
+    if len(data) > THUMB_UPLOAD_MAX_BYTES:
+        raise HTTPException(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            detail="Vorschaubild zu groß (max. 1 MB).",
+        )
+    if not data.startswith(_JPEG_MAGIC):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Vorschaubild muss ein JPEG sein.",
+        )
+
+    try:
+        small, large = await run_in_threadpool(build_thumbnails, data)
+    except PreviewError as exc:
+        logger.info("Vorschaubild fuer Bild %s abgelehnt: %s", image_id, exc)
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+            detail="Vorschaubild konnte nicht gelesen werden.",
+        ) from exc
+    except PreviewBusy as exc:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=BUSY_PREVIEW_DETAIL
+        ) from exc
+    del data
+
+    thumb_key, preview_key = storage.make_thumb_keys(user.id, image.id)
+
+    def _put_both() -> None:
+        storage.put_bytes(thumb_key, small, "image/jpeg")
+        storage.put_bytes(preview_key, large, "image/jpeg")
+
+    try:
+        await run_in_threadpool(_put_both)
+    except Exception as exc:
+        await _delete_thumb_objects(storage, thumb_key, preview_key)
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Speicher-Backend nicht erreichbar — bitte erneut versuchen.",
+        ) from exc
+
+    # Row erst jetzt sperren (Rendern/Upload liefen ohne Sperre): parallele
+    # Uploads desselben Bildes sehen so jeweils den zuletzt committeten Satz
+    # als "alt" und loeschen ihn — kein verwaister Satz.
+    locked = (
+        await db.execute(
+            select(Image)
+            .where(Image.id == image_id, Image.user_id == user.id)
+            .with_for_update()
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if locked is None:
+        # Bild zwischenzeitlich geloescht.
+        await _delete_thumb_objects(storage, thumb_key, preview_key)
+        raise HTTPException(status_code=404, detail="Image nicht gefunden.")
+    old_keys = (locked.thumb_key, locked.preview_key)
+    locked.thumb_key = thumb_key
+    locked.preview_key = preview_key
+    try:
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        await _delete_thumb_objects(storage, thumb_key, preview_key)
+        raise
+    await _delete_thumb_objects(storage, *old_keys)
+    return image_out(locked, storage)
+
+
 @router.delete("/{image_id}", status_code=status.HTTP_204_NO_CONTENT)
 @limiter.limit("60/minute")
 async def delete_image(
@@ -460,6 +599,11 @@ async def delete_image(
     stale_preview_keys = [p.preview_key for p in derived if p.preview_key]
     for p in derived:
         p.preview_key = None
+    # H2a: Vorschaubilder des Bildes verschwinden in beiden Pfaden (Erfolg
+    # und 'failed') — nach dem Commit, best effort.
+    thumb_keys = (image.thumb_key, image.preview_key)
+    image.thumb_key = None
+    image.preview_key = None
 
     try:
         await run_in_threadpool(storage.delete, image.bucket_key)
@@ -478,6 +622,7 @@ async def delete_image(
         await db.commit()
         for key in stale_preview_keys:
             await delete_preview_object(storage, key)
+        await _delete_thumb_objects(storage, *thumb_keys)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
             detail="Speicher-Backend nicht erreichbar — bitte erneut versuchen.",
@@ -487,3 +632,4 @@ async def delete_image(
     await db.commit()
     for key in stale_preview_keys:
         await delete_preview_object(storage, key)
+    await _delete_thumb_objects(storage, *thumb_keys)

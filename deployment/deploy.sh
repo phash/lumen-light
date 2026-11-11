@@ -248,6 +248,14 @@ echo "==> [5c/8] Marketplace-Vorschauen backfillen (Migration 011, idempotent)"
 docker exec lumen-api python -m scripts.backfill_previews \
   || echo "   WARN: backfill_previews fehlgeschlagen — spaeter manuell nachholen."
 
+echo "==> [5d/8] Bild-Vorschaubilder backfillen (Migration 013, idempotent)"
+# Bilder von vor H2a haben noch kein thumb_key (thumbUrl null). Das Skript
+# erzeugt fuer JPEG/PNG/TIFF serverseitig Vorschauen (ohne Bearbeitung);
+# RAW bekommt sie beim naechsten Oeffnen im Editor. Fehler blockieren den
+# Deploy nicht.
+docker exec lumen-api python -m scripts.backfill_thumbnails \
+  || echo "   WARN: backfill_thumbnails fehlgeschlagen — spaeter manuell nachholen."
+
 echo "==> [6/8] Keycloak-SMTP + Realm-Haertung im Realm 'lumen' setzen"
 # Passwort per Env (KC_CLI_PASSWORD) statt --password: nicht in der Prozessliste.
 KCADM=(docker exec -i lumen-keycloak /opt/keycloak/bin/kcadm.sh)

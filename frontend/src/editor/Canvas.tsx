@@ -3,6 +3,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "rea
 
 import type { MaskInstance } from "./mask";
 import { useEditorStore, type EditorState } from "./store";
+import { fitLongEdge } from "./thumbnail";
 import {
   type CropRect,
   cropOutputSize,
@@ -134,6 +135,11 @@ export interface CanvasHandle {
    *  Wirft, wenn der Render selbst scheitert (Renderer ist dann bereits
    *  freigegeben). */
   exportFullResCanvas(): FullResExport | null;
+  /** H2a: rendert das Bild MIT Bearbeitung (Crop angewendet, kein Bypass)
+   *  synchron in ein 2D-Canvas mit hoechstens maxEdge langer Kante und
+   *  stellt die Live-Ansicht sofort wieder her. Nutzt die Live-Textur
+   *  (max. 1600 px breit) — kein zweiter WebGL-Context. null ohne Bild. */
+  renderThumbnail(maxEdge: number): HTMLCanvasElement | null;
 }
 
 /** Meldung bei webglcontextlost — exportiert, damit der Editor genau diese
@@ -337,6 +343,24 @@ const Canvas = forwardRef<CanvasHandle, Props>(function Canvas(
           //    User keinen Flash sieht.
           renderState(r, s, effCrop);
           return url;
+        },
+        renderThumbnail: (maxEdge: number) => {
+          const r = rendererRef.current;
+          const c = canvasRef.current;
+          if (!r || !c || !r.hasImage()) return null;
+          const s = useEditorStore.getState();
+          const full = cropOutputSize(r.imageWidth, r.imageHeight, s.cropRect);
+          const size = fitLongEdge(full.width, full.height, maxEdge);
+          // Wie takeBypassSnapshot: Render + Auslesen + Wiederherstellen im
+          // selben Task -> der User sieht keinen Zwischenstand.
+          renderState(r, s, s.cropRect, false, size);
+          const out = document.createElement("canvas");
+          out.width = c.width;
+          out.height = c.height;
+          const ctx = out.getContext("2d");
+          ctx?.drawImage(c, 0, 0);
+          renderState(r, s, cropMode ? IDENTITY_CROP : s.cropRect);
+          return ctx ? out : null;
         },
         exportFullResCanvas: () => {
           const full = fullSourceRef.current;

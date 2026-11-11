@@ -147,6 +147,47 @@ export async function decodeRaw(file: File): Promise<DecodedRaw> {
   }
 }
 
+export interface RawThumbnail {
+  /** Eingebettete Kamera-Vorschau, ungedreht. Aufrufer muss close() rufen. */
+  readonly bitmap: ImageBitmap;
+  /** LibRaw-`flip` (0/3/5/6) fuer die Drehung. */
+  readonly flip: number;
+}
+
+/**
+ * H2a: eingebettete Kamera-Vorschau (meist JPEG) aus einem RAW holen —
+ * libraw-wasm >= 1.6 bietet dafuer `thumbnailData()`, ohne Demosaicing.
+ * null, wenn die Datei keine (verwertbare) Vorschau enthaelt.
+ */
+export async function extractRawThumbnail(file: File): Promise<RawThumbnail | null> {
+  const buffer = new Uint8Array(await file.arrayBuffer());
+  const raw = new LibRaw();
+  try {
+    await raw.open(buffer, {});
+    const meta = await raw.metadata(false);
+    const thumb = await raw.thumbnailData();
+    if (!thumb || thumb.data.length === 0 || thumb.width <= 0 || thumb.height <= 0) {
+      return null;
+    }
+    const flip = pickNumber(meta, "flip") ?? 0;
+    if (thumb.format === "jpeg") {
+      // Eingebettete JPEGs liegen in Sensor-Ausrichtung; gedreht wird
+      // ausschliesslich ueber LibRaw-flip (keine doppelte EXIF-Drehung).
+      const blob = new Blob([thumb.data as Uint8Array<ArrayBuffer>], { type: "image/jpeg" });
+      return { bitmap: await createImageBitmap(blob, { imageOrientation: "none" }), flip };
+    }
+    if (thumb.format === "bitmap" && thumb.data.length === thumb.width * thumb.height * 3) {
+      return { bitmap: await rgbToImageBitmap(thumb.data, thumb.width, thumb.height), flip };
+    }
+    return null;
+  } catch {
+    // Kaputte/unbekannte Datei -> Platzhalter statt Upload-Fehler.
+    return null;
+  } finally {
+    raw.dispose();
+  }
+}
+
 /**
  * Liest einen String-Wert aus einem unbekannt-strukturierten Metadata-
  * Objekt. Probiert mehrere Pfade (Top-Level-Keys oder verschachtelte

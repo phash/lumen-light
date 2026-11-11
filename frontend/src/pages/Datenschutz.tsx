@@ -15,7 +15,7 @@ export default function Datenschutz() {
   return (
     <section data-testid="page-datenschutz" className="px-8 py-12 max-w-3xl mx-auto text-stone-300">
       <h1 className="text-3xl text-stone-100">Datenschutz</h1>
-      <p className="mt-2 text-stone-400 text-sm">Stand: 2026-11-10</p>
+      <p className="mt-2 text-stone-400 text-sm">Stand: 2026-11-11</p>
 
       <h2 className="mt-8 text-xl text-stone-200 italic">1. Verantwortlicher</h2>
       <p className="mt-3">
@@ -76,6 +76,16 @@ export default function Datenschutz() {
           (Slider-Werte, Masken, Crop) optional in deinem Account gespeichert
           werden, damit du auf einem zweiten Gerät weiterarbeiten kannst. Inhalt
           ist keine PII; Löschung mit dem Bild.
+        </li>
+        <li>
+          <span className="text-stone-200">Vorschaubilder:</span> zu jedem
+          Bild in der Bibliothek speichern wir zwei verkleinerte Vorschauen
+          (400 und 1600 Pixel lange Kante), die dein Browser nach dem Upload
+          bzw. beim Bearbeiten erzeugt — sie zeigen die aktuelle Bearbeitung.
+          Der Server kodiert sie neu und entfernt dabei alle Metadaten (EXIF,
+          GPS, Kamera-Daten). Sie liegen in deinem privaten Bucket-Bereich,
+          werden nur dir über kurzlebige Links angezeigt und mit dem Bild
+          gelöscht.
         </li>
         <li>
           <span className="text-stone-200">Feedback:</span> wenn du über den
