@@ -15,7 +15,7 @@ from fastapi import (
     status,
 )
 from fastapi.concurrency import run_in_threadpool
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -34,7 +34,7 @@ from app.previews import (
 from app.rate_limit import limiter
 from app.schemas import (
     ALLOWED_IMAGE_CONTENT_TYPES,
-    ColorLabel,
+    ColorLabelFilter,
     ImageEditState,
     ImageFlag,
     ImageInitIn,
@@ -372,7 +372,7 @@ async def list_images(
     offset: int = Query(default=0, ge=0),
     # H2b-Filter (camelCase wie das restliche Wireformat).
     min_rating: int | None = Query(default=None, ge=0, le=5, alias="minRating"),
-    color_label: list[ColorLabel] | None = Query(default=None, alias="colorLabel"),
+    color_label: list[ColorLabelFilter] | None = Query(default=None, alias="colorLabel"),
     flag: ImageFlag | None = Query(default=None),
     user: User = Depends(current_user),
     db: AsyncSession = Depends(get_db),
@@ -389,7 +389,14 @@ async def list_images(
     if min_rating:
         cond.append(Image.rating >= min_rating)
     if color_label:
-        cond.append(Image.color_label.in_(set(color_label)))
+        # H2d: "none" = ohne Label; mehrere Werte verknuepfen per ODER.
+        colors = {c for c in color_label if c != "none"}
+        parts = []
+        if colors:
+            parts.append(Image.color_label.in_(colors))
+        if "none" in color_label:
+            parts.append(Image.color_label.is_(None))
+        cond.append(or_(*parts))
     if flag is not None:
         cond.append(Image.flag == flag)
     total = (

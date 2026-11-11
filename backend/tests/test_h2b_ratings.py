@@ -202,6 +202,36 @@ async def test_filter_color_label_mehrfach(client, user_a):
     assert _ids(r) == [ids["b"]]
 
 
+async def test_filter_color_label_none_liefert_bilder_ohne_label(client, user_a):
+    """H2d: colorLabel=none -> color_label IS NULL."""
+    ids = await _seed(client, user_a["headers"])
+    r = await _list(client, user_a["headers"], "?colorLabel=none")
+    assert set(_ids(r)) == {ids["c"], ids["d"]}
+    assert r.headers["X-Total-Count"] == "2"
+
+
+async def test_filter_color_label_none_kombiniert_mit_farbe(client, user_a):
+    """none plus Farbe = ODER (ohne Label oder rot)."""
+    ids = await _seed(client, user_a["headers"])
+    r = await _list(client, user_a["headers"], "?colorLabel=none&colorLabel=red")
+    assert set(_ids(r)) == {ids["a"], ids["c"], ids["d"]}
+
+
+async def test_filter_color_label_none_mit_anderen_filtern(client, user_a):
+    ids = await _seed(client, user_a["headers"])
+    r = await _list(client, user_a["headers"], "?colorLabel=none&minRating=1")
+    assert _ids(r) == [ids["c"]]
+
+
+async def test_patch_color_label_none_string_bleibt_422(client, user_a):
+    """'none' ist nur ein Filterwert, kein speicherbares Label."""
+    image_id = await upload_image(client, user_a["headers"])
+    r = await client.patch(
+        f"/api/v1/images/{image_id}", headers=user_a["headers"], json={"colorLabel": "none"}
+    )
+    assert r.status_code == 422
+
+
 async def test_filter_flag(client, user_a):
     ids = await _seed(client, user_a["headers"])
     assert _ids(await _list(client, user_a["headers"], "?flag=reject")) == [ids["c"]]
@@ -267,6 +297,9 @@ async def test_pagination_ist_deterministisch_bei_gleichstand(client, user_a):
         "?minRating=-1",
         "?minRating=x",
         "?colorLabel=orange",
+        "?colorLabel=None",
+        "?colorLabel=",
+        "?colorLabel=null",
         "?flag=maybe",
         "?sort=rating_asc",
     ],
