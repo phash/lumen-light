@@ -35,7 +35,7 @@ RUN pnpm build
 # Run-Stage: nginx-unprivileged (Review L8) — Master + Worker laufen als
 # uid 101, Listen-Port 8080 (kein Port < 1024 -> keine Capabilities noetig,
 # compose: cap_drop ALL ohne cap_add). Caddy routet auf lumen-web:8080.
-FROM nginxinc/nginx-unprivileged:1.30.6-alpine
+FROM nginxinc/nginx-unprivileged:1.31.7-alpine
 
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
