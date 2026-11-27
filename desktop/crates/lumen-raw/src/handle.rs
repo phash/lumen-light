@@ -127,38 +127,43 @@ impl<'a> Handle<'a> {
         code: c_int,
         step: &str,
     ) -> Result<MemImage, RawError> {
-        match NonNull::new(raw) {
-            Some(ptr) => Ok(MemImage { ptr }),
-            None => {
+        NonNull::new(raw)
+            .map(|ptr| MemImage { ptr })
+            .ok_or_else(|| {
+                // NULL ohne Fehlercode: trotzdem als Fehler melden.
                 let code = if code == sys::LIBRAW_SUCCESS {
                     sys::LIBRAW_UNSPECIFIED_ERROR
                 } else {
                     code
                 };
-                self.check(code, step)?;
-                unreachable!("check liefert fuer Fehlercodes immer Err")
-            }
+                self.error_for(code, step)
+            })
+    }
+
+    /// Prueft einen LibRaw-Rueckgabecode.
+    fn check(&self, code: c_int, step: &str) -> Result<(), RawError> {
+        if code == sys::LIBRAW_SUCCESS {
+            Ok(())
+        } else {
+            Err(self.error_for(code, step))
         }
     }
 
-    /// Bildet LibRaw-Rueckgabecodes auf `RawError` ab.
-    fn check(&self, code: c_int, step: &str) -> Result<(), RawError> {
-        if code == sys::LIBRAW_SUCCESS {
-            return Ok(());
-        }
+    /// Bildet einen LibRaw-Fehlercode (!= SUCCESS) auf `RawError` ab.
+    fn error_for(&self, code: c_int, step: &str) -> RawError {
         let camera = format!("{} {}", self.make(), self.model());
         let camera = camera.trim();
         let mut detail = format!("{step}: {}", strerror(code));
         if !camera.is_empty() {
             detail.push_str(&format!(" ({camera})"));
         }
-        Err(match code {
+        match code {
             sys::LIBRAW_FILE_UNSUPPORTED | sys::LIBRAW_NOT_IMPLEMENTED => {
                 RawError::Unsupported { detail }
             }
             sys::LIBRAW_UNSUFFICIENT_MEMORY => RawError::OutOfMemory,
             _ => RawError::Corrupt { code, detail },
-        })
+        }
     }
 }
 
@@ -192,10 +197,15 @@ impl MemImage {
 
     /// Nutzdaten (`data_size` Bytes hinter dem Kopf).
     pub(crate) fn bytes(&self) -> &[u8] {
-        let header = self.header();
-        let len = header.data_size as usize;
-        // SAFETY: LibRaw allokiert data_size Bytes ab `data` (flexibles Array-Member).
-        unsafe { std::slice::from_raw_parts(header.data.as_ptr(), len) }
+        let len = self.header().data_size as usize;
+        // Zeiger direkt aus dem Rohzeiger ableiten, nicht aus `&header.data`:
+        // eine Referenz auf `[u8; 1]` deckt nur 1 Byte ab (Provenienz).
+        // SAFETY: ptr ist gueltig bis Drop; LibRaw allokiert data_size Bytes
+        // ab `data` (flexibles Array-Member) in derselben Allokation.
+        unsafe {
+            let data = std::ptr::addr_of!((*self.ptr.as_ptr()).data).cast::<u8>();
+            std::slice::from_raw_parts(data, len)
+        }
     }
 
     fn header(&self) -> &sys::libraw_processed_image_t {
