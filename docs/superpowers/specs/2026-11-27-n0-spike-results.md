@@ -1,6 +1,6 @@
 # N0 · Spike-Ergebnis (Go/No-Go)
 
-Stand: 2026-11-27 · Branch `feat/desktop-native` (e89c36a..228b8c2, nicht gepusht).
+Stand: 2026-11-27 · Branch `feat/desktop-native` (e89c36a..fe85204, nicht gepusht).
 Spec: `docs/superpowers/specs/2026-11-27-desktop-native-rust-design.md`, Abschnitt „N0 · Spike“.
 Plan: `docs/superpowers/plans/2026-11-27-n0-desktop-spike.md`.
 
@@ -9,8 +9,8 @@ Plan: `docs/superpowers/plans/2026-11-27-n0-desktop-spike.md`.
 | # | Prüfung | Messwert | Ziel / Abbruch | Urteil |
 |---|---|---|---|---|
 | S1 | egui-Prototyp: Raster 5 000 Kacheln + Tasten, 10 Slider, Kurve, Crop | gebaut in ~30 min Agenten-Wandzeit (Schätzung Mensch ½–1 Tag); Raster 60 fps, UI ~1 ms CPU/Frame | > 3 Tage oder unbrauchbar | **grün** |
-| S2 | WGSL-Port PV1/PV2-Ton, Belichtung, WB gegen Goldens | max. Kanalabweichung **1/255** (48 Sets, 4 Wege); ΔE2000 mittel ≤ 0,08, Einzelpixel-Maximum 1,25 | > 2/255 bzw. ΔE2000 > 1 | **grün** (ΔE als Mittelwert gelesen, siehe unten) |
-| S3 | LibRaw nativ: Zeit und Gleichheit zu libraw-wasm | Z6III-NEF: Vorschau 4 ms, `half_size` **433 ms**, voll **1 757 ms**; Parität MAE ≤ 6/65535; HE/HE★ ungetestet | `half_size` > 1 s, voll > 1,5 s ohne Ausweg, Look weicht ab, verlustfreies NEF geht nicht | **gelb** (voller Decode verfehlt das Ziel um 17 %, Ausweg vorhanden, aber unbewiesen) |
+| S2 | WGSL-Port PV1/PV2-Ton, Belichtung, WB gegen Goldens | max. Kanalabweichung **1/255** (48 Sets, 4 Wege); ΔE2000 mittel ≤ 0,08, Einzelpixel-Maximum 1,25 | > 2/255 bzw. ΔE2000 > 1 | **grün\*** (mittleres ΔE ≤ 0,08; per Pixel max 1,25 > 1, Lesart offen für Manuel) |
+| S3 | LibRaw nativ: Zeit und Gleichheit zu libraw-wasm | Z6III-NEF: Vorschau 4 ms, `half_size` **433 ms**, voll **1 757 ms**; Parität MAE ≤ 6/65535; HE/HE★ ungetestet | `half_size` > 1 s, voll > 1,5 s ohne Ausweg, Look weicht ab, verlustfreies NEF geht nicht | **gelb** (voller Decode verfehlt das Ziel um 17 %, Ausweg plausibel, ungemessen) |
 | S4 | wgpu auf radv, anv, lavapipe, DX12-WARP | alle vier Wege 48/48 Sets, max 1/255 | Pipeline läuft auf einem Weg nicht | **grün** |
 | S5 | Slider-Frame auf dem Proxy (680M) | 1,15 ms p50 / 1,28 ms p95 (Wandzeit inkl. Submit); im Fenster 1 Refresh (16,7 ms @ 60 Hz), Arbeit 0,3–0,7 ms | > 8 ms | **grün** |
 
@@ -237,7 +237,7 @@ Luft bis 8 ms.
    Bleibt es über 1,5 s, entscheidet Manuel neu: Ziel auf „voller Decode < 2 s im
    Hintergrund“ lockern oder Profiling/andere Maßnahmen. Alternative: vor dem Go
    die OpenMP-Messung als kurzen Nachtrag zu N0 (geschätzt 1–2 h).
-2. **ΔE-Lesart (S2)**: mittleres ΔE je Set < 1 als Kriterium bestätigen. Die Kanal-Toleranz ≤ 2/255 bleibt die harte Grenze.
+2. **ΔE-Lesart (S2, offene Frage)**: Wörtlich pro Pixel gelesen ist S2 rot (max 1,25 > 1), als Mittelwert je Set grün (≤ 0,08). Vorschlag: mittleres ΔE je Set < 1 als Kriterium bestätigen. Die Kanal-Toleranz ≤ 2/255 bleibt die harte Grenze.
 3. **Z6III-Dateien**: Bestätigen, dass `_DSC8548/8549` verlustfrei sind, und
    je ein HE- und HE★-NEF liefern. Bis dahin ist S3 für HE/HE★ offen.
 4. **Fuji/X-Trans** als bekannte Einschränkung (8,7 s voll) akzeptieren?

@@ -2,6 +2,7 @@
 # Pruefschritte fuer tb-ci (ersetzt .github/workflows/ci.yml) plus Desktop-Workspace.
 # Laeuft alle Gates durch und meldet am Ende, welche rot waren (Exit != 0, wenn eines rot ist).
 # Aufruf auf testbox: tb-run 'lumen:ci (...)' -- bash -lc 'cd ~/work/lumen && ./ci.sh'
+# Bewusst ohne -e: jedes Gate laeuft, Fehler werden in FAILED gesammelt.
 set -uo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
