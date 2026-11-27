@@ -1,0 +1,3 @@
+# Generiert von scripts/build-windows.sh bzw. vom Windows-Lauf: nie committen.
+*
+!.gitignore

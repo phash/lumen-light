@@ -1,0 +1,21 @@
+[package]
+name = "ui-proto"
+version = "0.1.0"
+edition = "2024"
+license = "AGPL-3.0-or-later"
+publish = false
+description = "Spike N0: egui-UI-Prototyp (Raster + Editor), Wegwerf"
+
+# Eigener Workspace: spikes/* ist aus desktop/Cargo.toml ausgeschlossen.
+[workspace]
+
+[dependencies]
+lumen-raw = { path = "../../crates/lumen-raw" }
+lumen-gpu = { path = "../../crates/lumen-gpu" }
+wgpu = "=30.0.2"
+eframe = { version = "=0.37.0", default-features = false, features = ["wgpu", "wayland", "x11", "accesskit", "default_fonts"] }
+serde_json = "=1.0.154"
+png = "=0.18.1"
+
+[profile.release]
+debug = false

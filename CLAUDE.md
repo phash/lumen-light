@@ -129,6 +129,45 @@ gesetzt — pytest läuft sonst gegen 429er.
 | `frontend/src/pages/Marketplace.tsx` | F1: Public-Preset-Browser mit Filter/Sort/Pagination + Detail-Modal |
 | `frontend/src/pages/Editor.tsx` | Orchestrator, ~640 Zeilen. Sidebar/Toolbar/Banners/OverlayCanvas extrahiert |
 
+## Desktop (Phase N)
+
+Native App in `desktop/` (Cargo-Workspace, Rust 1.100.0 via `rust-toolchain.toml`, Versionen `=x.y.z`
+gepinnt). Crates: `libraw-sys` (LibRaw 0.22.3 statisch, LGPL-2.1 oder CDDL), `lumen-raw` (Decode in Stufen,
+`box_downscale`), `lumen-gpu` (wgpu 30, WGSL-Port aus `shaders.ts`), `tools/bench` (`lumen-bench`).
+`spikes/ui-proto` = egui-Wegwerf-Prototyp, eigener Workspace, nicht in `make ci`.
+Decode-/Golden-Tests SKIPpen ohne `tests-fixtures/raw-samples`; `ci.sh` holt den Korpus
+(`scripts/fetch-test-images.sh`) und setzt `LUMEN_REQUIRE_FIXTURES=1` (dann Pflicht, `checked > 0`).
+**Gotcha:** Es gibt keinen Konstanten-Sync-Test WGSL <-> `tonemap.ts`; Drift faellt erst bei
+Golden-Neugenerierung auf.
+Spec `docs/superpowers/specs/2026-11-27-desktop-native-rust-design.md`, Spike-Ergebnis
+`docs/superpowers/specs/2026-11-27-n0-spike-results.md`.
+
+- **LibRaw ist Submodule**: nach Clone `git submodule update --init`, sonst bricht `build.rs` ab.
+  bindgen braucht libclang samt Resource-Headern (Ubuntu: `libclang-common-21-dev`).
+- **CI**: `make -C desktop ci` (fmt --check, clippy -D warnings, test). Root-`ci.sh` = Desktop +
+  Frontend + Backend-Gates (Pruefschritt fuer tb-ci). Nur auf testbox ueber tb-run:
+  `ssh testbox "tb-run 'lumen:ci (cachytop)' -- bash -lc 'cd ~/work/lumen && ./ci.sh'"` (vorher rsync).
+- **Goldens** = Look-Referenz aus dem WebGL-Renderer: `frontend/golden/` + `cd frontend && pnpm golden`
+  (Playwright/SwiftShader, deterministisch) schreibt `tests-fixtures/goldens/<fixture>/{source.rgb16,
+  source.json,<set>.png}` + `sets.json`. Ruling R7: alle 23 Sets nur fuer Nikon_D7100 und
+  Nikon_1_S2_portrait, sonst nur neutral-pv2/neutral-pv1/combo-pv2. Toleranz max 2/255.
+  Fehlende PNGs ueberspringt `lumen-gpu/tests/goldens.rs`.
+- **`LUMEN_REPO_ROOT`** ueberschreibt die Repo-Wurzel fuer Fixtures/Goldens (Binaries ausserhalb des
+  Repos, z. B. auf CachyTop oder in der Windows-VM).
+- **Windows-Check**: rsync, dann auf testbox `desktop/scripts/build-windows.sh` (cargo-xwin, clang-cl),
+  dann `ssh testbox "tb-win run lumen ~/work/lumen/desktop/.win-test --until install-result.txt --timeout 30"`.
+  Reihenfolge wichtig: `rsync --delete` leert `.win-test/share/` (Inhalt entsteht nur auf testbox).
+  VM hat keine GPU -> DX12-WARP, nur Funktion.
+- **testbox-Voraussetzungen**: `libclang-common-21-dev`, `clang-21`/`lld-21`/`llvm-21`, `cargo-xwin`,
+  Target `x86_64-pc-windows-msvc`, User in `render`/`video` (sonst faellt wgpu still auf lavapipe
+  zurueck), pnpm in `~/.local/bin`.
+- **Unter Windows sind bindgen-C-Enums `i32`** (Linux `u32`) -> bindgen-Typalias nutzen, nicht `u32`.
+- **egui-Gotchas**: KWin schickt bei Bildschirm aus/DPMS keine Frame-Callbacks -> eframe ruft `ui()`
+  nicht mehr auf; Hintergrundarbeit nie an `ui()` haengen. Entwicklungs-Ausgabe als `Rgba8Unorm`
+  (nicht `*Srgb`, Shader schreibt sRGB-kodiert) und `NativeOptions::dithering = false`, sonst
+  doppelte Kodierung bzw. ±1 Rauschen. ★ ⚑ ✖ sind ohne eingebettete Symbolschrift Tofu.
+  egui 0.37 bricht API pro Minor (`App::ui`, `Panel::left`) — Quellen lesen, nicht Web-Beispiele.
+
 ## Code-Style
 
 - **Backend Python**: Pydantic 2 mit `model_config = ConfigDict(extra="forbid")` auf In-Schemas. SQLAlchemy 2 declarative (Mapped[]). Typing strikt. Tests mit testcontainers, function-scope-Engine + SAVEPOINT-Rollback.
@@ -387,11 +426,12 @@ VPS auf IONOS (siehe globales CLAUDE.md, MRD-Cluster-ID). Caddy-Network
 backend + web. Keycloak + Garage laufen separat im Cluster (cross-
 project shared).
 
-CI: `.github/workflows/ci.yml` — frontend lint/typecheck/vitest/build +
-backend pytest. E2E nicht in PR-Pipeline (Stack-Compose dauert).
+CI: `ci.sh` im Repo-Root (Desktop-, Frontend- und Backend-Gates) ueber `tb-ci` auf testbox;
+GitHub Actions sind abgeschaltet. E2E nicht in der Pipeline (Stack-Compose dauert).
 
 ## Aktueller Stand
 
+- **Phase N (Desktop, Rust)**: N0-Spike fertig (S1 gruen mit offenem Handtest, S2/S4/S5 gruen, S3 gelb: voller Decode Z6III 1,76 s > 1,5 s), Go/No-Go liegt bei Manuel. Branch `feat/desktop-native`.
 - **Phase H**: H1 Prozessversion 2, H1b 16-bit-RAW/Half-Float-Textur und H2 Lighttable komplett (H2a Vorschaubilder, H2b Raster/Sterne/Labels/Filter, H2c Lupe/Vergleich/Einzeltasten, H2d Zoom 1:1/Listen-Tasten/„Ohne Label"/Filter in der URL).
 - **Phase E komplett**: HSL (E1), Tonkurve (E2), Sharpening + Noise (E3), Face-Detection (E4, opt-in), Auto-Straighten (E5).
 - **Phase F1 komplett**: Preset-Marketplace mit Backend (Migration 005, 7 Endpunkte, Auto-Hide), Frontend (Marketplace-Page, Detail-Modal, PresetDialog-Publish-Toggle, Account-Profil + veroeffentlichte Presets).

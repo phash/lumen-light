@@ -1,0 +1,581 @@
+[
+  {
+    "id": "neutral-pv2",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "neutral-pv1",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 1,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "exposure-p2",
+    "spike": true,
+    "adjustments": {
+      "exposure": 2,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "exposure-m2",
+    "spike": true,
+    "adjustments": {
+      "exposure": -2,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "contrast-p100",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 1,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "contrast-m100",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": -1,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "highlights-m100",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": -1,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "shadows-p100",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 1,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "whites-p100",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 1,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "blacks-m100",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": -1,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "temperature-p100",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 1,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "temperature-m100",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": -1,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "tint-p100",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 1,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "combo-pv2",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0.7,
+      "contrast": 0.3,
+      "highlights": -0.6,
+      "shadows": 0.4,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0.2,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "combo-pv1",
+    "spike": true,
+    "adjustments": {
+      "exposure": 0.7,
+      "contrast": 0.3,
+      "highlights": -0.6,
+      "shadows": 0.4,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0.2,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 1,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "vibrance-p100",
+    "spike": false,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 1,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "saturation-m100",
+    "spike": false,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": -1,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "sharpness-max",
+    "spike": false,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 1,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "noise-max",
+    "spike": false,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 1,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "local-contrast-max",
+    "spike": false,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 1,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "highlight-recovery-max",
+    "spike": false,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 1,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "hsl-mix",
+    "spike": false,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": {
+        "hue": {
+          "red": 0.5,
+          "orange": 0,
+          "yellow": 0,
+          "green": 0,
+          "aqua": 0,
+          "blue": 0,
+          "violet": 0,
+          "magenta": 0
+        },
+        "saturation": {
+          "red": 0,
+          "orange": 0,
+          "yellow": 0,
+          "green": 0,
+          "aqua": 0,
+          "blue": -0.8,
+          "violet": 0,
+          "magenta": 0
+        },
+        "luminance": {
+          "red": 0,
+          "orange": 0,
+          "yellow": 0,
+          "green": 0.4,
+          "aqua": 0,
+          "blue": 0,
+          "violet": 0,
+          "magenta": 0
+        }
+      },
+      "toneCurve": null
+    }
+  },
+  {
+    "id": "curve-s",
+    "spike": false,
+    "adjustments": {
+      "exposure": 0,
+      "contrast": 0,
+      "highlights": 0,
+      "shadows": 0,
+      "whites": 0,
+      "blacks": 0,
+      "highlightRecovery": 0,
+      "temperature": 0,
+      "tint": 0,
+      "vibrance": 0,
+      "saturation": 0,
+      "sharpness": 0,
+      "noiseReduction": 0,
+      "localContrast": 0,
+      "processVersion": 2,
+      "hsl": null,
+      "toneCurve": {
+        "points": [
+          {
+            "x": 0,
+            "y": 0
+          },
+          {
+            "x": 0.25,
+            "y": 0.18
+          },
+          {
+            "x": 0.75,
+            "y": 0.85
+          },
+          {
+            "x": 1,
+            "y": 1
+          }
+        ]
+      }
+    }
+  }
+]

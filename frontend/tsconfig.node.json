@@ -9,5 +9,5 @@
     "isolatedModules": true,
     "noEmit": true
   },
-  "include": ["vite.config.ts", "eslint.config.js", "playwright.config.ts"]
+  "include": ["vite.config.ts", "eslint.config.js", "playwright.config.ts", "playwright.golden.config.ts", "vite.golden.config.ts", "golden-e2e"]
 }
