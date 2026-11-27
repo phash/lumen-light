@@ -56,6 +56,14 @@
       "format": "rw2",
       "expectedMake": "Panasonic",
       "expectedModelContains": "DC-G9"
+    },
+    {
+      "filename": "Nikon_1_S2_portrait.NEF",
+      "url": "https://raw.pixls.us/data/Nikon/1%20S2/RAW_NIKON_1S2.NEF",
+      "approxSizeMb": 13,
+      "format": "nef",
+      "expectedMake": "Nikon",
+      "expectedModelContains": "S2"
     }
   ]
 }

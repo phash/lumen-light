@@ -18,6 +18,6 @@
     "noEmit": true,
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom", "node"]
   },
-  "include": ["src", "tests"],
+  "include": ["src", "tests", "golden"],
   "exclude": ["dist", "node_modules"]
 }
