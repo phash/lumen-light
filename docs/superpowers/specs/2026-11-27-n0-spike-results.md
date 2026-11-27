@@ -297,3 +297,31 @@ Luft bis 8 ms.
   - Orca-Lauf.
   - 120-Hz-Messung.
 - Ungetestet: DX12 auf echter GPU, Vulkan unter Windows, egui-Fenster unter Windows.
+
+## Nachtrag 2026-11-27: LibRaw mit OpenMP
+
+Cargo-Feature `openmp` (`libraw-sys` -> `lumen-raw` -> `lumen-bench`): baut LibRaw mit
+`-fopenmp` und linkt `libgomp`. Nur Linux/GCC; MSVC/clang-cl bricht mit klarer Meldung ab
+(libomp-Laufzeit fehlt noch). Default bleibt aus.
+
+Messung `lumen-bench`, Median, Datei im Cache (ms, half / voll):
+
+| Datei | 680M ohne | 680M OpenMP | UHD 630 ohne | UHD 630 OpenMP |
+|---|---|---|---|---|
+| _DSC8548.NEF (Z6III) | 450 / 1 618 | 414 / **889** | 669 / 2 341 | 596 / 1 253 |
+| Nikon_D7100.NEF | – | – | 632 / 2 289 | 541 / 1 198 |
+| Fujifilm_X-Pro1.RAF | 162 / 10 608 | 128 / 2 702 | 218 / 8 547 | 138 / 2 517 |
+
+Paritaet: `cargo test -p lumen-raw --features openmp` mit `LUMEN_REQUIRE_FIXTURES=1` gruen
+(Vergleich gegen libraw-wasm unveraendert innerhalb der Grenzen).
+
+**Urteil S3 mit OpenMP: gruen.** Voller Z6III-Decode 0,89 s < 1,5 s. Fuji X-Trans faellt von
+~8,5-10,6 s auf ~2,6 s. Offen fuer N1: OpenMP als Default, Windows-Laufzeit (libomp),
+Thread-Konkurrenz mit Thumbnail-Workern.
+
+## Nachtrag 2026-11-27: dE2000-Grenze umschaltbar
+
+`lumen-gpu/tests/goldens.rs` prueft dE2000 jetzt zusaetzlich zur 2/255-Grenze:
+`LUMEN_DE_MODE=mean` (Default, Mittel pro Bild+Set), `pixel` (jedes Pixel), `off` (nur
+ausgeben); `LUMEN_DE_MAX` setzt die Grenze (Default 1,0). Stand: `mean` gruen,
+`pixel` rot (26 von 48 Sets, Einzelpixel bis 1,25, alle Mittel <= 0,08).

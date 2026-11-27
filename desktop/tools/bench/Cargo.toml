@@ -6,6 +6,9 @@ license.workspace = true
 publish.workspace = true
 description = "Messung von Decode-Stufen und GPU-Frame-Zeit (Spike N0)"
 
+[features]
+openmp = ["lumen-raw/openmp"]
+
 [dependencies]
 lumen-raw.workspace = true
 lumen-gpu.workspace = true

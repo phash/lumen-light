@@ -14,6 +14,67 @@ use serde_json::Value;
 /// Toleranz laut Spike-Vorgabe: max. Kanalabweichung in 8-bit-Stufen.
 const MAX_ABWEICHUNG: u8 = 2;
 
+/// Wie die dE2000-Grenze angewendet wird (`LUMEN_DE_MODE`).
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum DeModus {
+    /// Mittelwert pro Bild und Set muss unter der Grenze liegen (Default).
+    Mittel,
+    /// Jedes einzelne Pixel muss unter der Grenze liegen.
+    Pixel,
+    /// Nur messen und ausgeben, nicht pruefen.
+    Aus,
+}
+
+/// Default-Grenze fuer dE2000 (`LUMEN_DE_MAX` ueberschreibt).
+const DE_GRENZE: f64 = 1.0;
+
+fn de_modus_aus(wert: Option<&str>) -> DeModus {
+    match wert.map(str::trim) {
+        None | Some("") | Some("mean") | Some("mittel") => DeModus::Mittel,
+        Some("pixel") => DeModus::Pixel,
+        Some("off") | Some("aus") => DeModus::Aus,
+        Some(other) => panic!("LUMEN_DE_MODE={other} unbekannt (mean|pixel|off)"),
+    }
+}
+
+fn de_grenze_aus(wert: Option<&str>) -> f64 {
+    match wert.map(str::trim) {
+        None | Some("") => DE_GRENZE,
+        Some(v) => v
+            .parse()
+            .unwrap_or_else(|_| panic!("LUMEN_DE_MAX={v} ist keine Zahl")),
+    }
+}
+
+/// true = Set verletzt die dE-Grenze im gewaehlten Modus.
+fn de_verletzt(modus: DeModus, grenze: f64, mean_de: f64, max_de: f64) -> bool {
+    match modus {
+        DeModus::Mittel => mean_de >= grenze,
+        DeModus::Pixel => max_de >= grenze,
+        DeModus::Aus => false,
+    }
+}
+
+#[test]
+fn de_modus_wird_aus_env_wert_gelesen() {
+    assert_eq!(de_modus_aus(None), DeModus::Mittel);
+    assert_eq!(de_modus_aus(Some("mean")), DeModus::Mittel);
+    assert_eq!(de_modus_aus(Some("pixel")), DeModus::Pixel);
+    assert_eq!(de_modus_aus(Some("off")), DeModus::Aus);
+    assert_eq!(de_grenze_aus(None), 1.0);
+    assert_eq!(de_grenze_aus(Some("1.5")), 1.5);
+}
+
+#[test]
+fn de_grenze_greift_je_nach_modus() {
+    // Messwert aus dem Spike: Mittel 0,08, einzelnes Pixel 1,25.
+    assert!(!de_verletzt(DeModus::Mittel, 1.0, 0.08, 1.25));
+    assert!(de_verletzt(DeModus::Pixel, 1.0, 0.08, 1.25));
+    assert!(!de_verletzt(DeModus::Pixel, 1.5, 0.08, 1.25));
+    assert!(de_verletzt(DeModus::Mittel, 1.0, 1.0, 1.0));
+    assert!(!de_verletzt(DeModus::Aus, 1.0, 9.0, 9.0));
+}
+
 /// Repo-Wurzel; per `LUMEN_REPO_ROOT` ueberschreibbar (Testbinary auf einem anderen Rechner).
 fn repo_root() -> PathBuf {
     match std::env::var_os("LUMEN_REPO_ROOT") {
@@ -193,6 +254,10 @@ fn spike_sets_treffen_goldens() {
         .collect();
     assert!(!spike_sets.is_empty(), "keine Spike-Sets in sets.json");
 
+    let de_modus = de_modus_aus(std::env::var("LUMEN_DE_MODE").ok().as_deref());
+    let de_grenze = de_grenze_aus(std::env::var("LUMEN_DE_MAX").ok().as_deref());
+    eprintln!("dE2000-Pruefung: {de_modus:?}, Grenze {de_grenze}");
+
     let gpu = Gpu::headless().expect("GPU fuer den Test noetig");
     eprintln!(
         "Adapter: {} ({:?}, Treiber {} {})",
@@ -278,7 +343,11 @@ fn spike_sets_treffen_goldens() {
             r.over,
             r.mean_de,
             r.max_de,
-            if r.max > MAX_ABWEICHUNG { " FAIL" } else { "" }
+            if r.max > MAX_ABWEICHUNG || de_verletzt(de_modus, de_grenze, r.mean_de, r.max_de) {
+                " FAIL"
+            } else {
+                ""
+            }
         );
     }
     assert!(portrait_checked, "kein Hochformat-Fixture geprueft");
@@ -299,5 +368,22 @@ fn spike_sets_treffen_goldens() {
         failed.len(),
         results.len(),
         failed.join(", ")
+    );
+    let de_failed: Vec<String> = results
+        .iter()
+        .filter(|r| de_verletzt(de_modus, de_grenze, r.mean_de, r.max_de))
+        .map(|r| {
+            format!(
+                "{}/{} (mittel {:.3}, max {:.3})",
+                r.fixture, r.set, r.mean_de, r.max_de
+            )
+        })
+        .collect();
+    assert!(
+        de_failed.is_empty(),
+        "{} von {} Sets verletzen dE2000 < {de_grenze} ({de_modus:?}): {}",
+        de_failed.len(),
+        results.len(),
+        de_failed.join(", ")
     );
 }

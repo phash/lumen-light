@@ -9,6 +9,10 @@ description = "FFI-Bindings an LibRaw 0.22.3 (statisch gebaut)"
 links = "raw"
 build = "build.rs"
 
+[features]
+# LibRaw mit OpenMP bauen (Linux/GCC, linkt libgomp). Messung N0-Nachtrag.
+openmp = []
+
 [dependencies]
 
 [build-dependencies]

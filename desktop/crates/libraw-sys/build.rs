@@ -131,7 +131,24 @@ fn build_libraw(vendor: &Path) {
             .flag_if_supported("/EHsc");
     }
 
+    // Feature `openmp`: LibRaw parallelisiert dann AHD/X-Trans-Demosaic und einige
+    // Decoder. `_OPENMP` schaltet in `libraw_types.h` LIBRAW_USE_OPENMP ein.
+    let openmp = env::var_os("CARGO_FEATURE_OPENMP").is_some();
+    if openmp {
+        if target_env == "msvc" {
+            panic!(
+                "Feature `openmp` ist fuer MSVC/clang-cl noch nicht eingerichtet (libomp fehlt)"
+            );
+        }
+        build.flag("-fopenmp");
+    }
+
     build.compile("raw");
+
+    if openmp {
+        // GCC-Laufzeit; mit clang waere es libomp.
+        println!("cargo:rustc-link-lib=gomp");
+    }
 
     if target_os == "windows" {
         // LibRaw nutzt htonl/ntohl aus Winsock.

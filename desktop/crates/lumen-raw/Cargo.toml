@@ -6,6 +6,9 @@ license.workspace = true
 publish.workspace = true
 description = "RAW-Decode ueber LibRaw: Vorschau, half_size, voller Decode"
 
+[features]
+openmp = ["libraw-sys/openmp"]
+
 [dependencies]
 libraw-sys.workspace = true
 thiserror.workspace = true
