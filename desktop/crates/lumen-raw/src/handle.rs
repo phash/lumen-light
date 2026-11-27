@@ -175,7 +175,8 @@ impl Drop for Handle<'_> {
 }
 
 impl MemImage {
-    pub(crate) fn kind(&self) -> u32 {
+    /// Bindgen-Typ des C-Enums: unter Linux `u32`, unter MSVC `i32`.
+    pub(crate) fn kind(&self) -> sys::LibRaw_image_formats {
         self.header().type_
     }
 

@@ -3,10 +3,13 @@
 use std::path::PathBuf;
 
 /// Pfad relativ zur Repo-Wurzel (drei Ebenen ueber diesem Crate).
+/// Per `LUMEN_REPO_ROOT` ueberschreibbar (Testbinary auf einem anderen Rechner).
 pub fn repo_path(rel: &str) -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../..")
-        .join(rel)
+    let root = match std::env::var_os("LUMEN_REPO_ROOT") {
+        Some(p) => PathBuf::from(p),
+        None => PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../.."),
+    };
+    root.join(rel)
 }
 
 /// RAW-Fixture aus `tests-fixtures/raw-samples/`; `None` mit SKIP-Meldung, wenn sie fehlt.
