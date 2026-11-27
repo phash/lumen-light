@@ -30,6 +30,7 @@ Granularität: wochenweise. Jede Phase endet mit einem Demo-fähigen Stand. Anna
 | H1 | Szenenbezogene Tonabbildung (Prozessversion 2, Schulter + Path-to-White) | ✓ abgeschlossen |
 | H1b | 16-bit-RAW-Dekodierung in Half-Float-Textur (weniger Banding, kein Headroom) | ✓ abgeschlossen |
 | H2 | Lighttable: Sterne, Farblabels, Aussortieren | ✓ abgeschlossen (H2a, H2b, H2c, H2d) |
+| N | Desktop-App (Rust, egui + wgpu), löst den Web-Editor ab | N0 Spike fertig, Go/No-Go bei Manuel |
 
 ## Phase 1 · Bildverarbeitung im Browser ✓
 
@@ -100,6 +101,26 @@ Weitere Kandidaten aus derselben Recherche (Backlog):
 - Virtuelle Kopien/Snapshots pro Bild + Export-Warteschlange mit Dateinamen-Vorlagen und ZIP (M)
 - Tone Equalizer mit kantenerhaltender Maske, Masken-Verfeinerung an Motivkanten (M)
 - Klein (S): „Inpaint opposed“ für die Lichter-Rekonstruktion, Vektorskop, Fokus-Peaking, Warnung für Überbelichtung/Farbraum, Shift-Feinjustierung und Mausrad an Reglern, neutralgraues Theme
+
+## Phase N · Desktop-App (Rust, egui + wgpu)
+
+Spec: `docs/superpowers/specs/2026-11-27-desktop-native-rust-design.md`. Der Web-Ansatz trägt nicht (jedes RAW muss erst hochgeladen werden). Lumen wird eine native Desktop-App für Linux und Windows, Workspace `desktop/`. Der Server schrumpft auf Marketplace, Admin, Feedback und App-Download. **Nach dem ersten nutzbaren Stand (N-MVP: N0–N2, reduzierte N6, N8, etwa 8 Wochen) wird der Web-Editor abgeschaltet**; der Server-Teil von N9 wird dafür vorgezogen und parallel zu N2–N6 gebaut.
+
+| M | Inhalt | Schätzung | Status |
+|---|---|---|---|
+| N0 | Spike mit Go/No-Go, Golden-Generator, Workspace, `make ci` | 1 Wo | ✓ fertig, Entscheidung offen: S1/S2/S4/S5 grün, S3 gelb (voller Decode Z6III 1,76 s statt < 1,5 s; Vorschlag OpenMP). Ergebnis: `docs/superpowers/specs/2026-11-27-n0-spike-results.md` |
+| N1 | `lumen-core`: reine Module portiert, Referenzvektoren grün | 1,5 Wo | offen |
+| N2 | `lumen-raw` + `lumen-gpu`: Decode in drei Stufen, Proxy, PV1/PV2, 10 Grundregler, Histogramm, Goldens grün | 2 Wo | offen |
+| N3 | Editor-UI: Sidebar, HSL, Kurven-Editor, Undo/Redo, Bypass, Vergleichs-Split, Auto-Ton/WB, WB-Pipette | 2 Wo | offen |
+| N4 | Geometrie und Masken: Crop, Begradigen, Auto-Straighten, Linse/TCA/Vignette, 4+4 Masken mit Overlays | 2 Wo | offen |
+| N5 | Lichterrettung, lokaler Kontrast, Schärfen, Rauschminderung mit Pass-Cache | 1,5 Wo | offen |
+| N6 | `lumen-catalog`: Import, Watcher, Thumbnail-Cache, Raster und Liste, Meta, Filter/Sortierung | 2 Wo | offen |
+| N7 | Lupe, Vergleich, 1:1-Zoom, Tasten, lokale Presets + 20 Defaults, YAML, Batch-Apply | 1,5 Wo | offen |
+| N8 | `lumen-export`: JPEG/PNG/TIFF16, ICC, Stapel | 1 Wo | offen |
+| N9 | `lumen-net` + Server-Umbau (Migration 015, Download, PKCE, Feedback, Meta) | 2 Wo, Backend parallel | offen |
+| N10 | Paketierung Linux/Windows, Download-Seite, Onboarding | 1,5 Wo | offen |
+
+Summe etwa 18 Wochen bis Parität, eher 20–22.
 
 ## Phase P · Bearbeitungs-Profile ✓
 
