@@ -282,6 +282,12 @@ fn spike_sets_treffen_goldens() {
         );
     }
     assert!(portrait_checked, "kein Hochformat-Fixture geprueft");
+    // CI-Pflicht: 8 Fixtures x 6 Spike-Sets = 48 Vergleiche (Spike-Ergebnis S4).
+    assert!(
+        results.len() >= 48 || !lumen_raw::testutil::require_fixtures(),
+        "LUMEN_REQUIRE_FIXTURES: nur {} Vergleiche, erwartet >= 48",
+        results.len()
+    );
     let failed: Vec<String> = results
         .iter()
         .filter(|r| r.max > MAX_ABWEICHUNG)

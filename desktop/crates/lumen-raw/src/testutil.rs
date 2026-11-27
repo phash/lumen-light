@@ -25,3 +25,8 @@ pub fn fixture(name: &str) -> Option<PathBuf> {
         None
     }
 }
+
+/// `LUMEN_REQUIRE_FIXTURES=1` (CI): fehlende Fixtures sind ein Fehler statt SKIP.
+pub fn require_fixtures() -> bool {
+    std::env::var_os("LUMEN_REQUIRE_FIXTURES").is_some_and(|v| !v.is_empty() && v != "0")
+}

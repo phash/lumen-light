@@ -6,12 +6,13 @@ exclude = ["spikes"]
 
 [workspace.package]
 edition = "2024"
-license = "CDDL-1.0"
+license = "AGPL-3.0-or-later"
 publish = false
 
 [workspace.dependencies]
 libraw-sys = { path = "crates/libraw-sys" }
 lumen-raw = { path = "crates/lumen-raw" }
+lumen-gpu = { path = "crates/lumen-gpu" }
 thiserror = "=2.0.21"
 serde_json = "=1.0.154"
 cc = { version = "=1.12.0", features = ["parallel"] }

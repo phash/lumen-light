@@ -2,7 +2,7 @@
 name = "ui-proto"
 version = "0.1.0"
 edition = "2024"
-license = "CDDL-1.0"
+license = "AGPL-3.0-or-later"
 publish = false
 description = "Spike N0: egui-UI-Prototyp (Raster + Editor), Wegwerf"
 

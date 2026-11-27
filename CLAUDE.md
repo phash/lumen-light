@@ -132,9 +132,13 @@ gesetzt — pytest läuft sonst gegen 429er.
 ## Desktop (Phase N)
 
 Native App in `desktop/` (Cargo-Workspace, Rust 1.100.0 via `rust-toolchain.toml`, Versionen `=x.y.z`
-gepinnt). Crates: `libraw-sys` (LibRaw 0.22.3 statisch, CDDL), `lumen-raw` (Decode in Stufen,
+gepinnt). Crates: `libraw-sys` (LibRaw 0.22.3 statisch, LGPL-2.1 oder CDDL), `lumen-raw` (Decode in Stufen,
 `box_downscale`), `lumen-gpu` (wgpu 30, WGSL-Port aus `shaders.ts`), `tools/bench` (`lumen-bench`).
 `spikes/ui-proto` = egui-Wegwerf-Prototyp, eigener Workspace, nicht in `make ci`.
+Decode-/Golden-Tests SKIPpen ohne `tests-fixtures/raw-samples`; `ci.sh` holt den Korpus
+(`scripts/fetch-test-images.sh`) und setzt `LUMEN_REQUIRE_FIXTURES=1` (dann Pflicht, `checked > 0`).
+**Gotcha:** Es gibt keinen Konstanten-Sync-Test WGSL <-> `tonemap.ts`; Drift faellt erst bei
+Golden-Neugenerierung auf.
 Spec `docs/superpowers/specs/2026-11-27-desktop-native-rust-design.md`, Spike-Ergebnis
 `docs/superpowers/specs/2026-11-27-n0-spike-results.md`.
 
@@ -422,12 +426,12 @@ VPS auf IONOS (siehe globales CLAUDE.md, MRD-Cluster-ID). Caddy-Network
 backend + web. Keycloak + Garage laufen separat im Cluster (cross-
 project shared).
 
-CI: `.github/workflows/ci.yml` — frontend lint/typecheck/vitest/build +
-backend pytest. E2E nicht in PR-Pipeline (Stack-Compose dauert).
+CI: `ci.sh` im Repo-Root (Desktop-, Frontend- und Backend-Gates) ueber `tb-ci` auf testbox;
+GitHub Actions sind abgeschaltet. E2E nicht in der Pipeline (Stack-Compose dauert).
 
 ## Aktueller Stand
 
-- **Phase N (Desktop, Rust)**: N0-Spike fertig (S1/S2/S4/S5 gruen, S3 gelb: voller Decode Z6III 1,76 s > 1,5 s), Go/No-Go liegt bei Manuel. Branch `feat/desktop-native`.
+- **Phase N (Desktop, Rust)**: N0-Spike fertig (S1 gruen mit offenem Handtest, S2/S4/S5 gruen, S3 gelb: voller Decode Z6III 1,76 s > 1,5 s), Go/No-Go liegt bei Manuel. Branch `feat/desktop-native`.
 - **Phase H**: H1 Prozessversion 2, H1b 16-bit-RAW/Half-Float-Textur und H2 Lighttable komplett (H2a Vorschaubilder, H2b Raster/Sterne/Labels/Filter, H2c Lupe/Vergleich/Einzeltasten, H2d Zoom 1:1/Listen-Tasten/„Ohne Label"/Filter in der URL).
 - **Phase E komplett**: HSL (E1), Tonkurve (E2), Sharpening + Noise (E3), Face-Detection (E4, opt-in), Auto-Straighten (E5).
 - **Phase F1 komplett**: Preset-Marketplace mit Backend (Migration 005, 7 Endpunkte, Auto-Hide), Frontend (Marketplace-Page, Detail-Modal, PresetDialog-Publish-Toggle, Account-Profil + veroeffentlichte Presets).

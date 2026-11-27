@@ -17,11 +17,13 @@ fn field<'a>(sample: &'a serde_json::Value, key: &str) -> &'a str {
 
 #[test]
 fn jedes_fixture_dekodiert_mit_hersteller_und_modell() {
+    let mut checked = 0;
     for sample in manifest_samples() {
         let name = field(&sample, "filename");
         let Some(path) = testutil::fixture(name) else {
             continue;
         };
+        checked += 1;
         let (img, meta) = decode(&path, DecodeMode::Full)
             .unwrap_or_else(|e| panic!("{name}: Decode fehlgeschlagen: {e}"));
         assert_eq!(meta.make, field(&sample, "expectedMake"), "{name}: make");
@@ -41,11 +43,16 @@ fn jedes_fixture_dekodiert_mit_hersteller_und_modell() {
             img.width, img.height, meta.make, meta.model
         );
     }
+    assert!(
+        checked > 0 || !testutil::require_fixtures(),
+        "LUMEN_REQUIRE_FIXTURES gesetzt, aber kein Fixture gefunden (scripts/fetch-test-images.sh)"
+    );
 }
 
 #[test]
 fn half_size_halbiert_kanten() {
     let Some(path) = testutil::fixture("Nikon_D7100.NEF") else {
+        assert!(!testutil::require_fixtures(), "Nikon_D7100.NEF fehlt");
         return;
     };
     let (full, _) = decode(&path, DecodeMode::Full).expect("Full");
@@ -68,6 +75,10 @@ fn half_size_halbiert_kanten() {
 #[test]
 fn hochformat_ist_gedreht() {
     let Some(path) = testutil::fixture("Nikon_1_S2_portrait.NEF") else {
+        assert!(
+            !testutil::require_fixtures(),
+            "Nikon_1_S2_portrait.NEF fehlt"
+        );
         return;
     };
     let (img, meta) = decode(&path, DecodeMode::Full).expect("Decode");
@@ -85,10 +96,12 @@ fn hochformat_ist_gedreht() {
 
 #[test]
 fn eingebettete_vorschau_ist_jpeg() {
+    let mut checked = 0;
     for name in ["Nikon_D7100.NEF", "Sony_A7M3.ARW", "Canon_EOS_600D.CR2"] {
         let Some(path) = testutil::fixture(name) else {
             continue;
         };
+        checked += 1;
         let preview = embedded_preview(&path)
             .unwrap_or_else(|e| panic!("{name}: {e}"))
             .unwrap_or_else(|| panic!("{name}: keine JPEG-Vorschau"));
@@ -104,4 +117,8 @@ fn eingebettete_vorschau_ist_jpeg() {
             preview.jpeg.len()
         );
     }
+    assert!(
+        checked > 0 || !testutil::require_fixtures(),
+        "LUMEN_REQUIRE_FIXTURES gesetzt, aber keine Vorschau-Fixture gefunden"
+    );
 }

@@ -2,9 +2,10 @@
 name = "libraw-sys"
 version = "0.1.0"
 edition.workspace = true
-license.workspace = true
+# LibRaw selbst ist LGPL-2.1 oder CDDL-1.0 (Wahl offen, siehe Spike-Ergebnis).
+license = "LGPL-2.1-only OR CDDL-1.0"
 publish.workspace = true
-description = "FFI-Bindings an LibRaw 0.22.3 (statisch gebaut, CDDL-1.0)"
+description = "FFI-Bindings an LibRaw 0.22.3 (statisch gebaut)"
 links = "raw"
 build = "build.rs"
 

@@ -8,6 +8,6 @@ description = "Messung von Decode-Stufen und GPU-Frame-Zeit (Spike N0)"
 
 [dependencies]
 lumen-raw.workspace = true
-lumen-gpu = { path = "../../crates/lumen-gpu" }
+lumen-gpu.workspace = true
 wgpu.workspace = true
 serde_json.workspace = true

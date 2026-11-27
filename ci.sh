@@ -26,7 +26,9 @@ desktop_ci() {
     if [ ! -f "$ROOT/desktop/crates/libraw-sys/vendor/LibRaw/libraw/libraw.h" ]; then
         git -C "$ROOT" submodule update --init || return 1
     fi
-    make -C "$ROOT/desktop" ci
+    # Decode-Tests duerfen in CI nicht still SKIPpen: Korpus holen (idempotent), Pflicht setzen.
+    bash "$ROOT/scripts/fetch-test-images.sh" || return 1
+    LUMEN_REQUIRE_FIXTURES=1 make -C "$ROOT/desktop" ci
 }
 
 frontend_ci() {

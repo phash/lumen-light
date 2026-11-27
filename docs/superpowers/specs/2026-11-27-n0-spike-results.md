@@ -1,6 +1,6 @@
 # N0 · Spike-Ergebnis (Go/No-Go)
 
-Stand: 2026-11-27 · Branch `feat/desktop-native` (e89c36a..fe85204, nicht gepusht).
+Stand: 2026-11-27 · Branch `feat/desktop-native` (nicht gepusht).
 Spec: `docs/superpowers/specs/2026-11-27-desktop-native-rust-design.md`, Abschnitt „N0 · Spike“.
 Plan: `docs/superpowers/plans/2026-11-27-n0-desktop-spike.md`.
 
@@ -8,7 +8,7 @@ Plan: `docs/superpowers/plans/2026-11-27-n0-desktop-spike.md`.
 
 | # | Prüfung | Messwert | Ziel / Abbruch | Urteil |
 |---|---|---|---|---|
-| S1 | egui-Prototyp: Raster 5 000 Kacheln + Tasten, 10 Slider, Kurve, Crop | gebaut in ~30 min Agenten-Wandzeit (Schätzung Mensch ½–1 Tag); Raster 60 fps, UI ~1 ms CPU/Frame | > 3 Tage oder unbrauchbar | **grün** |
+| S1 | egui-Prototyp: Raster 5 000 Kacheln + Tasten, 10 Slider, Kurve, Crop | gebaut in ~30 min Agenten-Wandzeit (Schätzung Mensch ½–1 Tag); Raster 60 fps, UI ~1 ms CPU/Frame | > 3 Tage oder unbrauchbar | **grün** (Handtest offen) |
 | S2 | WGSL-Port PV1/PV2-Ton, Belichtung, WB gegen Goldens | max. Kanalabweichung **1/255** (48 Sets, 4 Wege); ΔE2000 mittel ≤ 0,08, Einzelpixel-Maximum 1,25 | > 2/255 bzw. ΔE2000 > 1 | **grün\*** (mittleres ΔE ≤ 0,08; per Pixel max 1,25 > 1, Lesart offen für Manuel) |
 | S3 | LibRaw nativ: Zeit und Gleichheit zu libraw-wasm | Z6III-NEF: Vorschau 4 ms, `half_size` **433 ms**, voll **1 757 ms**; Parität MAE ≤ 6/65535; HE/HE★ ungetestet | `half_size` > 1 s, voll > 1,5 s ohne Ausweg, Look weicht ab, verlustfreies NEF geht nicht | **gelb** (voller Decode verfehlt das Ziel um 17 %, Ausweg plausibel, ungemessen) |
 | S4 | wgpu auf radv, anv, lavapipe, DX12-WARP | alle vier Wege 48/48 Sets, max 1/255 | Pipeline läuft auf einem Weg nicht | **grün** |
@@ -16,6 +16,8 @@ Plan: `docs/superpowers/plans/2026-11-27-n0-desktop-spike.md`.
 
 **Empfehlung: Go für N1, unter der Bedingung, dass N2 als ersten Schritt
 LibRaw mit OpenMP baut und den vollen Decode des Z6III-NEF neu misst.**
+Bei der engen Lesart von S2 (ΔE2000 je Pixel ≤ 1, Maximum 1,25) wäre S2 rot, nicht
+grün; die Empfehlung gilt mit der Lesart „mittleres ΔE je Set“.
 Nach der Spec-Regel ist das kein automatisches Go: S3 ist nicht grün. Die
 Entscheidung liegt bei Manuel (siehe „Was Manuel entscheiden muss“).
 
@@ -243,7 +245,11 @@ Luft bis 8 ms.
 4. **Fuji/X-Trans** als bekannte Einschränkung (8,7 s voll) akzeptieren?
 5. **CI (Ruling R5)**: `ci.sh` liegt im Repo-Root. Branch pushen und
    `tb-ci add phash/lumen-light` erst nach Manuels Freigabe.
-6. Optional: 2 Minuten Kurve, Crop-Griffe und Tasten im Prototyp von Hand
+6. **Lizenz LibRaw (bis N10 entscheiden)**: CDDL-1.0 oder LGPL-2.1 für das statisch
+   gelinkte LibRaw in einem AGPL-3.0-Binary? Laut FSF ist die CDDL GPL-inkompatibel;
+   `libraw-sys` deklariert deshalb `LGPL-2.1-only OR CDDL-1.0`, der Rest des Workspace
+   `AGPL-3.0-or-later`.
+7. Optional: 2 Minuten Kurve, Crop-Griffe und Tasten im Prototyp von Hand
    bedienen (`desktop/spikes/ui-proto`, ohne `--bench`).
 
 ## Offene Punkte

@@ -108,7 +108,7 @@ Spec: `docs/superpowers/specs/2026-11-27-desktop-native-rust-design.md`. Der Web
 
 | M | Inhalt | Schätzung | Status |
 |---|---|---|---|
-| N0 | Spike mit Go/No-Go, Golden-Generator, Workspace, `make ci` | 1 Wo | ✓ fertig, Entscheidung offen: S1/S2/S4/S5 grün, S3 gelb (voller Decode Z6III 1,76 s statt < 1,5 s; Vorschlag OpenMP). Ergebnis: `docs/superpowers/specs/2026-11-27-n0-spike-results.md` |
+| N0 | Spike mit Go/No-Go, Golden-Generator, Workspace, `make ci` | 1 Wo | ✓ fertig, Entscheidung offen: S1 grün (Handtest offen), S2/S4/S5 grün, S3 gelb (voller Decode Z6III 1,76 s statt < 1,5 s; Vorschlag OpenMP). Ergebnis: `docs/superpowers/specs/2026-11-27-n0-spike-results.md` |
 | N1 | `lumen-core`: reine Module portiert, Referenzvektoren grün | 1,5 Wo | offen |
 | N2 | `lumen-raw` + `lumen-gpu`: Decode in drei Stufen, Proxy, PV1/PV2, 10 Grundregler, Histogramm, Goldens grün | 2 Wo | offen |
 | N3 | Editor-UI: Sidebar, HSL, Kurven-Editor, Undo/Redo, Bypass, Vergleichs-Split, Auto-Ton/WB, WB-Pipette | 2 Wo | offen |

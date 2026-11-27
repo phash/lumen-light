@@ -112,6 +112,10 @@ fn nativer_decode_trifft_libraw_wasm_quelle() {
     }
     eprintln!("Paritaet: {checked} Fixtures geprueft");
     assert!(
+        checked > 0 || !testutil::require_fixtures(),
+        "LUMEN_REQUIRE_FIXTURES gesetzt, aber kein Fixture geprueft (scripts/fetch-test-images.sh)"
+    );
+    assert!(
         failures.is_empty(),
         "Paritaet verfehlt:\n{}",
         failures.join("\n")

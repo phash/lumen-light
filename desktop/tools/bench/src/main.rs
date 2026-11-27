@@ -247,13 +247,17 @@ fn parse_args(args: impl Iterator<Item = String>) -> Result<Args, String> {
     Ok(a)
 }
 
-fn main() {
+fn main() -> std::process::ExitCode {
     let args = match parse_args(std::env::args().skip(1)) {
         Ok(a) if !a.files.is_empty() => a,
         Ok(_) => {
-            return eprintln!("Aufruf: lumen-bench [--runs N] [--out bench.json] <dateien...>");
+            eprintln!("Aufruf: lumen-bench [--runs N] [--out bench.json] <dateien...>");
+            return std::process::ExitCode::from(2);
         }
-        Err(e) => return eprintln!("Fehler: {e}"),
+        Err(e) => {
+            eprintln!("Fehler: {e}");
+            return std::process::ExitCode::from(2);
+        }
     };
     let mut files = Vec::new();
     let mut biggest: Option<Rgb16Image> = None;
@@ -285,10 +289,12 @@ fn main() {
         Some(p) => {
             if let Err(e) = std::fs::write(p, &text) {
                 eprintln!("Schreiben nach {p} fehlgeschlagen: {e}");
+                return std::process::ExitCode::FAILURE;
             }
         }
         None => println!("{text}"),
     }
+    std::process::ExitCode::SUCCESS
 }
 
 #[cfg(test)]

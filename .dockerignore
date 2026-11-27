@@ -18,6 +18,8 @@ backend/schemas/*
 # Den Dir-INHALT mit /* ausschliessen (statt das Verzeichnis selbst), sonst
 # betritt Docker es nicht und die !-Re-Inclusion verpufft.
 !backend/schemas/edit-groups.json
+desktop
+tests-fixtures
 docs
 diagramme
 *.log

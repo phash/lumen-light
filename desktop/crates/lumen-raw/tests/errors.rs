@@ -37,7 +37,10 @@ fn jpeg_ist_kein_raw() {
 
 #[test]
 fn z6iii_he_klar_gemeldet() {
-    let Some(path) = testutil::fixture("Nikon_Z6III_HE.NEF") else {
+    // Es gibt kein oeffentliches HE-NEF im Korpus: Pfad per LUMEN_HE_NEF angeben,
+    // sonst SKIP.
+    let Some(path) = std::env::var_os("LUMEN_HE_NEF").map(std::path::PathBuf::from) else {
+        eprintln!("SKIP z6iii_he: LUMEN_HE_NEF nicht gesetzt");
         return;
     };
     match decode(&path, DecodeMode::Full) {
