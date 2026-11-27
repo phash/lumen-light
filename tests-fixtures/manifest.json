@@ -5,6 +5,7 @@
       "filename": "Canon_EOS_600D.CR2",
       "url": "https://raw.pixls.us/data/Canon/EOS%20600D/_MG_2587.CR2",
       "approxSizeMb": 23,
+      "sha256": "1b0892df5ba5fa418e945f0519d490aeecaaf7e74860a08b5dc47e3e9976a288",
       "format": "cr2",
       "expectedMake": "Canon",
       "expectedModelContains": "600D"
@@ -13,6 +14,7 @@
       "filename": "Canon_EOS_R.CR3",
       "url": "https://raw.pixls.us/data/Canon/EOS%20R/Canon_EOS_R_CRAW_ISO_100_crop_nodual.CR3",
       "approxSizeMb": 8,
+      "sha256": "90bbf397b592f9ce9799477df4affbdf0025578c07eac26f928696b0d40d5121",
       "format": "cr3",
       "expectedMake": "Canon",
       "expectedModelContains": "EOS R"
@@ -21,6 +23,7 @@
       "filename": "Sony_A7M3.ARW",
       "url": "https://raw.pixls.us/data/Sony/ILCE-7M3/_DSC0009.ARW",
       "approxSizeMb": 25,
+      "sha256": "250784580ea527442c09004417bb0eead484f2bf3ee8f9121a776ac65bb50d0f",
       "format": "arw",
       "expectedMake": "Sony",
       "expectedModelContains": "ILCE-7M3"
@@ -29,6 +32,7 @@
       "filename": "Nikon_D7100.NEF",
       "url": "https://raw.pixls.us/data/Nikon/D7100/JCR_4305.NEF",
       "approxSizeMb": 28,
+      "sha256": "b241cb95b1008f25b8ed7d1443354e8cc7dee9c4d4e1edd0a5856d92063a48d0",
       "format": "nef",
       "expectedMake": "Nikon",
       "expectedModelContains": "D7100"
@@ -37,6 +41,7 @@
       "filename": "Fujifilm_X-Pro1.RAF",
       "url": "https://raw.pixls.us/data/Fujifilm/X-Pro1/DSCF2131.RAF",
       "approxSizeMb": 25,
+      "sha256": "0b1046c299d9eb222a8f003bd047f2a34f507da0d1704ac32cefbc82f799d121",
       "format": "raf",
       "expectedMake": "Fujifilm",
       "expectedModelContains": "X-Pro1"
@@ -45,6 +50,7 @@
       "filename": "Olympus_E-M5.ORF",
       "url": "https://raw.pixls.us/data/Olympus/E-M5/P2082705.ORF",
       "approxSizeMb": 14,
+      "sha256": "b2221977cbc6eba0d3b363351072092e5647eaa0d02a5d8432b5d985b29f669f",
       "format": "orf",
       "expectedMake": "Olympus",
       "expectedModelContains": "E-M5"
@@ -53,6 +59,7 @@
       "filename": "Panasonic_DC-G9.RW2",
       "url": "https://raw.pixls.us/data/Panasonic/DC-G9/P1000951.RW2",
       "approxSizeMb": 23,
+      "sha256": "16282357ce0143ff7d36737f82074662db7aa0790ecd309196f406baf0f586a7",
       "format": "rw2",
       "expectedMake": "Panasonic",
       "expectedModelContains": "DC-G9"
@@ -61,6 +68,7 @@
       "filename": "Nikon_1_S2_portrait.NEF",
       "url": "https://raw.pixls.us/data/Nikon/1%20S2/RAW_NIKON_1S2.NEF",
       "approxSizeMb": 13,
+      "sha256": "c9a3eac53afb6ff393458f6a389466af05dcce8a32e97725f7aaef543e2894cb",
       "format": "nef",
       "expectedMake": "Nikon",
       "expectedModelContains": "S2"
