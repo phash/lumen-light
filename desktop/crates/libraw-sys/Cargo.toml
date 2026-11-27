@@ -2,8 +2,8 @@
 name = "libraw-sys"
 version = "0.1.0"
 edition.workspace = true
-# LibRaw selbst ist LGPL-2.1 oder CDDL-1.0 (Wahl offen, siehe Spike-Ergebnis).
-license = "LGPL-2.1-only OR CDDL-1.0"
+# LibRaw ist LGPL-2.1 oder CDDL-1.0; Lumen nutzt es unter LGPL-2.1 (Entscheidung 2026-11-27).
+license = "LGPL-2.1-only"
 publish.workspace = true
 description = "FFI-Bindings an LibRaw 0.22.3 (statisch gebaut)"
 links = "raw"
