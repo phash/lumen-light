@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-# Ruling R2: vorerst nur crates/*; tools/* kommt mit Task 4. spikes/* bleiben draussen.
-members = ["crates/*"]
+# Ruling R2: crates/* und tools/*. spikes/* bleiben draussen.
+members = ["crates/*", "tools/*"]
 exclude = ["spikes"]
 
 [workspace.package]
