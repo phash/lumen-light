@@ -5,6 +5,7 @@
 //! libjpeg, LCMS, RawSpeed, DNG-SDK und X3F-Tools.
 
 use std::env;
+use std::fs;
 use std::path::{Path, PathBuf};
 
 const SOURCES: &[&str] = &[
@@ -136,18 +137,40 @@ fn build_libraw(vendor: &Path) {
     let openmp = env::var_os("CARGO_FEATURE_OPENMP").is_some();
     if openmp {
         if target_env == "msvc" {
-            panic!(
-                "Feature `openmp` ist fuer MSVC/clang-cl noch nicht eingerichtet (libomp fehlt)"
-            );
+            // clang-cl: LLVM-OpenMP, Importbibliothek libomp.lib aus der MSVC-CRT.
+            build.flag("/openmp");
+        } else {
+            build.flag("-fopenmp");
         }
-        build.flag("-fopenmp");
     }
 
     build.compile("raw");
 
     if openmp {
-        // GCC-Laufzeit; mit clang waere es libomp.
-        println!("cargo:rustc-link-lib=gomp");
+        if target_env == "msvc" {
+            // Ohne LUMEN_LIBOMP_DIR greift libomp.lib aus der MSVC-CRT, die auf
+            // libomp140.x86_64.dll zeigt (nur Debug-Redist, nicht weitergebbar).
+            // Mit LUMEN_LIBOMP_DIR (LLVM-libomp, Apache-2.0, z. B. conda-forge
+            // llvm-openmp) zeigt sie auf libomp.dll, die neben der exe liegen muss.
+            println!("cargo:rerun-if-env-changed=LUMEN_LIBOMP_DIR");
+            if let Some(dir) = env::var_os("LUMEN_LIBOMP_DIR") {
+                // Unter eigenem Namen linken: sonst gewinnt die gleichnamige
+                // libomp.lib aus dem LIB-Pfad von cargo-xwin.
+                let out = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR"));
+                fs::copy(
+                    Path::new(&dir).join("libomp.lib"),
+                    out.join("lumen_libomp.lib"),
+                )
+                .expect("libomp.lib in LUMEN_LIBOMP_DIR fehlt");
+                println!("cargo:rustc-link-search=native={}", out.display());
+                println!("cargo:rustc-link-lib=lumen_libomp");
+            } else {
+                println!("cargo:rustc-link-lib=libomp");
+            }
+        } else {
+            // GCC-Laufzeit; mit clang waere es libomp.
+            println!("cargo:rustc-link-lib=gomp");
+        }
     }
 
     if target_os == "windows" {

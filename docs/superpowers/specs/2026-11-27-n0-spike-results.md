@@ -325,3 +325,17 @@ Thread-Konkurrenz mit Thumbnail-Workern.
 `LUMEN_DE_MODE=mean` (Default, Mittel pro Bild+Set), `pixel` (jedes Pixel), `off` (nur
 ausgeben); `LUMEN_DE_MAX` setzt die Grenze (Default 1,0). Stand: `mean` gruen,
 `pixel` rot (26 von 48 Sets, Einzelpixel bis 1,25, alle Mittel <= 0,08).
+
+### Nachtrag: OpenMP unter Windows
+
+clang-cl `/openmp`, gelinkt gegen die LLVM-`libomp.dll` (Apache-2.0, conda-forge
+`llvm-openmp` 23.1.6) statt Microsofts `libomp140.x86_64.dll` (nur Debug-Redist, nicht
+weitergebbar). `LUMEN_OPENMP=1 LUMEN_LIBOMP_DIR=<…/Library/lib> desktop/scripts/build-windows.sh`
+legt `libomp.dll` neben die exe. Win11-VM (testbox, DX12/WARP): alle 8 Testbinaries gruen,
+voller Decode D7100 5 414 -> 1 809 ms, A7M3 2 482 -> 1 893 ms (VM, nur relativ aussagekraeftig).
+
+### Nachtrag: Z6III HE/HE★
+
+raw.pixls.us hat CC0-Samples (IDs 7811 HE, 7815 HE★, 7819 lossless). LibRaw 0.22.3
+dekodiert HE/HE★ **nicht** (`Unsupported file format`), nur die eingebettete Vorschau.
+Lossless: half 416 ms, voll 810 ms (680M, OpenMP).
