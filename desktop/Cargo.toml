@@ -11,10 +11,15 @@ publish = false
 
 [workspace.dependencies]
 libraw-sys = { path = "crates/libraw-sys" }
+lumen-raw = { path = "crates/lumen-raw" }
 thiserror = "=2.0.21"
 serde_json = "=1.0.154"
 cc = { version = "=1.12.0", features = ["parallel"] }
 bindgen = "=0.73.2"
+wgpu = "=30.0.2"
+bytemuck = { version = "=1.25.2", features = ["derive"] }
+pollster = "=1.0.3"
+png = "=0.18.1"
 
 # Abhaengigkeiten auch im Debug-Profil optimiert bauen (Decode-Tests sonst traege).
 [profile.dev.package."*"]
