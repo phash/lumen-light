@@ -339,3 +339,6 @@ voller Decode D7100 5 414 -> 1 809 ms, A7M3 2 482 -> 1 893 ms (VM, nur relativ a
 raw.pixls.us hat CC0-Samples (IDs 7811 HE, 7815 HE★, 7819 lossless). LibRaw 0.22.3
 dekodiert HE/HE★ **nicht** (`Unsupported file format`), nur die eingebettete Vorschau.
 Lossless: half 416 ms, voll 810 ms (680M, OpenMP).
+Entscheidung Manuel 2026-11-28: Er fotografiert verlustfrei komprimiert (`NEFCompression=3`,
+Makernote-Tag 0x51) und bleibt dabei. HE/HE★ ist kein Ziel fuer v1; Kandidat fuer ein
+spaeteres Decoder-Plugin.
