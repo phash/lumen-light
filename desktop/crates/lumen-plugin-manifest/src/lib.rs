@@ -2,10 +2,16 @@
 
 pub mod caps;
 mod error;
+pub mod ids;
 pub mod model;
+mod paths;
+pub mod text;
+mod validate;
 
 pub use error::{HINT_QUOTE_CAPS, ManifestError};
 pub use model::*;
+pub use paths::{PathRejection, check_package_path, check_path_set};
+pub use validate::{Origin, validate};
 
 /// Parst `lumen-plugin.toml` (nur Syntax und Struktur, keine Semantik).
 pub fn parse_manifest(bytes: &[u8]) -> Result<Manifest, ManifestError> {
