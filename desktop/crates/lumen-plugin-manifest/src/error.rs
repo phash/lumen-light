@@ -51,6 +51,13 @@ pub enum ManifestError {
     ShaderNotListed(String),
     #[error("Datei `{0}` fehlt in [files]")]
     FileNotListed(String),
+    #[error("Beitrag `{contribution}` braucht das Recht `{cap}`")]
+    MissingCapability {
+        contribution: &'static str,
+        cap: &'static str,
+    },
+    #[error("Recht `{0}` hat einen Wert in falscher Form")]
+    BadCapabilityValue(String),
     #[error("Ausdruck in `{field}`: {err}")]
     Expr { field: &'static str, err: ExprError },
 }

@@ -55,42 +55,59 @@ fn check_identity(m: &Manifest, origin: Origin, e: &mut Vec<ManifestError>) {
     }
 }
 
-fn each_localized(m: &Manifest) -> Vec<(&'static str, &LocalizedStr)> {
-    let mut v = vec![("name", &m.name)];
-    v.extend(m.description.iter().map(|d| ("description", d)));
-    v.extend(m.params.values().map(|p| ("label", &p.label)));
-    v.extend(
-        m.params
-            .values()
-            .flat_map(|p| p.choices.iter().flatten())
-            .map(|c| ("label", &c.label)),
-    );
-    let c = &m.contributes;
-    v.extend(c.panel.iter().map(|p| ("title", &p.title)));
-    v.extend(c.command.iter().map(|x| ("title", &x.title)));
-    v.extend(
-        c.command
-            .iter()
-            .flat_map(|x| x.menu.iter())
-            .map(|x| ("menu", x)),
-    );
-    v.extend(c.cpu_op.iter().map(|x| ("title", &x.title)));
-    v.extend(c.encoder.iter().map(|x| ("title", &x.title)));
-    v.extend(
-        c.export_hook
-            .iter()
-            .filter_map(|x| x.title.as_ref())
-            .map(|x| ("title", x)),
-    );
-    v
+/// Feldname fuer Fehlermeldungen: oberster Schluessel des Manifests.
+fn field_name(top: &str) -> &'static str {
+    const KEYS: &[&str] = &[
+        "id",
+        "version",
+        "api",
+        "lumen",
+        "license",
+        "source",
+        "name",
+        "description",
+        "api-experimental",
+        "files",
+        "artifacts",
+        "capabilities",
+        "params",
+        "contributes",
+        "native",
+        "edit-state",
+        "migrate",
+        "activation",
+    ];
+    KEYS.iter()
+        .copied()
+        .find(|k| *k == top)
+        .unwrap_or("manifest")
 }
 
-fn check_texts(m: &Manifest, e: &mut Vec<ManifestError>) {
-    for (field, s) in each_localized(m) {
-        for t in std::iter::once(&s.en).chain(s.de.iter()) {
-            if let Err(x) = check_text(field, t) {
+fn walk_strings(field: &'static str, v: &toml::Value, e: &mut Vec<ManifestError>) {
+    match v {
+        toml::Value::String(s) => {
+            if let Err(x) = check_text(field, s) {
                 e.push(x);
             }
+        }
+        toml::Value::Array(a) => a.iter().for_each(|x| walk_strings(field, x, e)),
+        toml::Value::Table(t) => {
+            for (k, x) in t {
+                if let Err(x) = check_text(field, k) {
+                    e.push(x);
+                }
+                walk_strings(field, x, e);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Prueft jede Zeichenkette (auch Schluessel und Rechte-Werte) auf unsichtbare Zeichen.
+fn check_texts(m: &Manifest, e: &mut Vec<ManifestError>) {
+    if let Ok(toml::Value::Table(t)) = toml::Value::try_from(m) {
+        for (k, v) in &t {
+            walk_strings(field_name(k), v, e);
         }
     }
     for t in std::iter::once(&m.name.en).chain(m.name.de.iter()) {
@@ -181,11 +198,76 @@ fn check_caps(m: &Manifest, e: &mut Vec<ManifestError>) {
         }
     }
     let has = |n: &str| m.capabilities.contains_key(n);
+    let has_scope = |n: &str, scope: &str| {
+        m.capabilities
+            .get(n)
+            .is_some_and(|v| value_has_str(v, scope))
+    };
+
+    // Form der Werte, soweit die Spec sie festlegt: Listen von Bereichs-IDs.
+    for (cap, scopes) in [
+        ("image.process", Some(&["gpu-pass", "cpu-op"][..])),
+        ("ui.panel", None),
+        ("ui.menu", None),
+        ("ui.shortcut", None),
+    ] {
+        if let Some(v) = m.capabilities.get(cap) {
+            let ok = v.as_array().is_some_and(|a| {
+                !a.is_empty()
+                    && a.iter().all(|x| {
+                        x.as_str()
+                            .is_some_and(|s| scopes.is_none_or(|sc| sc.contains(&s)))
+                    })
+            });
+            if !ok {
+                e.push(ManifestError::BadCapabilityValue(cap.into()));
+            }
+        }
+    }
+
+    // Jeder Beitrag braucht sein Recht.
+    let c = &m.contributes;
+    let needs: [(&'static str, bool, &'static str, Option<&str>); 8] = [
+        (
+            "gpu-chain",
+            !c.gpu_chain.is_empty(),
+            "image.process",
+            Some("gpu-pass"),
+        ),
+        (
+            "cpu-op",
+            !c.cpu_op.is_empty(),
+            "image.process",
+            Some("cpu-op"),
+        ),
+        ("decoder", !c.decoder.is_empty(), "raw.decode", None),
+        ("encoder", !c.encoder.is_empty(), "export.encoder", None),
+        ("metadata", !c.metadata.is_empty(), "metadata", None),
+        (
+            "import-hook",
+            !c.import_hook.is_empty(),
+            "import.hook",
+            None,
+        ),
+        (
+            "export-hook",
+            !c.export_hook.is_empty(),
+            "export.post",
+            None,
+        ),
+        ("panel", !c.panel.is_empty(), "ui.panel", None),
+    ];
+    for (contribution, present, cap, scope) in needs {
+        let granted = match scope {
+            Some(sc) => has_scope(cap, sc),
+            None => has(cap),
+        };
+        if present && !granted {
+            e.push(ManifestError::MissingCapability { contribution, cap });
+        }
+    }
+
     if m.tier == Tier::Native {
-        let fs_write = m
-            .capabilities
-            .get("fs.pick")
-            .is_some_and(|v| value_has_str(v, "write"));
         for cap in ["net", "clipboard.write", "export.post"]
             .into_iter()
             .filter(|c| has(c))
@@ -195,22 +277,24 @@ fn check_caps(m: &Manifest, e: &mut Vec<ManifestError>) {
                 because: "nativem Code".into(),
             });
         }
-        if fs_write {
+        if has_scope("fs.pick", "write") {
             e.push(ManifestError::LeakRule {
                 cap: "fs.pick".into(),
                 because: "nativem Code".into(),
             });
         }
     }
-    let cpu_op = m
-        .capabilities
-        .get("image.process")
-        .is_some_and(|v| value_has_str(v, "cpu-op"));
+
+    // Inhaltszugriff ergibt sich aus Rechten UND Beitraegen.
     let content: Vec<&str> = CONTENT_CAPS
         .iter()
         .copied()
         .filter(|c| has(c))
-        .chain(cpu_op.then_some("image.process cpu-op"))
+        .chain(has_scope("image.process", "cpu-op").then_some("image.process cpu-op"))
+        .chain((!c.decoder.is_empty()).then_some("decoder"))
+        .chain((!c.encoder.is_empty()).then_some("encoder"))
+        .chain((!c.metadata.is_empty()).then_some("metadata"))
+        .chain((!c.cpu_op.is_empty()).then_some("cpu-op"))
         .collect();
     if let Some(first) = content.first() {
         for cap in EXFIL_CAPS.iter().filter(|c| has(c)) {

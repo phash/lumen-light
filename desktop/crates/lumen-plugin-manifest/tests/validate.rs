@@ -228,3 +228,98 @@ fn ungueltige_plugin_id_und_unbekanntes_recht() {
         "{e:?}"
     );
 }
+
+#[test]
+fn verwechselbar_auch_als_wortteil() {
+    for n in ["MyLumen", "Lumen_Pro", "LUMENfx", "0fficial Denoise"] {
+        let mut m = example();
+        m.name.en = n.into();
+        let e = errs(&m, Origin::Dev);
+        assert!(
+            e.iter()
+                .any(|x| matches!(x, ManifestError::Confusable { .. })),
+            "{n}: {e:?}"
+        );
+    }
+}
+
+#[test]
+fn beitrag_ohne_recht_und_ausleitung_ueber_beitrag() {
+    // cpu-op-Beitrag ohne passendes Recht: fehlendes Recht melden.
+    let src = lumen_plugin_manifest::spec_toml_block(common::SPEC, common::FIRST)
+        .replace("tier    = \"shader\"", "tier    = \"wasm\"")
+        .replace(
+            "# S2 (tier = \"wasm\"):    wasm = \"plugin.wasm\"",
+            "wasm = \"plugin.wasm\"",
+        )
+        .replace(
+            "\"ui.panel\"      = [\"main\"]",
+            "\"ui.panel\" = [\"main\"]\nnet = { hosts = [\"a.example\"] }",
+        )
+        .replace(
+            "[files]\n",
+            &format!("[files]\n\"plugin.wasm\" = \"{}\"\n", "0".repeat(64)),
+        )
+        + "\n[[contributes.cpu-op]]\nid = \"bake\"\nslot = \"bake\"\ntitle = { en = \"Bake\" }\n";
+    let m = parse_manifest(src.as_bytes()).unwrap();
+    let e = errs(&m, Origin::Dev);
+    assert!(
+        e.iter().any(|x| matches!(
+            x,
+            ManifestError::MissingCapability {
+                cap: "image.process",
+                ..
+            }
+        )),
+        "{e:?}"
+    );
+    assert!(
+        e.iter()
+            .any(|x| matches!(x, ManifestError::LeakRule { cap, .. } if cap == "net")),
+        "{e:?}"
+    );
+}
+
+#[test]
+fn rechte_wert_in_falscher_form() {
+    let mut m = example();
+    m.capabilities
+        .insert("image.process".into(), toml::Value::Boolean(true));
+    let e = errs(&m, Origin::Dev);
+    assert!(
+        e.iter()
+            .any(|x| matches!(x, ManifestError::BadCapabilityValue(c) if c == "image.process")),
+        "{e:?}"
+    );
+}
+
+#[test]
+fn unsichtbare_zeichen_ueberall() {
+    let mut m = example();
+    m.capabilities.insert(
+        "ui.panel".into(),
+        toml::Value::Array(vec![toml::Value::String("ma\u{2060}in".into())]),
+    );
+    let e = errs(&m, Origin::Dev);
+    assert!(
+        e.iter().any(|x| matches!(
+            x,
+            ManifestError::Invisible {
+                codepoint: 0x2060,
+                ..
+            }
+        )),
+        "{e:?}"
+    );
+    for cp in [0x00ADu32, 0x061C, 0xFEFF, 0x180E] {
+        let mut m = example();
+        m.contributes.panel[0].title.en = format!("x{}y", char::from_u32(cp).unwrap());
+        let e = errs(&m, Origin::Dev);
+        assert!(
+            e.iter().any(
+                |x| matches!(x, ManifestError::Invisible { codepoint, .. } if *codepoint == cp)
+            ),
+            "{cp:x}: {e:?}"
+        );
+    }
+}
