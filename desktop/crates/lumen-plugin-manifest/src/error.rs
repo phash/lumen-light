@@ -63,6 +63,8 @@ pub enum ManifestError {
     },
     #[error("Recht `{0}` hat einen Wert in falscher Form")]
     BadCapabilityValue(String),
+    #[error("Grenze überschritten: {0}")]
+    LimitExceeded(String),
     #[error("Ausdruck in `{field}`: {err}")]
     Expr { field: &'static str, err: ExprError },
 }

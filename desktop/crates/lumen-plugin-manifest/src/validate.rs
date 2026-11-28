@@ -129,6 +129,15 @@ fn check_files(m: &Manifest, e: &mut Vec<ManifestError>) {
             });
         }
     }
+    for p in m.files.keys() {
+        let l = p.to_ascii_lowercase();
+        if l == "lumen-plugin.toml" || l == "signatures" {
+            e.push(ManifestError::Path {
+                path: p.clone(),
+                why: PathRejection::ReservedName,
+            });
+        }
+    }
     // Einzelpfade sind oben gemeldet; hier nur Mengenregeln.
     if let Err(why @ (PathRejection::CaseDuplicate(..) | PathRejection::TooMany)) =
         check_path_set(m.files.keys().map(String::as_str))
@@ -430,10 +439,76 @@ fn check_contributes(m: &Manifest, e: &mut Vec<ManifestError>) {
             e.push(ManifestError::Expr { field, err });
         }
     }
+    check_limits(m, e);
     let want = format!("{}.", m.id);
     for cmd in &c.command {
         if !cmd.id.starts_with(&want) || cmd.id.len() == want.len() {
             e.push(ManifestError::CommandPrefix(cmd.id.clone()));
+        }
+    }
+}
+
+/// Halo-Grenze je Pass (Spec: Konstante oder Param-ID, max. 64).
+pub const MAX_HALO_PX: u32 = 64;
+/// Hoechste Schleifenschranke eines `loop-bound`-Params (Kostenregel: 4096 Iterationen).
+pub const MAX_LOOP_BOUND: f64 = 4096.0;
+/// `workgroup-cache-radius` (16-KiB-Grenze).
+pub const MAX_WORKGROUP_CACHE_RADIUS: u32 = 8;
+
+fn check_limits(m: &Manifest, e: &mut Vec<ManifestError>) {
+    let mut lim = |s: String| e.push(ManifestError::LimitExceeded(s));
+    for (id, p) in &m.params {
+        if p.loop_bound == Some(true) && p.max.is_some_and(|x| x.as_f64() > MAX_LOOP_BOUND) {
+            lim(format!("loop-bound-Param `{id}`: max > {MAX_LOOP_BOUND}"));
+        }
+    }
+    for pass in m.contributes.gpu_chain.iter().flat_map(|g| &g.pass) {
+        match &pass.radius_px {
+            Some(RadiusRef::Const(r)) if *r > MAX_HALO_PX => {
+                lim(format!("radius-px von `{}` > {MAX_HALO_PX}", pass.name))
+            }
+            Some(RadiusRef::Param(p))
+                if m.params
+                    .get(p)
+                    .and_then(|d| d.max)
+                    .is_none_or(|x| x.as_f64() > MAX_HALO_PX as f64) =>
+            {
+                lim(format!(
+                    "radius-px-Param `{p}` braucht max <= {MAX_HALO_PX}"
+                ));
+            }
+            _ => {}
+        }
+        if pass
+            .workgroup_cache_radius
+            .is_some_and(|r| r > MAX_WORKGROUP_CACHE_RADIUS)
+        {
+            lim(format!(
+                "workgroup-cache-radius von `{}` > {MAX_WORKGROUP_CACHE_RADIUS}",
+                pass.name
+            ));
+        }
+    }
+    for d in &m.contributes.decoder {
+        let hex_ok = |h: &str| {
+            !h.is_empty()
+                && h.len().is_multiple_of(2)
+                && h.len() <= 32
+                && h.bytes().all(|b| b.is_ascii_hexdigit())
+        };
+        if d.magic.is_empty() || d.magic.len() > 8 || !d.magic.iter().all(|h| hex_ok(h)) {
+            lim("decoder.magic: 1-8 Hex-Einträge, je höchstens 16 Byte".into());
+        }
+        if d.priority.is_some_and(|p| p > 100) {
+            lim("decoder.priority: 0-100".into());
+        }
+        if !d.modes.iter().all(|x| x == "half" || x == "full") {
+            lim("decoder.modes: nur `half`, `full`".into());
+        }
+    }
+    for md in &m.contributes.metadata {
+        if md.keys.is_empty() || !md.keys.iter().all(|k| k.len() > 2 && k.starts_with("x.")) {
+            lim("metadata.keys: Präfix `x.`".into());
         }
     }
 }

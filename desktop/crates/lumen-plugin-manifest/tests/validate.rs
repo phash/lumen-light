@@ -190,8 +190,8 @@ fn ausleitung_wasm() {
                 &format!("\"ui.panel\" = [\"main\"]\n{caps}"),
             )
             .replace(
-                "[files]\n",
-                &format!("[files]\n\"plugin.wasm\" = \"{}\"\n", "0".repeat(64)),
+                "[files]",
+                &format!("[files]\n\"plugin.wasm\" = \"{}\"\n#", "0".repeat(64)),
             );
         parse_manifest(src.as_bytes()).unwrap()
     };
@@ -203,12 +203,7 @@ fn ausleitung_wasm() {
         "{e:?}"
     );
     let m = wasm("net = { hosts = [\"a.example\"] }");
-    let e = errs(&m, Origin::Dev);
-    assert!(
-        !e.iter()
-            .any(|x| matches!(x, ManifestError::LeakRule { .. })),
-        "{e:?}"
-    );
+    assert_eq!(validate(&m, Origin::Dev), Ok(()));
 }
 
 #[test]
@@ -257,8 +252,8 @@ fn beitrag_ohne_recht_und_ausleitung_ueber_beitrag() {
             "\"ui.panel\" = [\"main\"]\nnet = { hosts = [\"a.example\"] }",
         )
         .replace(
-            "[files]\n",
-            &format!("[files]\n\"plugin.wasm\" = \"{}\"\n", "0".repeat(64)),
+            "[files]",
+            &format!("[files]\n\"plugin.wasm\" = \"{}\"\n#", "0".repeat(64)),
         )
         + "\n[[contributes.cpu-op]]\nid = \"bake\"\nslot = \"bake\"\ntitle = { en = \"Bake\" }\n";
     let m = parse_manifest(src.as_bytes()).unwrap();
@@ -354,4 +349,136 @@ fn untermenue_braucht_ui_menu_und_beitragsart_passt_zur_stufe() {
     );
     // Tastenkuerzel ist nur ein Vorschlag (standardmaessig aus) und braucht kein Recht.
     assert_eq!(validate(&example(), Origin::Dev), Ok(()));
+}
+
+#[test]
+fn verwechselbar_mit_grossem_i() {
+    for n in [
+        "Iumen",
+        "IUMEN",
+        "\u{0399}umen",
+        "OfficiaI Denoise",
+        "OffizieII",
+    ] {
+        let mut m = example();
+        m.name.en = n.into();
+        let e = errs(&m, Origin::Dev);
+        assert!(
+            e.iter()
+                .any(|x| matches!(x, ManifestError::Confusable { .. })),
+            "{n}: {e:?}"
+        );
+    }
+}
+
+#[test]
+fn ignorierbare_und_private_zeichen() {
+    for cp in [
+        0x3164u32, 0x115F, 0xFFA0, 0x034F, 0xFE0F, 0xE0100, 0x2800, 0xE000, 0x17B4, 0xF0000,
+    ] {
+        let mut m = example();
+        m.name.en = format!("Den{}oise", char::from_u32(cp).unwrap());
+        let e = errs(&m, Origin::Dev);
+        assert!(
+            e.iter().any(
+                |x| matches!(x, ManifestError::Invisible { codepoint, .. } if *codepoint == cp)
+            ),
+            "{cp:x}: {e:?}"
+        );
+    }
+}
+
+#[test]
+fn halo_und_schleifen_grenzen() {
+    use lumen_plugin_manifest::{Number, RadiusRef};
+    let mut m = example();
+    m.contributes.gpu_chain[0].pass[0].radius_px = Some(RadiusRef::Const(65));
+    assert!(
+        errs(&m, Origin::Dev)
+            .iter()
+            .any(|x| matches!(x, ManifestError::LimitExceeded(_)))
+    );
+    let mut m = example();
+    m.params.get_mut("radius").unwrap().max = Some(Number::Int(65));
+    assert!(
+        errs(&m, Origin::Dev)
+            .iter()
+            .any(|x| matches!(x, ManifestError::LimitExceeded(_))),
+        "Halo-Param > 64"
+    );
+    let mut m = example();
+    m.contributes.gpu_chain[0].pass[0].radius_px = Some(RadiusRef::Const(2));
+    m.contributes.gpu_chain[0].pass[1].radius_px = Some(RadiusRef::Const(2));
+    m.params.get_mut("radius").unwrap().max = Some(Number::Int(4097));
+    assert!(
+        errs(&m, Origin::Dev)
+            .iter()
+            .any(|x| matches!(x, ManifestError::LimitExceeded(_))),
+        "loop-bound > 4096"
+    );
+    let mut m = example();
+    m.contributes.gpu_chain[0].pass[0].workgroup_cache_radius = Some(9);
+    assert!(
+        errs(&m, Origin::Dev)
+            .iter()
+            .any(|x| matches!(x, ManifestError::LimitExceeded(_)))
+    );
+}
+
+fn wasm_with(extra: &str) -> lumen_plugin_manifest::Manifest {
+    let src = lumen_plugin_manifest::spec_toml_block(common::SPEC, common::FIRST)
+        .replace("tier    = \"shader\"", "tier    = \"wasm\"")
+        .replace("# S2 (tier = \"wasm\"):    wasm = \"plugin.wasm\"", "wasm = \"plugin.wasm\"")
+        .replace("\"ui.panel\"      = [\"main\"]", "\"ui.panel\" = [\"main\"]\n\"raw.decode\" = { magic = [\"49492a00\"] }\nmetadata = { keys = [\"x.foo\"] }")
+        .replace("[files]", &format!("[files]\n\"plugin.wasm\" = \"{}\"\n#", "0".repeat(64)))
+        + extra;
+    parse_manifest(src.as_bytes()).unwrap()
+}
+
+#[test]
+fn decoder_und_metadaten_grenzen() {
+    let ok = wasm_with(
+        "\n[[contributes.decoder]]\nmagic = [\"49492a00\"]\nrole = \"fallback\"\npriority = 50\nmodes = [\"half\", \"full\"]\n\n[[contributes.metadata]]\nkeys = [\"x.foo\"]\n",
+    );
+    assert_eq!(validate(&ok, Origin::Dev), Ok(()));
+    for bad in [
+        "\n[[contributes.decoder]]\nmagic = [\"zz\"]\nrole = \"fallback\"\n",
+        "\n[[contributes.decoder]]\nmagic = [\"00112233445566778899aabbccddeeff00\"]\nrole = \"fallback\"\n",
+        "\n[[contributes.decoder]]\nmagic = [\"00\",\"01\",\"02\",\"03\",\"04\",\"05\",\"06\",\"07\",\"08\"]\nrole = \"fallback\"\n",
+        "\n[[contributes.decoder]]\nmagic = [\"49492a00\"]\nrole = \"fallback\"\npriority = 101\n",
+        "\n[[contributes.decoder]]\nmagic = [\"49492a00\"]\nrole = \"fallback\"\nmodes = [\"turbo\"]\n",
+        "\n[[contributes.metadata]]\nkeys = [\"gps.lat\"]\n",
+    ] {
+        let m = wasm_with(bad);
+        assert!(
+            errs(&m, Origin::Dev)
+                .iter()
+                .any(|x| matches!(x, ManifestError::LimitExceeded(_))),
+            "{bad}"
+        );
+    }
+}
+
+#[test]
+fn files_darf_manifest_und_signatures_nicht_listen() {
+    for name in [
+        "Lumen-Plugin.toml",
+        "lumen-plugin.toml",
+        "signatures",
+        "SIGNATURES",
+    ] {
+        let mut m = example();
+        m.files.insert(name.into(), "0".repeat(64));
+        let e = errs(&m, Origin::Dev);
+        assert!(
+            e.iter().any(|x| matches!(
+                x,
+                ManifestError::Path {
+                    why: PathRejection::ReservedName,
+                    ..
+                }
+            )),
+            "{name}: {e:?}"
+        );
+    }
 }

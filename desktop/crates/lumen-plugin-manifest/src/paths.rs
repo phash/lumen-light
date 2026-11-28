@@ -14,6 +14,7 @@ pub enum PathRejection {
     TooLong,
     TooDeep,
     TooMany,
+    ReservedName,
 }
 
 pub const MAX_PATH_LEN: usize = 128;
