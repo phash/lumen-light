@@ -62,7 +62,10 @@ fn welten_vorhanden() {
 fn decoder_kann_kein_http() {
     let r = resolve();
     let i = imports(&r, "decoder-plugin");
-    assert!(i.iter().any(|n| n == "types"), "Basis-Importe fehlen: {i:?}");
+    assert!(
+        i.iter().any(|n| n == "types"),
+        "Basis-Importe fehlen: {i:?}"
+    );
     assert!(!i.iter().any(|n| n == "http" || n == "catalog"), "{i:?}");
 }
 
