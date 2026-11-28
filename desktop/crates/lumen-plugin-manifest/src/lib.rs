@@ -6,6 +6,7 @@ pub mod expr;
 pub mod ids;
 pub mod model;
 mod paths;
+pub mod signatures;
 pub mod text;
 mod validate;
 

@@ -25,6 +25,9 @@ serde = { version = "=1.0.229", features = ["derive"] }
 toml = "=1.2.3"
 semver = { version = "=1.0.28", features = ["serde"] }
 unicode-security = "=0.1.3"
+sha2 = "=0.11.2"
+ed25519-dalek = "=3.0.0"
+base64 = "=0.23.1"
 
 # Abhaengigkeiten auch im Debug-Profil optimiert bauen (Decode-Tests sonst traege).
 [profile.dev.package."*"]
