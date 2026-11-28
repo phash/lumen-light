@@ -227,7 +227,32 @@ fn check_caps(m: &Manifest, e: &mut Vec<ManifestError>) {
 
     // Jeder Beitrag braucht sein Recht.
     let c = &m.contributes;
-    let needs: [(&'static str, bool, &'static str, Option<&str>); 8] = [
+    // Beitragsarten je Stufe: Shader-Pakete beschreiben nur Panels, GPU-Ketten und Befehle.
+    if m.tier == Tier::Shader {
+        let code_only = [
+            ("decoder", c.decoder.is_empty()),
+            ("cpu-op", c.cpu_op.is_empty()),
+            ("encoder", c.encoder.is_empty()),
+            ("library-action", c.library_action.is_empty()),
+            ("import-hook", c.import_hook.is_empty()),
+            ("export-hook", c.export_hook.is_empty()),
+            ("metadata", c.metadata.is_empty()),
+            ("event", c.event.is_empty()),
+        ];
+        for (contribution, empty) in code_only {
+            if !empty {
+                e.push(ManifestError::ContributionNotForTier {
+                    contribution,
+                    tier: m.tier,
+                });
+            }
+        }
+    }
+    // Tastenkuerzel sind nur Vorschlaege (standardmaessig aus) und brauchen kein Recht;
+    // Untermenues unterhalb "Plugins -> Name" brauchen `ui.menu`.
+    let submenu = c.command.iter().any(|x| !x.menu.is_empty());
+    let needs: [(&'static str, bool, &'static str, Option<&str>); 9] = [
+        ("command menu", submenu, "ui.menu", None),
         (
             "gpu-chain",
             !c.gpu_chain.is_empty(),

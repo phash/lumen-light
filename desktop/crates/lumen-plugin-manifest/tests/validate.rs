@@ -323,3 +323,35 @@ fn unsichtbare_zeichen_ueberall() {
         );
     }
 }
+
+#[test]
+fn untermenue_braucht_ui_menu_und_beitragsart_passt_zur_stufe() {
+    let mut m = example();
+    m.contributes.command[0].menu = vec![lumen_plugin_manifest::LocalizedStr {
+        en: "Tools".into(),
+        de: None,
+    }];
+    let e = errs(&m, Origin::Dev);
+    assert!(
+        e.iter()
+            .any(|x| matches!(x, ManifestError::MissingCapability { cap: "ui.menu", .. })),
+        "{e:?}"
+    );
+
+    let src = lumen_plugin_manifest::spec_toml_block(common::SPEC, common::FIRST)
+        + "\n[[contributes.event]]\nnames = [\"export-done\"]\n";
+    let m = parse_manifest(src.as_bytes()).unwrap();
+    let e = errs(&m, Origin::Dev);
+    assert!(
+        e.iter().any(|x| matches!(
+            x,
+            ManifestError::ContributionNotForTier {
+                contribution: "event",
+                ..
+            }
+        )),
+        "{e:?}"
+    );
+    // Tastenkuerzel ist nur ein Vorschlag (standardmaessig aus) und braucht kein Recht.
+    assert_eq!(validate(&example(), Origin::Dev), Ok(()));
+}

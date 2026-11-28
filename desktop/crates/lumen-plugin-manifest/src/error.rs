@@ -56,6 +56,11 @@ pub enum ManifestError {
         contribution: &'static str,
         cap: &'static str,
     },
+    #[error("Beitrag `{contribution}` ist für Stufe {tier:?} nicht erlaubt")]
+    ContributionNotForTier {
+        contribution: &'static str,
+        tier: Tier,
+    },
     #[error("Recht `{0}` hat einen Wert in falscher Form")]
     BadCapabilityValue(String),
     #[error("Ausdruck in `{field}`: {err}")]
