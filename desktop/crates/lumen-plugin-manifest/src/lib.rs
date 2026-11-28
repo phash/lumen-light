@@ -2,6 +2,7 @@
 
 pub mod caps;
 mod error;
+pub mod expr;
 pub mod ids;
 pub mod model;
 mod paths;

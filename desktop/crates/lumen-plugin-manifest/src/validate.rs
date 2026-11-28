@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 
 use crate::ManifestError;
 use crate::caps::tiers_for;
+use crate::expr::{ExprContext, parse_expr, typecheck};
 use crate::ids::{RESERVED_PREFIXES, is_param_id, is_plugin_id, prefix};
 use crate::model::*;
 use crate::paths::{PathRejection, check_package_path, check_path_set};
@@ -300,6 +301,24 @@ fn check_contributes(m: &Manifest, e: &mut Vec<ManifestError>) {
     for r in refs {
         if !m.params.contains_key(r) {
             e.push(ManifestError::UnknownParamRef(r.to_string()));
+        }
+    }
+    let mut exprs: Vec<(&'static str, &str, ExprContext)> = Vec::new();
+    exprs.extend(
+        c.gpu_chain
+            .iter()
+            .filter_map(|g| g.skip_when.as_deref())
+            .map(|s| ("skip-when", s, ExprContext::SkipWhen)),
+    );
+    exprs.extend(
+        c.command
+            .iter()
+            .filter_map(|x| x.enabled_when.as_deref())
+            .map(|s| ("enabled-when", s, ExprContext::EnabledWhen)),
+    );
+    for (field, src, ctx) in exprs {
+        if let Err(err) = parse_expr(src).and_then(|x| typecheck(&x, &m.params, ctx)) {
+            e.push(ManifestError::Expr { field, err });
         }
     }
     let want = format!("{}.", m.id);

@@ -1,5 +1,6 @@
 use thiserror::Error;
 
+use crate::expr::ExprError;
 use crate::model::Tier;
 use crate::paths::PathRejection;
 
@@ -50,4 +51,6 @@ pub enum ManifestError {
     ShaderNotListed(String),
     #[error("Datei `{0}` fehlt in [files]")]
     FileNotListed(String),
+    #[error("Ausdruck in `{field}`: {err}")]
+    Expr { field: &'static str, err: ExprError },
 }
