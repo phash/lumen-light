@@ -354,7 +354,14 @@ fn check_params(m: &Manifest, e: &mut Vec<ManifestError>) {
         if !is_param_id(id) {
             e.push(ManifestError::InvalidParamId(id.clone()));
         }
-        let mut ok = true;
+        let default_num = match &p.default {
+            Some(ParamValue::Number(n)) => Some(*n),
+            _ => None,
+        };
+        let mut ok = [p.min, p.max, p.step, default_num]
+            .iter()
+            .flatten()
+            .all(|n| n.as_f64().is_finite());
         if let (Some(a), Some(b)) = (p.min, p.max) {
             ok &= a.as_f64() <= b.as_f64();
         }
@@ -455,10 +462,16 @@ pub const MAX_LOOP_BOUND: f64 = 4096.0;
 /// `workgroup-cache-radius` (16-KiB-Grenze).
 pub const MAX_WORKGROUP_CACHE_RADIUS: u32 = 8;
 
+fn within(x: Number, limit: f64) -> bool {
+    let v = x.as_f64();
+    v.is_finite() && v <= limit
+}
+
 fn check_limits(m: &Manifest, e: &mut Vec<ManifestError>) {
     let mut lim = |s: String| e.push(ManifestError::LimitExceeded(s));
     for (id, p) in &m.params {
-        if p.loop_bound == Some(true) && p.max.is_some_and(|x| x.as_f64() > MAX_LOOP_BOUND) {
+        // Fail closed: NaN und Unendlich gelten als Ueberschreitung.
+        if p.loop_bound == Some(true) && !p.max.is_some_and(|x| within(x, MAX_LOOP_BOUND)) {
             lim(format!("loop-bound-Param `{id}`: max > {MAX_LOOP_BOUND}"));
         }
     }
@@ -471,7 +484,7 @@ fn check_limits(m: &Manifest, e: &mut Vec<ManifestError>) {
                 if m.params
                     .get(p)
                     .and_then(|d| d.max)
-                    .is_none_or(|x| x.as_f64() > MAX_HALO_PX as f64) =>
+                    .is_none_or(|x| !within(x, MAX_HALO_PX as f64)) =>
             {
                 lim(format!(
                     "radius-px-Param `{p}` braucht max <= {MAX_HALO_PX}"

@@ -482,3 +482,32 @@ fn files_darf_manifest_und_signatures_nicht_listen() {
         );
     }
 }
+
+#[test]
+fn nan_und_unendlich_werden_abgelehnt() {
+    use lumen_plugin_manifest::Number;
+    for bad in [f64::NAN, f64::INFINITY, f64::NEG_INFINITY] {
+        let mut m = example();
+        m.params.get_mut("radius").unwrap().max = Some(Number::Float(bad));
+        let e = errs(&m, Origin::Dev);
+        assert!(
+            e.iter()
+                .any(|x| matches!(x, ManifestError::LimitExceeded(_))),
+            "radius max {bad}: {e:?}"
+        );
+        assert!(
+            e.contains(&ManifestError::ParamRange("radius".into())),
+            "{bad}: {e:?}"
+        );
+        let mut m = example();
+        m.params.get_mut("strength").unwrap().default = Some(
+            lumen_plugin_manifest::ParamValue::Number(Number::Float(bad)),
+        );
+        m.params.get_mut("strength").unwrap().min = None;
+        m.params.get_mut("strength").unwrap().max = None;
+        assert!(
+            errs(&m, Origin::Dev).contains(&ManifestError::ParamRange("strength".into())),
+            "default {bad}"
+        );
+    }
+}
