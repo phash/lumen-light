@@ -1,3 +1,17 @@
+Lumen · light is licensed under the GNU Affero General Public License,
+version 3 or (at your option) any later version, WITH an additional permission
+under section 7 for plugins: see LICENSES/AdditionRef-Lumen-Plugin-Exception.txt
+(SPDX: AGPL-3.0-or-later WITH AdditionRef-Lumen-Plugin-Exception).
+
+The plugin interface crates lumen-plugin-abi, lumen-plugin-api, lumen-plugin-sdk
+and lumen-plugin-manifest (under desktop/crates/) are licensed under MIT OR
+Apache-2.0 (LICENSES/MIT.txt, LICENSES/Apache-2.0.txt). All other crates,
+including lumen-plugin-host, follow the licence above.
+
+LibRaw (desktop/crates/libraw-sys/vendor/LibRaw) is used under LGPL-2.1.
+
+------------------------------------------------------------------------------
+
                     GNU AFFERO GENERAL PUBLIC LICENSE
                        Version 3, 19 November 2007
 

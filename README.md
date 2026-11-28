@@ -89,6 +89,8 @@ make -C desktop ci                   # fmt, clippy -D warnings, Tests
 - **ΔE-Prüfung umschaltbar:** `LUMEN_DE_MODE=mean|pixel|off`, Grenze über `LUMEN_DE_MAX`
   (Default 1,0, Mittelwert pro Bild).
 - **Fixtures Pflicht:** mit `LUMEN_REQUIRE_FIXTURES=1` schlagen Tests fehl statt zu überspringen.
+- **Plugin-Manifest-Schema** neu erzeugen: `LUMEN_BLESS=1 cargo test -p lumen-plugin-manifest --test schema`
+  (schreibt `schemas/lumen-plugin.schema.json`, CI vergleicht).
 - **Benchmark:** `lumen-bench --runs 5 --out bench.json <RAW-Dateien>`.
 
 ## Aufbau
@@ -108,7 +110,11 @@ docs/                 Konzept, Specs, Pläne, Roadmap
 
 ## Lizenz
 
-Lumen steht unter der [GNU AGPL-3.0](LICENSE).
+Lumen steht unter der [GNU AGPL-3.0](LICENSE) mit einer
+[Plugin-Ausnahme nach §7](LICENSES/AdditionRef-Lumen-Plugin-Exception.txt): Plugins, die nur
+über die Plugin-Schnittstelle mit Lumen sprechen, dürfen eine eigene Lizenz haben. Die
+Schnittstellen-Crates `lumen-plugin-abi`, `-api`, `-sdk` und `-manifest` stehen unter MIT OR
+Apache-2.0; der Host (`lumen-plugin-host`) gehört zur App.
 
 LibRaw ist doppelt lizenziert (LGPL-2.1 oder CDDL-1.0). Lumen nutzt LibRaw unter
 der **LGPL-2.1**. Der vollständige Quelltext von Lumen und LibRaw ist öffentlich,

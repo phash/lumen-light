@@ -1,0 +1,24 @@
+# cargo-deny: Lizenz- und Duplikat-Pruefung (`make deny`).
+[graph]
+targets = ["x86_64-unknown-linux-gnu", "x86_64-pc-windows-msvc"]
+
+[licenses]
+allow = [
+    "AGPL-3.0-or-later WITH AdditionRef-Lumen-Plugin-Exception",
+    "LGPL-2.1-only",
+    "MIT",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+]
+confidence-threshold = 0.9
+
+[licenses.private]
+ignore = false
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true

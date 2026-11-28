@@ -6,7 +6,7 @@ exclude = ["spikes"]
 
 [workspace.package]
 edition = "2024"
-license = "AGPL-3.0-or-later"
+license = "AGPL-3.0-or-later WITH AdditionRef-Lumen-Plugin-Exception"
 publish = false
 
 [workspace.dependencies]
