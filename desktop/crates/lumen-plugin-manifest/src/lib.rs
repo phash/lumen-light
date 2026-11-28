@@ -34,6 +34,14 @@ pub fn parse_manifest(bytes: &[u8]) -> Result<Manifest, ManifestError> {
     Ok(m)
 }
 
+/// JSON-Schema fuer `lumen-plugin.toml` (eingecheckt unter `schemas/`).
+pub fn json_schema() -> serde_json::Value {
+    let mut s =
+        serde_json::to_value(schemars::schema_for!(Manifest)).expect("Schema serialisierbar");
+    s["$id"] = "https://lumen.mr-development.de/schemas/lumen-plugin-1.json".into();
+    s
+}
+
 /// Liefert den ```toml-Block der Spec, dessen erste Zeile `first_line` ist
 /// (Sync-Tests zwischen Spec und Code).
 #[doc(hidden)]

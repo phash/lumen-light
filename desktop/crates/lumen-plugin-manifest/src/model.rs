@@ -3,9 +3,10 @@
 
 use std::collections::BTreeMap;
 
+use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Manifest {
     pub schema: u32,
@@ -13,6 +14,7 @@ pub struct Manifest {
     pub version: semver::Version,
     pub tier: Tier,
     pub api: String,
+    #[schemars(with = "String")]
     pub lumen: semver::VersionReq,
     pub license: Option<String>,
     pub source: Option<String>,
@@ -25,6 +27,7 @@ pub struct Manifest {
     #[serde(default)]
     pub artifacts: Artifacts,
     #[serde(default)]
+    #[schemars(with = "BTreeMap<String, serde_json::Value>")]
     pub capabilities: BTreeMap<String, toml::Value>,
     #[serde(default)]
     pub params: BTreeMap<String, ParamDecl>,
@@ -37,7 +40,7 @@ pub struct Manifest {
     pub activation: Option<Activation>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Tier {
     Shader,
@@ -45,21 +48,21 @@ pub enum Tier {
     Native,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LocalizedStr {
     pub en: String,
     pub de: Option<String>,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Artifacts {
     pub wasm: Option<String>,
     pub native: Option<NativeArtifacts>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct NativeArtifacts {
     #[serde(rename = "linux-x86_64")]
@@ -68,7 +71,7 @@ pub struct NativeArtifacts {
     pub windows_x86_64: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum ParamKind {
     Float,
@@ -79,7 +82,7 @@ pub enum ParamKind {
 }
 
 /// Zahl im Manifest; TOML trennt Ganzzahl und Gleitkomma.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum Number {
     Int(i64),
@@ -96,7 +99,7 @@ impl Number {
 }
 
 /// Standardwert eines Params (je nach `kind`).
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum ParamValue {
     Bool(bool),
@@ -105,7 +108,7 @@ pub enum ParamValue {
     Points(Vec<[f64; 2]>),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct ParamDecl {
     pub kind: ParamKind,
@@ -120,14 +123,14 @@ pub struct ParamDecl {
     pub log: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Choice {
     pub id: String,
     pub label: LocalizedStr,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Contributes {
     #[serde(default)]
@@ -154,7 +157,7 @@ pub struct Contributes {
     pub event: Vec<Event>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Panel {
     pub id: String,
@@ -167,14 +170,14 @@ pub struct Panel {
     pub describe_affects: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum LayoutItem {
     Param(String),
     Section(LayoutSection),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LayoutSection {
     pub section: String,
@@ -182,14 +185,14 @@ pub struct LayoutSection {
     pub items: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum Hook {
     Source,
     Output,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct GpuChain {
     pub hook: Hook,
@@ -198,7 +201,7 @@ pub struct GpuChain {
     pub pass: Vec<Pass>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum PassKind {
     Fragment,
@@ -206,14 +209,14 @@ pub enum PassKind {
 }
 
 /// Halo in Pixeln: Konstante oder Param-ID.
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(untagged)]
 pub enum RadiusRef {
     Const(u32),
     Param(String),
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Pass {
     pub name: String,
@@ -228,7 +231,7 @@ pub struct Pass {
     pub workgroup_cache_radius: Option<u32>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum CommandContext {
     Library,
@@ -236,7 +239,7 @@ pub enum CommandContext {
     Both,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Command {
     pub id: String,
@@ -248,14 +251,14 @@ pub struct Command {
     pub enabled_when: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum DecoderRole {
     Fallback,
     Primary,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct Decoder {
     #[serde(default)]
@@ -270,14 +273,14 @@ pub struct Decoder {
     pub maker: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(rename_all = "kebab-case")]
 pub enum CpuSlot {
     Bake,
     ExportPreEncode,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CpuOp {
     pub id: String,
@@ -285,7 +288,7 @@ pub struct CpuOp {
     pub title: LocalizedStr,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Encoder {
     pub id: String,
@@ -297,27 +300,27 @@ pub struct Encoder {
     pub params: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct LibraryAction {
     pub command: String,
     pub selection: Option<Selection>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Selection {
     pub min: u32,
     pub max: u32,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ImportHook {
     pub extensions: Option<Vec<String>>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ExportHook {
     #[serde(default)]
@@ -325,7 +328,7 @@ pub struct ExportHook {
     pub title: Option<LocalizedStr>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Metadata {
     pub keys: Vec<String>,
@@ -333,27 +336,27 @@ pub struct Metadata {
     pub filterable: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Event {
     pub names: Vec<String>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct NativeSection {
     pub memory_mib: Option<u32>,
     pub uses_openmp: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields, rename_all = "kebab-case")]
 pub struct EditStateSection {
     pub param_version: u32,
     pub default_enabled_in_batch: Option<bool>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Migrate {
     pub from: u32,
@@ -363,7 +366,7 @@ pub struct Migrate {
     pub scale: BTreeMap<String, f64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema)]
 #[serde(deny_unknown_fields)]
 pub struct Activation {
     pub on: Vec<String>,
