@@ -1,0 +1,31 @@
+SPDX-License-Identifier: AdditionRef-Lumen-Plugin-Exception
+
+Lumen Plugin Exception
+Copyright (C) 2026 Manuel Rödig
+
+Zusätzliche Erlaubnis nach GNU AGPL Version 3, Abschnitt 7
+
+Wenn Sie dieses Programm oder ein darauf basierendes Werk mit einem Plugin
+kombinieren, das ausschließlich über die Lumen-Plugin-Schnittstelle (die in
+lumen-plugin-abi, im WIT-Paket lumen:plugin und im dokumentierten
+WGSL-Pass-Vertrag definierten Schnittstellen) mit dem Programm interagiert,
+erteilen die Lizenzgeber die zusätzliche Erlaubnis, das resultierende Werk
+weiterzugeben; das Plugin darf unter Bedingungen Ihrer Wahl verbreitet werden,
+sofern es außer der Plugin-Schnittstelle keinen Code des Programms enthält.
+Diese Erlaubnis gilt nicht für veränderte Fassungen des Programms, die die
+Plugin-Schnittstelle so ändern, dass Interna offengelegt werden.
+
+------------------------------------------------------------------------------
+
+English working translation (in case of doubt, the German text above prevails)
+
+Additional permission under GNU AGPL version 3, section 7
+
+If you combine this program, or a work based on it, with a plugin that
+interacts with the program exclusively through the Lumen plugin interface (the
+interfaces defined in lumen-plugin-abi, in the WIT package lumen:plugin and in
+the documented WGSL pass contract), the licensors grant you additional
+permission to convey the resulting work; the plugin may be distributed under
+terms of your choice, provided it contains no code of the program other than
+the plugin interface. This permission does not apply to modified versions of
+the program that change the plugin interface so that internals are exposed.

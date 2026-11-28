@@ -93,8 +93,10 @@ Wenn ein Ziel verfehlt wird, ist das ein Fehler, kein Detail.
   Windows-Funktionstests über `tb-win`. Die VM hat keine GPU, wgpu läuft
   dort über DX12-WARP: Das taugt für Funktion, nicht für Performance.
 - **TDD und Clean Code** nach den MRD-Conventions.
-- **Lizenzen**: LibRaw ist dual LGPL-2.1/CDDL-1.0. Wir nutzen es unter CDDL
-  (erlaubt statisches Linken, Änderungen an LibRaw-Dateien bleiben offen).
+- **Lizenzen**: LibRaw ist dual LGPL-2.1/CDDL-1.0. Wir nutzen es unter
+  **LGPL-2.1** (Entscheidung Manuel 2026-11-27): CDDL ist laut FSF GPL-inkompatibel.
+  Statisches Linken ist zulaessig, weil der komplette Quelltext offen ist und
+  Nutzer neu linken koennen.
   darktable/RawTherapee/RapidRAW (GPL/AGPL): nur Ideen und veröffentlichte
   Algorithmen, kein Code.
 - **Kamera und Format**: Nikon Z6III, NEF. Die Z6III kann NEF verlustfrei

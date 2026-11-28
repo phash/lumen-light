@@ -161,6 +161,12 @@ Spec `docs/superpowers/specs/2026-11-27-desktop-native-rust-design.md`, Spike-Er
 - **testbox-Voraussetzungen**: `libclang-common-21-dev`, `clang-21`/`lld-21`/`llvm-21`, `cargo-xwin`,
   Target `x86_64-pc-windows-msvc`, User in `render`/`video` (sonst faellt wgpu still auf lavapipe
   zurueck), pnpm in `~/.local/bin`.
+- **Plugin-Crates** (`lumen-plugin-manifest`, `lumen-plugin-api`, MIT OR Apache-2.0, ohne Host): Sync-Tests
+  lesen Codeblöcke direkt aus `docs/superpowers/specs/2026-11-28-plugin-system-design.md` (Beispiel-Manifest,
+  `SIGNATURES`, WIT). Spec-Beispiel ändern bricht Tests: Spec, Code und `wit/since_v0.1.0/lumen-plugin.wit`
+  zusammen ändern. Manifest-Schema `schemas/lumen-plugin.schema.json` per
+  `LUMEN_BLESS=1 cargo test -p lumen-plugin-manifest --test schema`. `make -C desktop deny` = cargo-deny
+  (Lizenzen inkl. `AdditionRef-Lumen-Plugin-Exception`), auf testbox installiert.
 - **Unter Windows sind bindgen-C-Enums `i32`** (Linux `u32`) -> bindgen-Typalias nutzen, nicht `u32`.
 - **egui-Gotchas**: KWin schickt bei Bildschirm aus/DPMS keine Frame-Callbacks -> eframe ruft `ui()`
   nicht mehr auf; Hintergrundarbeit nie an `ui()` haengen. Entwicklungs-Ausgabe als `Rgba8Unorm`

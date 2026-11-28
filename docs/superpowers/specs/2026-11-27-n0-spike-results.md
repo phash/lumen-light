@@ -106,7 +106,7 @@ rot nennen, obwohl kein Pixel um mehr als eine 8-bit-Stufe abweicht.
 
 ## S3 · LibRaw nativ
 
-LibRaw 0.22.3 (Submodule, CDDL), statisch per `cc`, ohne zlib/libjpeg/LCMS.
+LibRaw 0.22.3 (Submodule, LGPL-2.1), statisch per `cc`, ohne zlib/libjpeg/LCMS.
 Einstellungen wie `RAW_DECODE_SETTINGS`. libraw-wasm im Web ist 0.22.1.
 
 **Parität zu libraw-wasm** (`box_downscale(decode(Full), 512)` gegen `source.rgb16` der Goldens):
@@ -243,9 +243,9 @@ Luft bis 8 ms.
 3. **Z6III-Dateien**: Bestätigen, dass `_DSC8548/8549` verlustfrei sind, und
    je ein HE- und HE★-NEF liefern. Bis dahin ist S3 für HE/HE★ offen.
 4. **Fuji/X-Trans** als bekannte Einschränkung (8,7 s voll) akzeptieren?
-5. **CI (Ruling R5)**: `ci.sh` liegt im Repo-Root. Branch pushen und
+5. **CI (Ruling R5)** — erledigt: PR #66, tb-ci gruen: `ci.sh` liegt im Repo-Root. Branch pushen und
    `tb-ci add phash/lumen-light` erst nach Manuels Freigabe.
-6. **Lizenz LibRaw (bis N10 entscheiden)**: CDDL-1.0 oder LGPL-2.1 für das statisch
+6. **Lizenz LibRaw — entschieden 2026-11-27: LGPL-2.1.** Urspruengliche Frage: CDDL-1.0 oder LGPL-2.1 für das statisch
    gelinkte LibRaw in einem AGPL-3.0-Binary? Laut FSF ist die CDDL GPL-inkompatibel;
    `libraw-sys` deklariert deshalb `LGPL-2.1-only OR CDDL-1.0`, der Rest des Workspace
    `AGPL-3.0-or-later`.
@@ -325,3 +325,20 @@ Thread-Konkurrenz mit Thumbnail-Workern.
 `LUMEN_DE_MODE=mean` (Default, Mittel pro Bild+Set), `pixel` (jedes Pixel), `off` (nur
 ausgeben); `LUMEN_DE_MAX` setzt die Grenze (Default 1,0). Stand: `mean` gruen,
 `pixel` rot (26 von 48 Sets, Einzelpixel bis 1,25, alle Mittel <= 0,08).
+
+### Nachtrag: OpenMP unter Windows
+
+clang-cl `/openmp`, gelinkt gegen die LLVM-`libomp.dll` (Apache-2.0, conda-forge
+`llvm-openmp` 23.1.6) statt Microsofts `libomp140.x86_64.dll` (nur Debug-Redist, nicht
+weitergebbar). `LUMEN_OPENMP=1 LUMEN_LIBOMP_DIR=<…/Library/lib> desktop/scripts/build-windows.sh`
+legt `libomp.dll` neben die exe. Win11-VM (testbox, DX12/WARP): alle 8 Testbinaries gruen,
+voller Decode D7100 5 414 -> 1 809 ms, A7M3 2 482 -> 1 893 ms (VM, nur relativ aussagekraeftig).
+
+### Nachtrag: Z6III HE/HE★
+
+raw.pixls.us hat CC0-Samples (IDs 7811 HE, 7815 HE★, 7819 lossless). LibRaw 0.22.3
+dekodiert HE/HE★ **nicht** (`Unsupported file format`), nur die eingebettete Vorschau.
+Lossless: half 416 ms, voll 810 ms (680M, OpenMP).
+Entscheidung Manuel 2026-11-28: Er fotografiert verlustfrei komprimiert (`NEFCompression=3`,
+Makernote-Tag 0x51) und bleibt dabei. HE/HE★ ist kein Ziel fuer v1; Kandidat fuer ein
+spaeteres Decoder-Plugin.

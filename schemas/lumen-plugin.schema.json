@@ -1,0 +1,1034 @@
+{
+  "$defs": {
+    "Activation": {
+      "additionalProperties": false,
+      "properties": {
+        "on": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "on"
+      ],
+      "type": "object"
+    },
+    "Artifacts": {
+      "additionalProperties": false,
+      "properties": {
+        "native": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/NativeArtifacts"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "wasm": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Choice": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "label": {
+          "$ref": "#/$defs/LocalizedStr"
+        }
+      },
+      "required": [
+        "id",
+        "label"
+      ],
+      "type": "object"
+    },
+    "Command": {
+      "additionalProperties": false,
+      "properties": {
+        "context": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CommandContext"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "enabled-when": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "key": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "menu": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LocalizedStr"
+          },
+          "type": "array"
+        },
+        "title": {
+          "$ref": "#/$defs/LocalizedStr"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "type": "object"
+    },
+    "CommandContext": {
+      "enum": [
+        "library",
+        "editor",
+        "both"
+      ],
+      "type": "string"
+    },
+    "Contributes": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Command"
+          },
+          "type": "array"
+        },
+        "cpu-op": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/CpuOp"
+          },
+          "type": "array"
+        },
+        "decoder": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Decoder"
+          },
+          "type": "array"
+        },
+        "encoder": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Encoder"
+          },
+          "type": "array"
+        },
+        "event": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Event"
+          },
+          "type": "array"
+        },
+        "export-hook": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ExportHook"
+          },
+          "type": "array"
+        },
+        "gpu-chain": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/GpuChain"
+          },
+          "type": "array"
+        },
+        "import-hook": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/ImportHook"
+          },
+          "type": "array"
+        },
+        "library-action": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LibraryAction"
+          },
+          "type": "array"
+        },
+        "metadata": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Metadata"
+          },
+          "type": "array"
+        },
+        "panel": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Panel"
+          },
+          "type": "array"
+        }
+      },
+      "type": "object"
+    },
+    "CpuOp": {
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "slot": {
+          "$ref": "#/$defs/CpuSlot"
+        },
+        "title": {
+          "$ref": "#/$defs/LocalizedStr"
+        }
+      },
+      "required": [
+        "id",
+        "slot",
+        "title"
+      ],
+      "type": "object"
+    },
+    "CpuSlot": {
+      "enum": [
+        "bake",
+        "export-pre-encode"
+      ],
+      "type": "string"
+    },
+    "Decoder": {
+      "additionalProperties": false,
+      "properties": {
+        "embedded-preview": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "extensions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "magic": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "maker": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "modes": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "priority": {
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "role": {
+          "$ref": "#/$defs/DecoderRole"
+        }
+      },
+      "required": [
+        "role"
+      ],
+      "type": "object"
+    },
+    "DecoderRole": {
+      "enum": [
+        "fallback",
+        "primary"
+      ],
+      "type": "string"
+    },
+    "EditStateSection": {
+      "additionalProperties": false,
+      "properties": {
+        "default-enabled-in-batch": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "param-version": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "param-version"
+      ],
+      "type": "object"
+    },
+    "Encoder": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "type": "string"
+        },
+        "mime": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "params": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "$ref": "#/$defs/LocalizedStr"
+        }
+      },
+      "required": [
+        "id",
+        "title"
+      ],
+      "type": "object"
+    },
+    "Event": {
+      "additionalProperties": false,
+      "properties": {
+        "names": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "names"
+      ],
+      "type": "object"
+    },
+    "ExportHook": {
+      "additionalProperties": false,
+      "properties": {
+        "formats": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "title": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/LocalizedStr"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "GpuChain": {
+      "additionalProperties": false,
+      "properties": {
+        "hook": {
+          "$ref": "#/$defs/Hook"
+        },
+        "pass": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/Pass"
+          },
+          "type": "array"
+        },
+        "skip-when": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "hook"
+      ],
+      "type": "object"
+    },
+    "Hook": {
+      "enum": [
+        "source",
+        "output"
+      ],
+      "type": "string"
+    },
+    "ImportHook": {
+      "additionalProperties": false,
+      "properties": {
+        "extensions": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "LayoutItem": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "$ref": "#/$defs/LayoutSection"
+        }
+      ]
+    },
+    "LayoutSection": {
+      "additionalProperties": false,
+      "properties": {
+        "collapsed": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "items": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "section": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "section",
+        "items"
+      ],
+      "type": "object"
+    },
+    "LibraryAction": {
+      "additionalProperties": false,
+      "properties": {
+        "command": {
+          "type": "string"
+        },
+        "selection": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Selection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "command"
+      ],
+      "type": "object"
+    },
+    "LocalizedStr": {
+      "additionalProperties": false,
+      "properties": {
+        "de": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "en": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "en"
+      ],
+      "type": "object"
+    },
+    "Metadata": {
+      "additionalProperties": false,
+      "properties": {
+        "badge": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "filterable": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "keys": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "keys"
+      ],
+      "type": "object"
+    },
+    "Migrate": {
+      "additionalProperties": false,
+      "properties": {
+        "from": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "rename": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {},
+          "type": "object"
+        },
+        "scale": {
+          "additionalProperties": {
+            "format": "double",
+            "type": "number"
+          },
+          "default": {},
+          "type": "object"
+        }
+      },
+      "required": [
+        "from"
+      ],
+      "type": "object"
+    },
+    "NativeArtifacts": {
+      "additionalProperties": false,
+      "properties": {
+        "linux-x86_64": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "windows-x86_64": {
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "NativeSection": {
+      "additionalProperties": false,
+      "properties": {
+        "memory-mib": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "uses-openmp": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Number": {
+      "anyOf": [
+        {
+          "format": "int64",
+          "type": "integer"
+        },
+        {
+          "format": "double",
+          "type": "number"
+        }
+      ],
+      "description": "Zahl im Manifest; TOML trennt Ganzzahl und Gleitkomma."
+    },
+    "Panel": {
+      "additionalProperties": false,
+      "properties": {
+        "after": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "describe-affects": {
+          "items": {
+            "type": "string"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "id": {
+          "type": "string"
+        },
+        "layout": {
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/LayoutItem"
+          },
+          "type": "array"
+        },
+        "location": {
+          "type": "string"
+        },
+        "notify-on-change": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "title": {
+          "$ref": "#/$defs/LocalizedStr"
+        }
+      },
+      "required": [
+        "id",
+        "location",
+        "title"
+      ],
+      "type": "object"
+    },
+    "ParamDecl": {
+      "additionalProperties": false,
+      "properties": {
+        "choices": {
+          "items": {
+            "$ref": "#/$defs/Choice"
+          },
+          "type": [
+            "array",
+            "null"
+          ]
+        },
+        "default": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ParamValue"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "kind": {
+          "$ref": "#/$defs/ParamKind"
+        },
+        "label": {
+          "$ref": "#/$defs/LocalizedStr"
+        },
+        "log": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "loop-bound": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "max": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "min": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "points-max": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "step": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Number"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "kind",
+        "label"
+      ],
+      "type": "object"
+    },
+    "ParamKind": {
+      "enum": [
+        "float",
+        "int",
+        "bool",
+        "choice",
+        "curve"
+      ],
+      "type": "string"
+    },
+    "ParamValue": {
+      "anyOf": [
+        {
+          "type": "boolean"
+        },
+        {
+          "$ref": "#/$defs/Number"
+        },
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "items": {
+              "format": "double",
+              "type": "number"
+            },
+            "maxItems": 2,
+            "minItems": 2,
+            "type": "array"
+          },
+          "type": "array"
+        }
+      ],
+      "description": "Standardwert eines Params (je nach `kind`)."
+    },
+    "Pass": {
+      "additionalProperties": false,
+      "properties": {
+        "entry": {
+          "type": "string"
+        },
+        "inputs": {
+          "default": [],
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "kind": {
+          "$ref": "#/$defs/PassKind"
+        },
+        "name": {
+          "type": "string"
+        },
+        "radius-px": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RadiusRef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "save-as": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "scale": {
+          "format": "double",
+          "type": [
+            "number",
+            "null"
+          ]
+        },
+        "shader": {
+          "type": "string"
+        },
+        "workgroup-cache-radius": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "kind",
+        "shader",
+        "entry"
+      ],
+      "type": "object"
+    },
+    "PassKind": {
+      "enum": [
+        "fragment",
+        "compute"
+      ],
+      "type": "string"
+    },
+    "RadiusRef": {
+      "anyOf": [
+        {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        {
+          "type": "string"
+        }
+      ],
+      "description": "Halo in Pixeln: Konstante oder Param-ID."
+    },
+    "Selection": {
+      "additionalProperties": false,
+      "properties": {
+        "max": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "min": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "min",
+        "max"
+      ],
+      "type": "object"
+    },
+    "SemVer": {
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "type": "string"
+    },
+    "Tier": {
+      "enum": [
+        "shader",
+        "wasm",
+        "native"
+      ],
+      "type": "string"
+    }
+  },
+  "$id": "https://lumen.mr-development.de/schemas/lumen-plugin-1.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "properties": {
+    "activation": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/Activation"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "api": {
+      "type": "string"
+    },
+    "api-experimental": {
+      "default": [],
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "artifacts": {
+      "$ref": "#/$defs/Artifacts",
+      "default": {
+        "native": null,
+        "wasm": null
+      }
+    },
+    "capabilities": {
+      "additionalProperties": true,
+      "default": {},
+      "type": "object"
+    },
+    "contributes": {
+      "$ref": "#/$defs/Contributes",
+      "default": {
+        "command": [],
+        "cpu-op": [],
+        "decoder": [],
+        "encoder": [],
+        "event": [],
+        "export-hook": [],
+        "gpu-chain": [],
+        "import-hook": [],
+        "library-action": [],
+        "metadata": [],
+        "panel": []
+      }
+    },
+    "description": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/LocalizedStr"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "edit-state": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/EditStateSection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "files": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "id": {
+      "type": "string"
+    },
+    "license": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "lumen": {
+      "type": "string"
+    },
+    "migrate": {
+      "default": [],
+      "items": {
+        "$ref": "#/$defs/Migrate"
+      },
+      "type": "array"
+    },
+    "name": {
+      "$ref": "#/$defs/LocalizedStr"
+    },
+    "native": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/NativeSection"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "params": {
+      "additionalProperties": {
+        "$ref": "#/$defs/ParamDecl"
+      },
+      "default": {},
+      "type": "object"
+    },
+    "schema": {
+      "format": "uint32",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "source": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "tier": {
+      "$ref": "#/$defs/Tier"
+    },
+    "version": {
+      "$ref": "#/$defs/SemVer"
+    }
+  },
+  "required": [
+    "schema",
+    "id",
+    "version",
+    "tier",
+    "api",
+    "lumen",
+    "name"
+  ],
+  "title": "Manifest",
+  "type": "object"
+}

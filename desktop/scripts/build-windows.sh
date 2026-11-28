@@ -28,14 +28,25 @@ command -v cargo-xwin >/dev/null || { echo "cargo-xwin fehlt" >&2; exit 1; }
 
 cd "$DESKTOP"
 
+# LUMEN_OPENMP=1: LibRaw mit OpenMP. Braucht LUMEN_LIBOMP_DIR = Ordner mit der
+# LLVM-libomp.lib (z. B. conda-forge llvm-openmp: Library/lib); libomp.dll liegt
+# daneben in ../bin und wird mit ausgeliefert.
+FEATURES=()
+if [ "${LUMEN_OPENMP:-0}" = 1 ]; then
+    [ -f "${LUMEN_LIBOMP_DIR:-}/libomp.lib" ] || { echo "LUMEN_LIBOMP_DIR/libomp.lib fehlt" >&2; exit 1; }
+    [ -f "$LUMEN_LIBOMP_DIR/../bin/libomp.dll" ] || { echo "libomp.dll neben LUMEN_LIBOMP_DIR fehlt" >&2; exit 1; }
+    export LUMEN_LIBOMP_DIR
+    FEATURES=(--features lumen-raw/openmp)
+fi
+
 echo "== lumen-bench (release)"
-cargo xwin build --release --target "$TARGET" -p lumen-bench
+cargo xwin build --release --target "$TARGET" -p lumen-bench "${FEATURES[@]}"
 
 echo "== Testbinaries lumen-raw + lumen-gpu"
 # Erst in eine Datei, damit ein Build-Fehler das Skript abbricht (set -e).
 JSON="$(mktemp)"
 trap 'rm -f "$JSON"' EXIT
-cargo xwin test --no-run --target "$TARGET" -p lumen-raw -p lumen-gpu \
+cargo xwin test --no-run --target "$TARGET" -p lumen-raw -p lumen-gpu "${FEATURES[@]}" \
     --message-format=json >"$JSON"
 mapfile -t TEST_EXES < <(
     python3 -c '
@@ -58,6 +69,9 @@ rm -rf "$SHARE/bin" "$SHARE/repo" "$SHARE/install-result.txt" "$SHARE/results"
 mkdir -p "$SHARE/bin" "$SHARE/repo/tests-fixtures/raw-samples" "$SHARE/repo/tests-fixtures/test-samples"
 
 cp "target/$TARGET/release/lumen-bench.exe" "$SHARE/bin/"
+if [ "${#FEATURES[@]}" -gt 0 ]; then
+    cp "$LUMEN_LIBOMP_DIR/../bin/libomp.dll" "$SHARE/bin/"
+fi
 for line in "${TEST_EXES[@]}"; do
     # Eindeutiger Name je Crate + Testziel (errors.rs gibt es zweimal).
     name="${line%%$'\t'*}"
