@@ -1,0 +1,209 @@
+package lumen:plugin@0.1.0;
+
+interface types {
+  type image-id = u64;
+  record dims { width: u32, height: u32 }
+  record rect { x: u32, y: u32, width: u32, height: u32 }
+  enum pixel-format { rgb16, rgba16f, rgba32f, bayer16 }
+  variant param-value { float(f32), int(s32), boolean(bool), color(tuple<f32, f32, f32>),
+                        choice(u32), curve(list<tuple<f32, f32>>) }
+  record param { id: string, value: param-value }
+  variant plugin-error { invalid-input(string), unsupported(string), cancelled, internal(string) } // Text ≤ 1 KiB
+  record localized { en: string, de: option<string> }   // = LocalizedStr
+}
+
+interface log { enum level { debug, info, warn, error } emit: func(l: level, msg: string); }
+
+interface task {                                  // in jeden langen Aufruf gereicht
+  resource ctx {
+    progress: func(done: u64, total: u64);        // total konstant je Aufruf, done steigend
+    is-cancelled: func() -> bool;
+  }
+}
+
+interface image {                                 // Host-eigen; alle Handles enden mit dem Aufruf
+  use types.{dims, rect, pixel-format, plugin-error};
+  resource image-src {                            // nur lesen
+    dims: func() -> dims;
+    format: func() -> pixel-format;
+    read-tile: func(r: rect) -> result<list<f32>, plugin-error>;      // r ≤ 2048² und ≤ 64 MiB
+    read-tile-u16: func(r: rect) -> result<list<u16>, plugin-error>;  // rgb16/bayer16; rgba16f als Halbfloat-Bits
+  }
+  resource image-dst {                            // nur schreiben
+    dims: func() -> dims;
+    format: func() -> pixel-format;
+    write-tile: func(r: rect, px: list<f32>) -> result<_, plugin-error>;
+    write-tile-u16: func(r: rect, px: list<u16>) -> result<_, plugin-error>;
+    write-rows-u16: func(y: u32, px: list<u16>) -> result<_, plugin-error>; // Zeilenstrom, ≤ 64 MiB je Aufruf
+  }
+  resource image-sink {                           // einmal je Aufruf
+    alloc: func(d: dims, f: pixel-format) -> result<image-dst, plugin-error>;
+  }
+  resource row-source {                           // Encoder-Eingang
+    dims: func() -> dims;
+    format: func() -> pixel-format;
+    next-rows: func(max-rows: u32) -> list<u16>;  // leer = Ende
+  }
+}
+
+interface files {                                 // nur Ressourcentypen, keine Funktion liefert ein Handle;
+  use types.{plugin-error};                       // Handles kommen nur aus Host-Aufrufen (Basis jeder Welt)
+  resource bytes-source {                         // Lesesicht auf Dateibytes, nie ein Pfad
+    len: func() -> u64;
+    read: func(offset: u64, len: u32) -> list<u8>; // len ≤ 16 MiB
+    file-name: func() -> string;                  // nur Basename
+  }
+  resource byte-sink { write: func(b: list<u8>) -> result<_, plugin-error>; } // ≤ 16 MiB je Aufruf
+}
+
+interface params-migrate {
+  use types.{param, plugin-error};
+  migrate: func(from-v: u32, p: list<param>) -> result<list<param>, plugin-error>;
+}
+
+interface user-action { resource token; }         // undurchsichtig, nur vom Host geprägt
+
+interface settings { get: func(key: string) -> option<string>; set: func(key: string, v: string); }
+
+interface catalog {                               // nur mit catalog.*; nicht gewährte Felder = none
+  use types.{image-id, plugin-error};
+  enum flag { none, pick, reject }
+  record image-info { id: image-id, file-name: option<string>, rating: option<u8>,
+                      color-label: option<string>, flag: option<flag>, camera: option<string>,
+                      lens: option<string>, capture-time: option<string>,
+                      location: option<tuple<f64, f64>> }   // nur mit catalog.read.location
+  get: func(ids: list<image-id>) -> list<image-info>;
+  set-rating: func(id: image-id, r: u8) -> result<_, plugin-error>;            // rückgängig machbar
+  set-label: func(id: image-id, l: option<string>) -> result<_, plugin-error>;
+  set-flag: func(id: image-id, f: flag) -> result<_, plugin-error>;
+  get-plugin-meta: func(id: image-id, key: string) -> option<string>;          // nur eigene Schlüssel
+  set-plugin-meta: func(id: image-id, key: string, v: string) -> result<_, plugin-error>;
+}
+
+interface edit-own {                              // edit.write own
+  use types.{image-id, param, plugin-error};
+  get: func(id: image-id) -> list<param>;
+  set: func(id: image-id, p: list<param>) -> result<_, plugin-error>;  // gegen Deklaration geprüft
+}
+
+interface edit-adjustments {                      // edit.write adjustments
+  use types.{image-id, plugin-error};
+  set-adjustment: func(id: image-id, key: string, v: f32) -> result<_, plugin-error>;
+}
+
+interface originals {                             // originals.read
+  use types.{image-id, plugin-error}; use files.{bytes-source}; use user-action.{token};
+  open: func(t: borrow<token>, id: image-id) -> result<bytes-source, plugin-error>;
+}
+
+interface fs-pick {                               // fs.pick
+  use types.{plugin-error}; use files.{bytes-source, byte-sink}; use user-action.{token};
+  resource dir-handle { create: func(file-name: string) -> result<byte-sink, plugin-error>; } // nur neue Dateien
+  pick-read: func(t: borrow<token>, filter: list<string>) -> option<bytes-source>;
+  pick-write: func(t: borrow<token>, suggested-name: string, filter: list<string>) -> option<byte-sink>;
+  pick-dir: func(t: borrow<token>) -> option<dir-handle>;
+}
+
+interface clipboard {                             // clipboard.write
+  use user-action.{token};
+  write-text: func(t: borrow<token>, s: string) -> result<_, string>;  // ≤ 64 KiB
+}
+
+interface http {                                  // nur mit `net`
+  use user-action.{token};
+  record request { method: string, url: string, headers: list<tuple<string, string>>, body: option<list<u8>> }
+  record response { status: u16, headers: list<tuple<string, string>>, body: list<u8> }
+  fetch: func(t: borrow<token>, r: request) -> result<response, string>;
+}
+
+interface ui-types {                              // = Rust Widget/Node
+  use types.{localized};
+  enum choice-style { combo, segmented }
+  record slider-w { param: string, log: bool }
+  record choice-w { param: string, style: choice-style }
+  record button-w { label: localized, command: string }
+  record section-w { title: localized, collapsible: bool, collapsed: bool }
+  variant widget { slider(slider-w), stepper(string), checkbox(string), choice(choice-w),
+                   color(string), curve(string), button(button-w), label(localized), separator,
+                   section(section-w) }
+  record node { parent: option<u32>, w: widget, visible: bool, enabled: bool }
+}
+
+interface events {
+  use types.{image-id};
+  variant event { image-opened(image-id), selection-changed(tuple<u32, option<list<image-id>>>),
+                  edit-changed(image-id), import-done(u32), export-done(u32), app-start, app-stop }
+}
+
+world decoder-plugin {                            // raw.decode
+  import log; import task; import image; import files;
+  export params-migrate;
+  export decoder: interface {
+    use types.{plugin-error}; use image.{image-sink}; use files.{bytes-source}; use task.{ctx};
+    enum mode { half, full }                      // eingebettete Vorschau nur über embedded-preview
+    enum claim { no, fallback, primary }
+    variant compression { lossless, lossy, uncompressed, high-efficiency, high-efficiency-star, unknown(u16) }
+    record raw-meta { make: string, model: string, iso: option<u32>, exposure: option<f32>,
+                      orientation: u8, wb: tuple<f32, f32, f32>, compression: option<compression>,
+                      extra: list<tuple<string, string>> }          // vom Host gefiltert
+    probe: func(head: list<u8>, ext: string) -> claim;
+    embedded-preview: func(src: borrow<bytes-source>) -> result<option<list<u8>>, plugin-error>;
+    decode: func(src: borrow<bytes-source>, m: mode, out: borrow<image-sink>, c: borrow<ctx>)
+            -> result<raw-meta, plugin-error>;   // RGB16 nach Ausgabevertrag
+  }
+}
+
+world metadata-plugin {                           // metadata
+  import log; import task; import files;
+  export metadata: interface {
+    use types.{plugin-error}; use files.{bytes-source}; use task.{ctx};
+    read-meta: func(src: borrow<bytes-source>, c: borrow<ctx>) -> result<list<tuple<string, string>>, plugin-error>;
+  }
+}
+
+world image-op-plugin {                           // image.process cpu-op
+  import log; import task; import image;
+  export params-migrate;
+  export cpu-op: interface {
+    use types.{param, rect, plugin-error}; use image.{image-src, image-dst}; use task.{ctx};
+    record tile-plan { tile-size: u32, halo: u32, parallel-safe: bool }
+    plan: func(p: list<param>) -> tile-plan;
+    process-tile: func(src: borrow<image-src>, dst: borrow<image-dst>, tile: rect,
+                       p: list<param>, c: borrow<ctx>) -> result<_, plugin-error>;
+  }
+}
+
+world encoder-plugin {                            // export.encoder
+  import log; import task; import image; import files;
+  export encoder: interface {
+    use types.{param, plugin-error}; use image.{row-source}; use files.{byte-sink}; use task.{ctx};
+    encode: func(rows: borrow<row-source>, icc: list<u8>, exif: list<u8>, opts: list<param>,
+                 out: borrow<byte-sink>, c: borrow<ctx>) -> result<_, plugin-error>;
+  }
+}
+
+world workflow-plugin {                           // Befehle, Panels, Hooks
+  // Basis (immer gelinkt): types, log, task, settings, user-action, events, ui-types, files
+  import log; import task; import settings; import user-action; import events; import ui-types;
+  import files;
+  // optional: als import deklariert, damit der Gast Bindings erzeugen kann; gelinkt nur bei
+  // Grant. wit-component entfernt nicht genutzte Importe, die Prüfung läuft gegen die
+  // verbliebene Import-Liste (siehe „Statische Durchsetzung“).
+  import catalog; import edit-own; import edit-adjustments; import originals;
+  import fs-pick; import clipboard; import http;
+  export params-migrate;
+  export plugin: interface {
+    use types.{param, image-id, plugin-error}; use ui-types.{node}; use events.{event};
+    use task.{ctx}; use user-action.{token}; use files.{bytes-source};
+    record report { ok: u32, failed: u32, message: option<string> }
+    record candidate { head: list<u8>, ext: string, file-name: string }   // head ≤ 64 B
+    activate: func(api-minor: u16) -> result<_, plugin-error>;
+    run-command: func(id: string, selection: list<image-id>, t: borrow<token>, c: borrow<ctx>)
+                 -> result<report, plugin-error>;
+    on-event: func(e: event);                                      // kein Token
+    on-import-candidates: func(c: list<candidate>) -> list<bool>;  // Bündel ≤ 256
+    on-imported: func(ids: list<image-id>);                        // fire-and-forget, kein Token
+    on-export-done: func(files: list<bytes-source>, t: borrow<token>, c: borrow<ctx>);
+    describe: func(panel: string, p: list<param>) -> list<node>;   // optional dynamisches Panel
+  }
+}
